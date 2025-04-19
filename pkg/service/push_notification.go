@@ -1,4 +1,4 @@
-package a2a
+package service
 
 // Very lightweight JWT (RS256) helper and JWK endpoint without external
 // dependencies.  We implement just enough to interoperate with typical JWT

@@ -1,4 +1,4 @@
-package a2a
+package tools
 
 // Docker sandbox tool: run a shell command inside a temporary container and
 // return stdout, stderr, exit code, and duration.  Uses the lightweight helper

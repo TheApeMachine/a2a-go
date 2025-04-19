@@ -1,4 +1,4 @@
-package a2a
+package stores
 
 // SessionStore provides a simple key/value storage for arbitrary JSON‑like
 // session state scoped by sessionID.  It is intentionally minimal: callers

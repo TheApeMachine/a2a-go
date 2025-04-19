@@ -1,4 +1,4 @@
-package a2a
+package service
 
 // Very small pluggable auth helpers.  The goal is to enable demos that want to
 // protect their A2AServer with a static API key or a bearer token without

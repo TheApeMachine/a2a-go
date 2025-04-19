@@ -1,4 +1,4 @@
-package a2a
+package provider
 
 // Integration helpers for the official OpenAI Go SDK
 // https://github.com/openai/openai-go
@@ -11,6 +11,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openai/openai-go"
+	"github.com/theapemachine/a2a-go/pkg/types"
 )
 
 // DefaultModel is used when the caller does not specify a model explicitly.
@@ -43,7 +44,7 @@ func NewChatClient(executor ToolExecutor) *ChatClient {
 // message history.  If the assistant returns a tool call it is executed via the
 // provided ToolExecutor and the conversation auto‑continues until the final
 // assistant reply no longer contains tool calls.
-func (c *ChatClient) Complete(ctx context.Context, messages []Message, tools []mcp.Tool) (string, error) {
+func (c *ChatClient) Complete(ctx context.Context, messages []types.Message, tools []mcp.Tool) (string, error) {
 	oaMsgs := convertMessages(messages)
 	oaTools := convertTools(tools)
 
@@ -100,7 +101,7 @@ func (c *ChatClient) Complete(ctx context.Context, messages []Message, tools []m
 // returned.  Tool‑calling is handled after the first assistant message is fully
 // streamed (OpenAI currently does not stream function call arguments token by
 // token but sends them in a single delta once finished).
-func (c *ChatClient) Stream(ctx context.Context, messages []Message, tools []mcp.Tool, onDelta func(string)) (string, error) {
+func (c *ChatClient) Stream(ctx context.Context, messages []types.Message, tools []mcp.Tool, onDelta func(string)) (string, error) {
 	oaMsgs := convertMessages(messages)
 	oaTools := convertTools(tools)
 
@@ -140,13 +141,13 @@ func (c *ChatClient) modelName() string {
 
 // ============= internal helpers ===============================================================
 
-func convertMessages(mm []Message) []openai.ChatCompletionMessageParamUnion {
+func convertMessages(mm []types.Message) []openai.ChatCompletionMessageParamUnion {
 	out := make([]openai.ChatCompletionMessageParamUnion, 0, len(mm))
 	for _, m := range mm {
 		// extract first text part (fallback to empty string)
 		text := ""
 		for _, p := range m.Parts {
-			if p.Type == PartTypeText {
+			if p.Type == types.PartTypeText {
 				text = p.Text
 				break
 			}

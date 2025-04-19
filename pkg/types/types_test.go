@@ -1,4 +1,4 @@
-package a2a
+package types
 
 import (
     "encoding/json"

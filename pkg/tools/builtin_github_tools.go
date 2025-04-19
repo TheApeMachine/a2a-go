@@ -1,4 +1,4 @@
-package a2a
+package tools
 
 // Lightweight GitHub tools using stdlib HTTP.  These are best‑effort: if the
 // token/repo is missing or network unavailable the tool returns an error

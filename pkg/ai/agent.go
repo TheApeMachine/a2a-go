@@ -1,4 +1,4 @@
-package a2a
+package ai
 
 // Agent is a high‑level façade that hides the raw JSON‑RPC wiring and exposes
 // convenience methods that map directly to the A2A Task operations described
@@ -17,6 +17,9 @@ import (
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/a2a-go/pkg/service"
+	"github.com/theapemachine/a2a-go/pkg/tools"
+	"github.com/theapemachine/a2a-go/pkg/types"
 )
 
 // DefaultRPCPath is appended to the AgentCard.URL when the caller does not
@@ -28,18 +31,24 @@ const DefaultRPCPath = "/rpc"
 // requested.
 const DefaultSSEPath = "/events"
 
+// Helper function to marshal an ID for JSON-RPC
+func marshalID(v int) json.RawMessage {
+	b, _ := json.Marshal(v)
+	return b
+}
+
 // Agent encapsulates a remote A2A‑speaking agent.  It stores the published
 // AgentCard for inspection and offers helper methods for the standard task
 // lifecycle.  All network traffic goes through the embedded RPCClient so the
 // behaviour is easily customisable by swapping the underlying *http.Client* or
 // adding an AuthHeader callback.
 type Agent struct {
-	Card AgentCard
+	Card types.AgentCard
 
 	rpcEndpoint string // fully‑qualified URL for JSON‑RPC POSTs
 	sseEndpoint string // optional URL for SSE stream (if Card.Capabilities.Streaming)
 
-	rpc RPCClient
+	rpc service.RPCClient
 
 	// Optional hooks – callers may set these after construction.
 	AuthHeader func(*http.Request) // injects auth / tracing headers
@@ -48,7 +57,7 @@ type Agent struct {
 
 // NewAgentFromCard constructs an Agent from an already‑fetched AgentCard.  No
 // network requests are performed.
-func NewAgentFromCard(card AgentCard) *Agent {
+func NewAgentFromCard(card types.AgentCard) *Agent {
 	base := strings.TrimRight(card.URL, "/")
 	ag := &Agent{
 		Card:        card,
@@ -62,8 +71,8 @@ func NewAgentFromCard(card AgentCard) *Agent {
 // ------------------------------ Task helpers -----------------------------------
 
 // Send issues a tasks/send request and returns the resulting Task.
-func (a *Agent) Send(ctx context.Context, params TaskSendParams) (*Task, error) {
-	var task Task
+func (a *Agent) Send(ctx context.Context, params types.TaskSendParams) (*types.Task, error) {
+	var task types.Task
 	if err := a.call(ctx, "tasks/send", params, &task); err != nil {
 		return nil, err
 	}
@@ -77,16 +86,16 @@ func (a *Agent) Send(ctx context.Context, params TaskSendParams) (*Task, error) 
 // parser with reconnection logic.
 func (a *Agent) SendStream(
 	ctx context.Context,
-	params TaskSendParams,
-	onStatus func(TaskStatusUpdateEvent),
-	onArtifact func(TaskArtifactUpdateEvent),
+	params types.TaskSendParams,
+	onStatus func(types.TaskStatusUpdateEvent),
+	onArtifact func(types.TaskArtifactUpdateEvent),
 ) error {
 	// First perform the JSON‑RPC call but keep the HTTP response body for SSE.
 	// Encode request manually because RPCClient currently hides http.Response.
 
-	payload := rpcRequest{
+	payload := service.RPCRequest{
 		JSONRPC: "2.0",
-		ID:      mustMarshalID(1),
+		ID:      marshalID(1),
 		Method:  "tasks/sendSubscribe",
 	}
 	b, _ := json.Marshal(params)
@@ -131,12 +140,12 @@ func (a *Agent) SendStream(
 
 		// Determine event type by probing presence of fields.
 		if strings.Contains(data, "\"artifact\"") {
-			var evt TaskArtifactUpdateEvent
+			var evt types.TaskArtifactUpdateEvent
 			if err := json.Unmarshal([]byte(data), &evt); err == nil && onArtifact != nil {
 				onArtifact(evt)
 			}
 		} else {
-			var evt TaskStatusUpdateEvent
+			var evt types.TaskStatusUpdateEvent
 			if err := json.Unmarshal([]byte(data), &evt); err == nil && onStatus != nil {
 				onStatus(evt)
 				if evt.Final {
@@ -148,13 +157,13 @@ func (a *Agent) SendStream(
 }
 
 // Get retrieves a task.
-func (a *Agent) Get(ctx context.Context, id string, historyLength int) (*Task, error) {
+func (a *Agent) Get(ctx context.Context, id string, historyLength int) (*types.Task, error) {
 	params := struct {
 		ID            string `json:"id"`
 		HistoryLength int    `json:"historyLength,omitempty"`
 	}{ID: id, HistoryLength: historyLength}
 
-	var task Task
+	var task types.Task
 	if err := a.call(ctx, "tasks/get", params, &task); err != nil {
 		return nil, err
 	}
@@ -170,17 +179,17 @@ func (a *Agent) Cancel(ctx context.Context, id string) error {
 }
 
 // SetPush sets or updates the push‑notification config.
-func (a *Agent) SetPush(ctx context.Context, cfg TaskPushNotificationConfig) error {
+func (a *Agent) SetPush(ctx context.Context, cfg types.TaskPushNotificationConfig) error {
 	return a.call(ctx, "tasks/pushNotification/set", cfg, nil)
 }
 
 // GetPush fetches the push‑notification config for a task.
-func (a *Agent) GetPush(ctx context.Context, id string) (*TaskPushNotificationConfig, error) {
+func (a *Agent) GetPush(ctx context.Context, id string) (*types.TaskPushNotificationConfig, error) {
 	params := struct {
 		ID string `json:"id"`
 	}{ID: id}
 
-	var out TaskPushNotificationConfig
+	var out types.TaskPushNotificationConfig
 	if err := a.call(ctx, "tasks/pushNotification/get", params, &out); err != nil {
 		return nil, err
 	}
@@ -233,14 +242,14 @@ func (rt authInjectingRoundTripper) RoundTrip(r *http.Request) (*http.Response, 
 
 // ToMCPResource proxies to the existing helper on AgentCard.
 func (a *Agent) ToMCPResource() mcp.Resource {
-	return a.Card.ToMCPResource()
+	return tools.ToMCPResource(a.Card)
 }
 
 // ToMCPTools converts all skills to MCP tools.
 func (a *Agent) ToMCPTools() []mcp.Tool {
 	out := make([]mcp.Tool, 0, len(a.Card.Skills))
 	for _, s := range a.Card.Skills {
-		out = append(out, s.ToMCPTool())
+		out = append(out, tools.ToMCPTool(s))
 	}
 	return out
 }
@@ -260,7 +269,7 @@ func FetchAgentCard(ctx context.Context, baseURL string) (*Agent, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to fetch agent card: HTTP %d", resp.StatusCode)
 	}
-	var card AgentCard
+	var card types.AgentCard
 	if err := json.NewDecoder(resp.Body).Decode(&card); err != nil {
 		return nil, err
 	}

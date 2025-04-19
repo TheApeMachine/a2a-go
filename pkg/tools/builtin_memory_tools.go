@@ -1,4 +1,4 @@
-package a2a
+package tools
 
 // This file wires three simple memory_* MCP tools into the a2a‑go SDK.  They
 // rely on the lightweight in‑memory backend implemented in the `memory`

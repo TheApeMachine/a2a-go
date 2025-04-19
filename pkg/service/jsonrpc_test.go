@@ -1,11 +1,11 @@
-package a2a
+package service
 
 import (
-    "context"
-    "encoding/json"
-    "fmt"
-    "net/http"
-    "net/http/httptest"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
     "testing"
 )
 

@@ -1,4 +1,4 @@
-package a2a
+package service
 
 // A minimal Server‑Sent Events (SSE) helper to stream TaskStatusUpdateEvent and
 // TaskArtifactUpdateEvent objects to connected HTTP clients.  This is **not** a
@@ -118,18 +118,18 @@ func (b *SSEBroker) Close() {
 		return
 	}
 	b.closed = true
-    for ch := range b.clients {
-        close(ch)
-    }
-    // clear map
-    b.clients = map[chan []byte]struct{}{}
+	for ch := range b.clients {
+		close(ch)
+	}
+	// clear map
+	b.clients = map[chan []byte]struct{}{}
 }
 
 func (b *SSEBroker) remove(ch chan []byte) {
-    b.mu.Lock()
-    if _, ok := b.clients[ch]; ok {
-        delete(b.clients, ch)
-        close(ch)
-    }
-    b.mu.Unlock()
+	b.mu.Lock()
+	if _, ok := b.clients[ch]; ok {
+		delete(b.clients, ch)
+		close(ch)
+	}
+	b.mu.Unlock()
 }

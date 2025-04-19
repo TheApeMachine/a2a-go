@@ -1,4 +1,4 @@
-package a2a
+package service
 
 import (
 	"bufio"
@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/theapemachine/a2a-go/pkg/types"
 )
 
 func TestSSEBrokerBroadcast(t *testing.T) {
@@ -34,11 +36,11 @@ func TestSSEBrokerBroadcast(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Broadcast an event.
-	ev := TaskStatusUpdateEvent{
+	ev := types.TaskStatusUpdateEvent{
 		ID:    "abc",
 		Final: true,
-		Status: TaskStatus{
-			State: TaskStateCompleted,
+		Status: types.TaskStatus{
+			State: types.TaskStateCompleted,
 		},
 	}
 	if err := broker.Broadcast(ev); err != nil {
@@ -71,7 +73,7 @@ L:
 
 	payload := strings.TrimPrefix(strings.TrimSpace(line), "data: ")
 
-	var got TaskStatusUpdateEvent
+	var got types.TaskStatusUpdateEvent
 	if err := json.Unmarshal([]byte(payload), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
