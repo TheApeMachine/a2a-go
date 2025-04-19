@@ -1,20 +1,22 @@
 # 🧑‍🍳 A2A‑Go – Build delightful AI agents in Go  
 
-> *“Always have something cooking!”*
+> _“Always have something cooking!”_
+
+![A2A‑Go](a2a-go.png)
 
 **a2a‑go** is a reference Go implementation of the **Agent‑to‑Agent (A2A)**
-protocol by [Google](https://google.github.io/A2A/#/) plus a growing toolbox 
+protocol by [Google](https://google.github.io/A2A/#/) plus a growing toolbox
 of goodies that make it trivial to stand up a fully‑featured AI agent:
 
-* 🔌 **JSON‑RPC 2.0** server with pluggable method table.
-* 📡 **Server‑Sent Events (SSE)** broker for real‑time streaming updates.
-* 🧠 Built‑in integration with **OpenAI** (function calling & streaming).
-* 📜 **MCP bridge** — exposes your agent’s prompts, resources, roots &
+- 🔌 **JSON‑RPC 2.0** server with pluggable method table.
+- 📡 **Server‑Sent Events (SSE)** broker for real‑time streaming updates.
+- 🧠 Built‑in integration with **OpenAI** (function calling & streaming).
+- 📜 **MCP bridge** — exposes your agent’s prompts, resources, roots &
   sampling capabilities through the [Model Context Protocol](https://modelcontextprotocol.io).
-* 🔧 A curated set of **tools** (browser, Docker, GitHub, memory, …) ready for
+- 🔧 A curated set of **tools** (browser, Docker, GitHub, memory, …) ready for
   LLM function‑calling.
 
-The repo is designed for **learning by doing**.  Every concept is accompanied
+The repo is designed for **learning by doing**. Every concept is accompanied
 by a runnable example or a “recipe” so you can see something working within
 minutes.
 
@@ -58,27 +60,27 @@ curl -s -X POST localhost:8080/rpc \
 ## Features at a Glance
 
 | Area          | Highlights                                                       |
-|---------------|------------------------------------------------------------------|
+| ------------- | ---------------------------------------------------------------- |
 | **A2A Core**  | tasks/send, tasks/get, tasks/cancel, streaming + SSE             |
 | **Prompts**   | Single or multi‑step prompts, list & fetch via MCP               |
 | **Resources** | Static files or dynamic URI templates, live subscribe            |
 | **Roots**     | Named root URIs to logically group resources                     |
-| **Sampling**  | Echo stub *or* real OpenAI completions (auto‑switch)             |
+| **Sampling**  | Echo stub _or_ real OpenAI completions (auto‑switch)             |
 | **Tools**     | Browser (Rod), Docker exec, GitHub search, Qdrant, Memory store… |
 
 ---
 
 ## Learn More 🍽️
 
-Ready to cook something tasty?  Pick a recipe and dive right in:
+Ready to cook something tasty? Pick a recipe and dive right in:
 
 1. 🥄 [Quick Recipes](docs/quickstart.md) — hello world, prompts & streaming.
 2. 🧑‍🍳 [Prompt Kitchen](docs/prompts.md) — craft single & multi‑step prompts.
 3. 🛍️ [Resource Pantry](docs/resources.md) — expose data & subscribe to updates.
 4. ⚗️ [Sampling Lab](docs/sampling.md) — plug in OpenAI or keep it local.
 
-Each deep‑dive ends with a *“What’s next?”* section so you always have the next
+Each deep‑dive ends with a _“What’s next?”_ section so you always have the next
 idea to try.
 
-Enjoy & happy hacking!  Contributions, issues and recipe ideas are **very**
+Enjoy & happy hacking! Contributions, issues and recipe ideas are **very**
 welcome. 💛
