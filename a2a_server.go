@@ -12,6 +12,14 @@ import (
     "context"
     "encoding/json"
     "net/http"
+
+    "os"
+
+    "github.com/mark3labs/mcp-go/mcp"
+    "github.com/theapemachine/a2a-go/pkg/prompts"
+    "github.com/theapemachine/a2a-go/pkg/resources"
+    "github.com/theapemachine/a2a-go/pkg/roots"
+    "github.com/theapemachine/a2a-go/pkg/sampling"
 )
 
 // A2AServer is safe for concurrent use by default because RPCServer &
@@ -20,8 +28,22 @@ type A2AServer struct {
     Card        AgentCard
     TaskManager TaskManager
 
+    PromptManager   prompts.PromptManager
+    ResourceManager resources.ResourceManager
+    SamplingManager sampling.Manager
+    RootManager     *roots.Manager
+
     rpc    *RPCServer
     broker *SSEBroker
+}
+
+// chooseSamplingManager returns OpenAI manager if API key available otherwise
+// falls back to dummy echo manager.
+func chooseSamplingManager() sampling.Manager {
+    if os.Getenv("OPENAI_API_KEY") != "" {
+        return NewOpenAISamplingManager(nil)
+    }
+    return sampling.NewDefaultManager()
 }
 
 // NewA2AServer constructs a server with the supplied TaskManager.  The caller
@@ -29,10 +51,14 @@ type A2AServer struct {
 // routing frameworks (std net/http, gin, chi, …).
 func NewA2AServer(card AgentCard, tm TaskManager) *A2AServer {
     srv := &A2AServer{
-        Card:        card,
-        TaskManager: tm,
-        rpc:         NewRPCServer(),
-        broker:      NewSSEBroker(),
+        Card:           card,
+        TaskManager:    tm,
+        PromptManager:  prompts.NewDefaultManager(),
+        ResourceManager: resources.NewDefaultManager(),
+        SamplingManager: chooseSamplingManager(),
+        RootManager:     roots.NewManager(),
+        rpc:             NewRPCServer(),
+        broker:          NewSSEBroker(),
     }
     srv.registerRPCHandlers()
     return srv
@@ -80,6 +106,133 @@ func (s *A2AServer) registerRPCHandlers() {
             return nil, rpcErr
         }
         return task, nil
+    })
+
+    // ---------------------------------------------------------------------
+    // MCP‑Prompts namespace
+    // ---------------------------------------------------------------------
+
+    promptHandler := prompts.NewMCPHandler(s.PromptManager)
+
+    s.rpc.Register("prompts/list", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+        res, err := promptHandler.HandleListPrompts(ctx, &mcp.ListPromptsRequest{})
+        if err != nil {
+            return nil, &rpcError{Code: -32000, Message: err.Error()}
+        }
+        return res, nil
+    })
+
+    s.rpc.Register("prompts/get", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+        var p struct{ Name string `json:"name"` }
+        if err := json.Unmarshal(raw, &p); err != nil {
+            return nil, errInvalidParams
+        }
+        req := &mcp.GetPromptRequest{}
+        req.Params.Name = p.Name
+        res, err := promptHandler.HandleGetPrompt(ctx, req)
+        if err != nil {
+            return nil, &rpcError{Code: -32000, Message: err.Error()}
+        }
+        return res, nil
+    })
+
+    // ---------------------------------------------------------------------
+    // MCP‑Resources namespace
+    // ---------------------------------------------------------------------
+
+    resHandler := resources.NewMCPHandler(s.ResourceManager)
+
+    s.rpc.Register("resources/list", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+        res, err := resHandler.HandleListResources(ctx, &mcp.ListResourcesRequest{})
+        if err != nil {
+            return nil, &rpcError{Code: -32000, Message: err.Error()}
+        }
+        return res, nil
+    })
+
+    s.rpc.Register("resources/read", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+        var p struct{ URI string `json:"uri"` }
+        if err := json.Unmarshal(raw, &p); err != nil {
+            return nil, errInvalidParams
+        }
+        req := &mcp.ReadResourceRequest{}
+        req.Params.URI = p.URI
+        res, err := resHandler.HandleReadResource(ctx, req)
+        if err != nil {
+            return nil, &rpcError{Code: -32000, Message: err.Error()}
+        }
+        return res, nil
+    })
+
+    // ---------------------------------------------------------------------
+    // MCP‑Roots namespace (minimal subset list + create)
+    // ---------------------------------------------------------------------
+
+    rootsHandler := roots.NewMCPHandler(s.RootManager)
+
+    s.rpc.Register("roots/list", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+        res, err := rootsHandler.HandleListRoots(ctx)
+        if err != nil {
+            return nil, &rpcError{Code: -32000, Message: err.Error()}
+        }
+        return res, nil
+    })
+
+    s.rpc.Register("roots/create", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+        root, err := rootsHandler.HandleCreateRoot(ctx, raw)
+        if err != nil {
+            return nil, &rpcError{Code: -32000, Message: err.Error()}
+        }
+        return root, nil
+    })
+
+    // ---------------------------------------------------------------------
+    // MCP‑Sampling namespace (createMessage, no streaming yet)
+    // ---------------------------------------------------------------------
+
+    sampHandler := sampling.NewMCPHandler(s.SamplingManager)
+
+    s.rpc.Register("sampling/createMessage", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+        var req mcp.CreateMessageRequest
+        if err := json.Unmarshal(raw, &req); err != nil {
+            return nil, errInvalidParams
+        }
+        res, err := sampHandler.HandleCreateMessage(ctx, &req)
+        if err != nil {
+            return nil, &rpcError{Code: -32000, Message: err.Error()}
+        }
+        return res, nil
+    })
+
+    // sampling/createMessageStream – first delta returned, rest over SSE
+    s.rpc.Register("sampling/createMessageStream", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+        var req mcp.CreateMessageRequest
+        if err := json.Unmarshal(raw, &req); err != nil {
+            return nil, errInvalidParams
+        }
+
+        stream, err := sampHandler.HandleStreamMessage(ctx, &req)
+        if err != nil {
+            return nil, &rpcError{Code: -32000, Message: err.Error()}
+        }
+
+        // retrieve first result synchronously
+        var first *mcp.CreateMessageResult
+        select {
+        case first = <-stream:
+        default:
+            // if none ready yet produce empty chunk so caller can start reading.
+            first = &mcp.CreateMessageResult{}
+        }
+
+        // forward remainder asynchronously to SSE.
+        go func() {
+            for res := range stream {
+                _ = s.broker.Broadcast(res)
+            }
+        }()
+
+        return first, nil
     })
 
     // tasks/get
