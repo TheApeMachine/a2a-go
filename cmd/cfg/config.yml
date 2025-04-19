@@ -1,9 +1,9 @@
-# Caramba configuration file
-
 # Server configuration
 server:
   host: "localhost"
-  port: 8080
+  port: 3210
+  defaultRPCPath: "/rpc"
+  defaultSSEPath: "/events"
 
 # Agent configuration
 agent:
@@ -13,10 +13,10 @@ agent:
     streaming: true
     pushNotifications: true
     stateTransitionHistory: true
-  
+
 # OpenAI configuration
 openai:
-  apiKey: ""  # Set via environment variable or command line flag
+  apiKey: "" # Set via environment variable or command line flag
 
 # MCP configuration
 mcp:

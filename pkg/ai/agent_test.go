@@ -7,9 +7,17 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/spf13/viper"
+	"github.com/theapemachine/a2a-go/pkg/service"
 	"github.com/theapemachine/a2a-go/pkg/types"
 	"github.com/tj/assert"
 )
+
+func init() {
+	// Set default configuration values for testing
+	viper.SetDefault("server.defaultRPCPath", "/rpc")
+	viper.SetDefault("server.defaultSSEPath", "/events")
+}
 
 func TestNewAgentFromCard(t *testing.T) {
 	card := types.AgentCard{
@@ -33,11 +41,15 @@ func TestAgentSend(t *testing.T) {
 		assert.Equal(t, "/rpc", r.URL.Path)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
-		// Send response
-		response := types.Task{
-			ID: "test-task-id",
-			Status: types.TaskStatus{
-				State: types.TaskStateWorking,
+		// Send response in JSON-RPC format
+		response := service.RPCResponse{
+			JSONRPC: "2.0",
+			ID:      json.RawMessage(`1`),
+			Result: types.Task{
+				ID: "test-task-id",
+				Status: types.TaskStatus{
+					State: types.TaskStateWorking,
+				},
 			},
 		}
 		json.NewEncoder(w).Encode(response)
@@ -73,10 +85,15 @@ func TestAgentGet(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/rpc", r.URL.Path)
 
-		response := types.Task{
-			ID: "test-task-id",
-			Status: types.TaskStatus{
-				State: types.TaskStateCompleted,
+		// Send response in JSON-RPC format
+		response := service.RPCResponse{
+			JSONRPC: "2.0",
+			ID:      json.RawMessage(`1`),
+			Result: types.Task{
+				ID: "test-task-id",
+				Status: types.TaskStatus{
+					State: types.TaskStateCompleted,
+				},
 			},
 		}
 		json.NewEncoder(w).Encode(response)
@@ -97,7 +114,14 @@ func TestAgentGet(t *testing.T) {
 func TestAgentCancel(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/rpc", r.URL.Path)
-		w.WriteHeader(http.StatusOK)
+
+		// Send response in JSON-RPC format
+		response := service.RPCResponse{
+			JSONRPC: "2.0",
+			ID:      json.RawMessage(`1`),
+			Result:  nil, // Cancel operation returns null result
+		}
+		json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 

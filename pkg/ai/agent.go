@@ -11,25 +11,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/spf13/viper"
 	"github.com/theapemachine/a2a-go/pkg/service"
 	"github.com/theapemachine/a2a-go/pkg/tools"
 	"github.com/theapemachine/a2a-go/pkg/types"
 )
-
-// DefaultRPCPath is appended to the AgentCard.URL when the caller does not
-// specify a fully‑qualified RPC endpoint.  It matches the recommended
-// discovery convention from the spec.
-const DefaultRPCPath = "/rpc"
-
-// DefaultSSEPath is appended to the base URL when streaming updates are
-// requested.
-const DefaultSSEPath = "/events"
 
 // Helper function to marshal an ID for JSON-RPC
 func marshalID(v int) json.RawMessage {
@@ -37,11 +28,13 @@ func marshalID(v int) json.RawMessage {
 	return b
 }
 
-// Agent encapsulates a remote A2A‑speaking agent.  It stores the published
-// AgentCard for inspection and offers helper methods for the standard task
-// lifecycle.  All network traffic goes through the embedded RPCClient so the
-// behaviour is easily customisable by swapping the underlying *http.Client* or
-// adding an AuthHeader callback.
+/*
+Agent encapsulates a remote A2A‑speaking agent.  It stores the published
+AgentCard for inspection and offers helper methods for the standard task
+lifecycle.  All network traffic goes through the embedded RPCClient so the
+behaviour is easily customisable by swapping the underlying *http.Client* or
+adding an AuthHeader callback.
+*/
 type Agent struct {
 	Card types.AgentCard
 
@@ -55,36 +48,44 @@ type Agent struct {
 	Logger     func(string, ...any)
 }
 
-// NewAgentFromCard constructs an Agent from an already‑fetched AgentCard.  No
-// network requests are performed.
+/*
+NewAgentFromCard constructs an Agent from an already‑fetched AgentCard.
+No network requests are performed.
+*/
 func NewAgentFromCard(card types.AgentCard) *Agent {
+	v := viper.GetViper()
+
 	base := strings.TrimRight(card.URL, "/")
-	ag := &Agent{
+
+	agent := &Agent{
 		Card:        card,
-		rpcEndpoint: base + DefaultRPCPath,
-		sseEndpoint: base + DefaultSSEPath,
+		rpcEndpoint: base + v.GetString("server.defaultRPCPath"),
+		sseEndpoint: base + v.GetString("server.defaultSSEPath"),
 	}
-	ag.rpc.Endpoint = ag.rpcEndpoint
-	return ag
+
+	agent.rpc.Endpoint = agent.rpcEndpoint
+	return agent
 }
 
-// ------------------------------ Task helpers -----------------------------------
-
-// Send issues a tasks/send request and returns the resulting Task.
-func (a *Agent) Send(ctx context.Context, params types.TaskSendParams) (*types.Task, error) {
+/*
+Send issues a tasks/send request and returns the resulting Task.
+*/
+func (agent *Agent) Send(ctx context.Context, params types.TaskSendParams) (*types.Task, error) {
 	var task types.Task
-	if err := a.call(ctx, "tasks/send", params, &task); err != nil {
+	if err := agent.call(ctx, "tasks/send", params, &task); err != nil {
 		return nil, err
 	}
 	return &task, nil
 }
 
-// SendStream sends tasks/sendSubscribe and dispatches streaming events to the
-// provided callbacks.  If the agent reports final=true the function returns
-// nil.  Note: this implementation performs a best‑effort SSE parse; for
-// production‑grade robustness applications may want a more sophisticated
-// parser with reconnection logic.
-func (a *Agent) SendStream(
+/*
+SendStream sends tasks/sendSubscribe and dispatches streaming events to the
+provided callbacks.  If the agent reports final=true the function returns
+nil.  Note: this implementation performs a best‑effort SSE parse; for
+production‑grade robustness applications may want a more sophisticated
+parser with reconnection logic.
+*/
+func (agent *Agent) SendStream(
 	ctx context.Context,
 	params types.TaskSendParams,
 	onStatus func(types.TaskStatusUpdateEvent),
@@ -92,31 +93,40 @@ func (a *Agent) SendStream(
 ) error {
 	// First perform the JSON‑RPC call but keep the HTTP response body for SSE.
 	// Encode request manually because RPCClient currently hides http.Response.
-
 	payload := service.RPCRequest{
 		JSONRPC: "2.0",
 		ID:      marshalID(1),
 		Method:  "tasks/sendSubscribe",
 	}
+
 	b, _ := json.Marshal(params)
 	payload.Params = b
 
-	body, _ := json.Marshal(payload)
+	body, err := json.Marshal(payload)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.rpcEndpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, agent.rpcEndpoint, bytes.NewReader(body))
+
+	if err != nil {
+		return err
+	}
+
 	req.Header.Set("Content-Type", "application/json")
-	if a.AuthHeader != nil {
-		a.AuthHeader(req)
+
+	if agent.AuthHeader != nil {
+		agent.AuthHeader(req)
 	}
 
-	httpClient := a.httpClient()
+	httpClient := agent.httpClient()
 	resp, err := httpClient.Do(req)
+
 	if err != nil {
 		return err
 	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -124,18 +134,24 @@ func (a *Agent) SendStream(
 	}
 
 	reader := bufio.NewReader(resp.Body)
+
 	for {
 		line, err := reader.ReadString('\n')
+
 		if err != nil {
 			return err
 		}
+
 		line = strings.TrimSpace(line)
+
 		if line == "" || strings.HasPrefix(line, ":") { // comments / keep‑alive
 			continue
 		}
+
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
+
 		data := strings.TrimPrefix(line, "data: ")
 
 		// Determine event type by probing presence of fields.
@@ -144,19 +160,25 @@ func (a *Agent) SendStream(
 			if err := json.Unmarshal([]byte(data), &evt); err == nil && onArtifact != nil {
 				onArtifact(evt)
 			}
-		} else {
-			var evt types.TaskStatusUpdateEvent
-			if err := json.Unmarshal([]byte(data), &evt); err == nil && onStatus != nil {
-				onStatus(evt)
-				if evt.Final {
-					return nil
-				}
+
+			continue
+		}
+
+		var evt types.TaskStatusUpdateEvent
+		
+		if err := json.Unmarshal([]byte(data), &evt); err == nil && onStatus != nil {
+			onStatus(evt)
+			
+			if evt.Final {
+				return nil
 			}
 		}
 	}
 }
 
-// Get retrieves a task.
+/*
+Get retrieves a task.
+*/
 func (a *Agent) Get(ctx context.Context, id string, historyLength int) (*types.Task, error) {
 	params := struct {
 		ID            string `json:"id"`
@@ -170,7 +192,9 @@ func (a *Agent) Get(ctx context.Context, id string, historyLength int) (*types.T
 	return &task, nil
 }
 
-// Cancel cancels a running task.
+/*
+Cancel cancels a running task.
+*/
 func (a *Agent) Cancel(ctx context.Context, id string) error {
 	params := struct {
 		ID string `json:"id"`
@@ -178,7 +202,9 @@ func (a *Agent) Cancel(ctx context.Context, id string) error {
 	return a.call(ctx, "tasks/cancel", params, nil)
 }
 
-// Resubscribe reconnects to an existing task's event stream.
+/*
+Resubscribe reconnects to an existing task's event stream.
+*/
 func (a *Agent) Resubscribe(
 	ctx context.Context,
 	id string,
@@ -224,16 +250,16 @@ func (a *Agent) Resubscribe(
 
 	// Read the first response event which contains the task status
 	var firstResponse struct {
-		JSONRPC string          `json:"jsonrpc"`
-		ID      json.RawMessage `json:"id"`
-		Result  json.RawMessage `json:"result"`
+		JSONRPC string            `json:"jsonrpc"`
+		ID      json.RawMessage   `json:"id"`
+		Result  json.RawMessage   `json:"result"`
 		Error   *service.RPCError `json:"error,omitempty"`
 	}
-	
+
 	if err := json.NewDecoder(resp.Body).Decode(&firstResponse); err != nil {
 		return err
 	}
-	
+
 	if firstResponse.Error != nil {
 		return fmt.Errorf("resubscribe failed: %s", firstResponse.Error.Message)
 	}
@@ -272,12 +298,16 @@ func (a *Agent) Resubscribe(
 	}
 }
 
-// SetPush sets or updates the push‑notification config.
+/*
+SetPush sets or updates the push‑notification config.
+*/
 func (a *Agent) SetPush(ctx context.Context, cfg types.TaskPushNotificationConfig) error {
 	return a.call(ctx, "tasks/pushNotification/set", cfg, nil)
 }
 
-// GetPush fetches the push‑notification config for a task.
+/*
+GetPush fetches the push‑notification config for a task.
+*/
 func (a *Agent) GetPush(ctx context.Context, id string) (*types.TaskPushNotificationConfig, error) {
 	params := struct {
 		ID string `json:"id"`
@@ -290,8 +320,9 @@ func (a *Agent) GetPush(ctx context.Context, id string) (*types.TaskPushNotifica
 	return &out, nil
 }
 
-// ------------------------------ helpers -------------------------------------
-
+/*
+call is a helper method for making JSON‑RPC calls to the agent.
+*/
 func (a *Agent) call(ctx context.Context, method string, params any, result any) error {
 	// Use the embedded RPCClient but inject auth headers if necessary.
 	if a.rpc.HTTP == nil {
@@ -311,6 +342,9 @@ func (a *Agent) call(ctx context.Context, method string, params any, result any)
 	return a.rpc.Call(ctx, method, params, result)
 }
 
+/*
+httpClient returns the underlying *http.Client* for the RPCClient.
+*/
 func (a *Agent) httpClient() *http.Client {
 	if a.rpc.HTTP != nil {
 		return a.rpc.HTTP
@@ -318,8 +352,10 @@ func (a *Agent) httpClient() *http.Client {
 	return http.DefaultClient
 }
 
-// authInjectingRoundTripper adds custom headers right before the request is
-// sent.  Needed because RPCClient hides the underlying *http.Request*.
+/*
+authInjectingRoundTripper adds custom headers right before the request is
+sent.  Needed because RPCClient hides the underlying *http.Request*.
+*/
 type authInjectingRoundTripper struct {
 	base       http.RoundTripper
 	injectFunc func(*http.Request)
@@ -332,14 +368,16 @@ func (rt authInjectingRoundTripper) RoundTrip(r *http.Request) (*http.Response, 
 	return rt.base.RoundTrip(r)
 }
 
-// ------------------------------ MCP helpers ----------------------------------
-
-// ToMCPResource proxies to the existing helper on AgentCard.
+/*
+ToMCPResource proxies to the existing helper on AgentCard.
+*/
 func (a *Agent) ToMCPResource() mcp.Resource {
 	return tools.ToMCPResource(a.Card)
 }
 
-// ToMCPTools converts all skills to MCP tools.
+/*
+ToMCPTools converts all skills to MCP tools.
+*/
 func (a *Agent) ToMCPTools() []mcp.Tool {
 	out := make([]mcp.Tool, 0, len(a.Card.Skills))
 	for _, s := range a.Card.Skills {
@@ -348,10 +386,10 @@ func (a *Agent) ToMCPTools() []mcp.Tool {
 	return out
 }
 
-// ------------------------------ misc -----------------------------------------
-
-// FetchAgentCard retrieves the published agent card from the well‑known path
-// and constructs an Agent instance.  Convenience helper for quick experiments.
+/*
+FetchAgentCard retrieves the published agent card from the well‑known path
+and constructs an Agent instance.  Convenience helper for quick experiments.
+*/
 func FetchAgentCard(ctx context.Context, baseURL string) (*Agent, error) {
 	wellKnown := strings.TrimRight(baseURL, "/") + "/.well-known/agent.json"
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, wellKnown, nil)
@@ -369,7 +407,3 @@ func FetchAgentCard(ctx context.Context, baseURL string) (*Agent, error) {
 	}
 	return NewAgentFromCard(card), nil
 }
-
-// ------------------------------- compile guard -------------------------------
-
-var _ = errors.New // keep "errors" imported if file otherwise has no uses
