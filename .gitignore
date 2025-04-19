@@ -4,8 +4,8 @@ JSONSpec.json
 MCP.txt
 MCPExamples.txt
 OpenAIExamples.txt
-.gocache
-.gotmp
+.gocache*
+.gotmp*
 .tmp
 .cache
 SAMPLES.txt

@@ -25,6 +25,26 @@ func RegisterBuiltInTools(srv *server.MCPServer, store *InMemoryTaskStore) {
     }
 
     // ------------------------------------------------------------------
+    // Memory tools (in‑memory stub implementation)
+    // ------------------------------------------------------------------
+    registerMemoryTools(srv)
+
+    // ------------------------------------------------------------------
+    // Headless Browser tool
+    // ------------------------------------------------------------------
+    registerBrowserTools(srv)
+
+    // ------------------------------------------------------------------
+    // Docker sandbox tool
+    // ------------------------------------------------------------------
+    registerDockerTools(srv)
+
+    // ------------------------------------------------------------------
+    // GitHub tools
+    // ------------------------------------------------------------------
+    registerGitHubTools(srv)
+
+    // ------------------------------------------------------------------
     // Agent Orchestrator tool
     // ------------------------------------------------------------------
     orchestratorTool := mcp.NewTool(
@@ -41,6 +61,7 @@ func RegisterBuiltInTools(srv *server.MCPServer, store *InMemoryTaskStore) {
 
     srv.AddTool(orchestratorTool, makeOrchestratorHandler(store))
 }
+
 
 // defaultTaskStore is lazily created if the user does not provide their own.
 var defaultTaskStore = NewInMemoryTaskStore()
