@@ -1,0 +1,23 @@
+# Caramba configuration file
+
+# Server configuration
+server:
+  host: "localhost"
+  port: 8080
+
+# Agent configuration
+agent:
+  name: "Echo Agent"
+  version: "0.1.0"
+  capabilities:
+    streaming: true
+    pushNotifications: true
+    stateTransitionHistory: true
+  
+# OpenAI configuration
+openai:
+  apiKey: ""  # Set via environment variable or command line flag
+
+# MCP configuration
+mcp:
+  embedded_agent: false

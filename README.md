@@ -41,7 +41,15 @@ curl -s -X POST localhost:8080/rpc \
 
 # send a task (agent echoes the first text part)
 curl -s -X POST localhost:8080/rpc \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tasks/send","params":{"id":"t1","message":{"role":"user","parts":[{"type":"text","text":"Hello!"}]}}}' | jq
+  -d '{"jsonrpc":"2.0","id":2,"method":"tasks/send","params":{"id":"t1","sessionId":"s1","message":{"role":"user","parts":[{"type":"text","text":"Hello!"}]}}}' | jq
+
+# get task with history
+curl -s -X POST localhost:8080/rpc \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tasks/get","params":{"id":"t1","historyLength":1}}' | jq
+
+# configure push notifications
+curl -s -X POST localhost:8080/rpc \
+  -d '{"jsonrpc":"2.0","id":4,"method":"tasks/pushNotification/set","params":{"id":"t1","pushNotificationConfig":{"url":"https://example.com/notify"}}}' | jq
 ```
 
 ### 3  Turn on OpenAI‑power ⚡️
@@ -59,14 +67,17 @@ curl -s -X POST localhost:8080/rpc \
 
 ## Features at a Glance
 
-| Area          | Highlights                                                       |
-| ------------- | ---------------------------------------------------------------- |
-| **A2A Core**  | tasks/send, tasks/get, tasks/cancel, streaming + SSE             |
-| **Prompts**   | Single or multi‑step prompts, list & fetch via MCP               |
-| **Resources** | Static files or dynamic URI templates, live subscribe            |
-| **Roots**     | Named root URIs to logically group resources                     |
-| **Sampling**  | Echo stub _or_ real OpenAI completions (auto‑switch)             |
-| **Tools**     | Browser (Rod), Docker exec, GitHub search, Qdrant, Memory store… |
+| Area                  | Highlights                                                                   |
+| --------------------- | ---------------------------------------------------------------------------- |
+| **A2A Core**          | tasks/send, tasks/get, tasks/cancel, push notifications                       |
+| **Streaming**         | tasks/sendSubscribe, tasks/resubscribe, SSE broker                            |
+| **Session Support**   | Session tracking, message history, history retrieval                          |
+| **Push Notifications**| Configure and retrieve push notification settings, JWT token authentication   |
+| **Prompts**           | Single or multi‑step prompts, list & fetch via MCP                           |
+| **Resources**         | Static files or dynamic URI templates, live subscribe                        |
+| **Roots**             | Named root URIs to logically group resources                                 |
+| **Sampling**          | Echo stub _or_ real OpenAI completions (auto‑switch)                         |
+| **Tools**             | Browser (Rod), Docker exec, GitHub search, Qdrant, Memory store…             |
 
 ---
 

@@ -31,7 +31,7 @@ func main() {
     ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
     defer cancel()
 
-    res, err := browser.Fetch(ctx, pageURL, selector)
+    res, err := browser.Fetch(ctx, pageURL, selector, false, "")
     if err != nil {
         log.Fatalf("fetch failed: %v", err)
     }

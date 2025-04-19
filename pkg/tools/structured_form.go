@@ -15,24 +15,24 @@ import (
 // part when an agent requests the client to fill out a form.
 // See README in samples for the shape.
 type FormPayload struct {
-	Type         string                 `json:"type"`         // always "form"
-	Form         map[string]interface{} `json:"form"`         // JSON schema
-	FormData     map[string]interface{} `json:"form_data"`    // initial values
-	Instructions string                 `json:"instructions"` // optional
+	Type         string         `json:"type"`         // always "form"
+	Form         map[string]any `json:"form"`         // JSON schema
+	FormData     map[string]any `json:"form_data"`    // initial values
+	Instructions string         `json:"instructions"` // optional
 }
 
 // NewFormPart returns a Part of type Data with the inner payload conforming to
 // the FormPayload convention.
-func NewFormPart(schema map[string]interface{}, data map[string]interface{}, instructions string) types.Part {
+func NewFormPart(schema map[string]any, data map[string]any, instructions string) types.Part {
 	if schema == nil {
-		schema = map[string]interface{}{}
+		schema = map[string]any{}
 	}
 	if data == nil {
-		data = map[string]interface{}{}
+		data = map[string]any{}
 	}
 	return types.Part{
 		Type: types.PartTypeData,
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"type":         "form",
 			"form":         schema,
 			"form_data":    data,

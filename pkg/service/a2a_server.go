@@ -70,15 +70,29 @@ func NewA2AServer(card types.AgentCard, tm TaskManager) *A2AServer {
 // input.  Great for smoke tests.
 func NewA2AServerWithDefaults(url string) *A2AServer {
 	card := types.AgentCard{
-		Name:    "Echo Agent (Go)",
-		URL:     url,
-		Version: "0.1.0",
+		Name:        "Echo Agent (Go)",
+		URL:         url,
+		Version:     "0.1.0",
+		Description: stringPtr("A simple echo agent that demonstrates A2A protocol features"),
 		Capabilities: types.AgentCapabilities{
-			Streaming: true,
+			Streaming:              true,
+			PushNotifications:      true,
+			StateTransitionHistory: true,
 		},
-		Skills: []types.AgentSkill{{ID: "echo", Name: "Echo"}},
+		DefaultInputModes:  []string{"text/plain"},
+		DefaultOutputModes: []string{"text/plain"},
+		Skills: []types.AgentSkill{{
+			ID:          "echo", 
+			Name:        "Echo",
+			Description: stringPtr("Echoes back user input"),
+			Examples:    []string{"Hello A2A!", "Echo this message"},
+		}},
 	}
 	return NewA2AServer(card, NewEchoTaskManager(nil))
+}
+
+func stringPtr(s string) *string {
+	return &s
 }
 
 // Handlers returns a map of path → http.Handler to be mounted by the host
@@ -99,7 +113,7 @@ func (s *A2AServer) Handlers() map[string]http.Handler {
 
 func (s *A2AServer) registerRPCHandlers() {
 	// tasks/send
-	s.rpc.Register("tasks/send", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+	s.rpc.Register("tasks/send", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
 		var params types.TaskSendParams
 		if err := json.Unmarshal(raw, &params); err != nil {
 			return nil, errInvalidParams
@@ -110,6 +124,67 @@ func (s *A2AServer) registerRPCHandlers() {
 		}
 		return task, nil
 	})
+	
+	// tasks/pushNotification/set
+	s.rpc.Register("tasks/pushNotification/set", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
+		var config types.TaskPushNotificationConfig
+		if err := json.Unmarshal(raw, &config); err != nil {
+			return nil, errInvalidParams
+		}
+		taskPushConfig, rpcErr := s.TaskManager.SetPushNotification(ctx, config)
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		return taskPushConfig, nil
+	})
+	
+	// tasks/pushNotification/get
+	s.rpc.Register("tasks/pushNotification/get", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
+		var p struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return nil, errInvalidParams
+		}
+		taskPushConfig, rpcErr := s.TaskManager.GetPushNotification(ctx, p.ID)
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		return taskPushConfig, nil
+	})
+	
+	// tasks/resubscribe
+	s.rpc.Register("tasks/resubscribe", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
+		var p struct {
+			ID string `json:"id"`
+			HistoryLength int `json:"historyLength,omitempty"`
+		}
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return nil, errInvalidParams
+		}
+		stream, rpcErr := s.TaskManager.ResubscribeTask(ctx, p.ID, p.HistoryLength)
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		
+		// Consume first event to return immediately per JSON‑RPC semantics
+		var first any
+		select {
+		case first = <-stream:
+		default:
+			// no event yet – return empty result
+			first = nil
+		}
+		
+		// Forward rest of events to SSE broker
+		go func() {
+			for evt := range stream {
+				_ = s.broker.Broadcast(evt)
+			}
+		}()
+		
+		return first, nil
+	})
 
 	// ---------------------------------------------------------------------
 	// MCP‑Prompts namespace
@@ -117,7 +192,7 @@ func (s *A2AServer) registerRPCHandlers() {
 
 	promptHandler := prompts.NewMCPHandler(s.PromptManager)
 
-	s.rpc.Register("prompts/list", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+	s.rpc.Register("prompts/list", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
 		res, err := promptHandler.HandleListPrompts(ctx, &mcp.ListPromptsRequest{})
 		if err != nil {
 			return nil, &rpcError{Code: -32000, Message: err.Error()}
@@ -125,7 +200,7 @@ func (s *A2AServer) registerRPCHandlers() {
 		return res, nil
 	})
 
-	s.rpc.Register("prompts/get", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+	s.rpc.Register("prompts/get", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
 		var p struct {
 			Name string `json:"name"`
 		}
@@ -147,7 +222,7 @@ func (s *A2AServer) registerRPCHandlers() {
 
 	resHandler := resources.NewMCPHandler(s.ResourceManager)
 
-	s.rpc.Register("resources/list", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+	s.rpc.Register("resources/list", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
 		res, err := resHandler.HandleListResources(ctx, &mcp.ListResourcesRequest{})
 		if err != nil {
 			return nil, &rpcError{Code: -32000, Message: err.Error()}
@@ -155,7 +230,7 @@ func (s *A2AServer) registerRPCHandlers() {
 		return res, nil
 	})
 
-	s.rpc.Register("resources/read", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+	s.rpc.Register("resources/read", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
 		var p struct {
 			URI string `json:"uri"`
 		}
@@ -177,7 +252,7 @@ func (s *A2AServer) registerRPCHandlers() {
 
 	rootsHandler := roots.NewMCPHandler(s.RootManager)
 
-	s.rpc.Register("roots/list", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+	s.rpc.Register("roots/list", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
 		res, err := rootsHandler.HandleListRoots(ctx)
 		if err != nil {
 			return nil, &rpcError{Code: -32000, Message: err.Error()}
@@ -185,7 +260,7 @@ func (s *A2AServer) registerRPCHandlers() {
 		return res, nil
 	})
 
-	s.rpc.Register("roots/create", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+	s.rpc.Register("roots/create", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
 		root, err := rootsHandler.HandleCreateRoot(ctx, raw)
 		if err != nil {
 			return nil, &rpcError{Code: -32000, Message: err.Error()}
@@ -199,7 +274,7 @@ func (s *A2AServer) registerRPCHandlers() {
 
 	sampHandler := sampling.NewMCPHandler(s.SamplingManager)
 
-	s.rpc.Register("sampling/createMessage", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+	s.rpc.Register("sampling/createMessage", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
 		var req mcp.CreateMessageRequest
 		if err := json.Unmarshal(raw, &req); err != nil {
 			return nil, errInvalidParams
@@ -212,7 +287,7 @@ func (s *A2AServer) registerRPCHandlers() {
 	})
 
 	// sampling/createMessageStream – first delta returned, rest over SSE
-	s.rpc.Register("sampling/createMessageStream", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+	s.rpc.Register("sampling/createMessageStream", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
 		var req mcp.CreateMessageRequest
 		if err := json.Unmarshal(raw, &req); err != nil {
 			return nil, errInvalidParams
@@ -243,7 +318,7 @@ func (s *A2AServer) registerRPCHandlers() {
 	})
 
 	// tasks/get
-	s.rpc.Register("tasks/get", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+	s.rpc.Register("tasks/get", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
 		var qp struct {
 			ID            string `json:"id"`
 			HistoryLength int    `json:"historyLength,omitempty"`
@@ -259,7 +334,7 @@ func (s *A2AServer) registerRPCHandlers() {
 	})
 
 	// tasks/cancel
-	s.rpc.Register("tasks/cancel", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+	s.rpc.Register("tasks/cancel", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
 		var p struct {
 			ID string `json:"id"`
 		}
@@ -274,7 +349,7 @@ func (s *A2AServer) registerRPCHandlers() {
 	})
 
 	// tasks/sendSubscribe (basic implementation)
-	s.rpc.Register("tasks/sendSubscribe", func(ctx context.Context, raw json.RawMessage) (interface{}, *rpcError) {
+	s.rpc.Register("tasks/sendSubscribe", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
 		var params types.TaskSendParams
 		if err := json.Unmarshal(raw, &params); err != nil {
 			return nil, errInvalidParams
@@ -286,7 +361,7 @@ func (s *A2AServer) registerRPCHandlers() {
 		}
 
 		// Consume first event to return immediately per JSON‑RPC semantics.
-		var first interface{}
+		var first any
 		select {
 		case first = <-stream:
 		default:

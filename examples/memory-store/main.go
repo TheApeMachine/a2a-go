@@ -7,35 +7,35 @@
 package main
 
 import (
-    "encoding/json"
-    "fmt"
+	"encoding/json"
+	"fmt"
 
-    "github.com/theapemachine/a2a-go/memory"
+	"github.com/theapemachine/a2a-go/memory"
 )
 
 func main() {
-    store := memory.New()
+	store := memory.New()
 
-    // ------------------------------------------------------------------
-    // 1. Store two snippets of text (one in each backend)
-    // ------------------------------------------------------------------
-    id1 := store.Put("vector", "Hello, world!", nil)
-    fmt.Printf("Stored doc1 in vector backend → %s\n", id1)
+	// ------------------------------------------------------------------
+	// 1. Store two snippets of text (one in each backend)
+	// ------------------------------------------------------------------
+	id1 := store.Put("vector", "Hello, world!", nil)
+	fmt.Printf("Stored doc1 in vector backend → %s\n", id1)
 
-    id2 := store.Put("graph", "Go makes concurrency easy.", map[string]interface{}{"author": "gopher"})
-    fmt.Printf("Stored doc2 in graph  backend → %s\n", id2)
+	id2 := store.Put("graph", "Go makes concurrency easy.", map[string]any{"author": "gopher"})
+	fmt.Printf("Stored doc2 in graph  backend → %s\n", id2)
 
-    // ------------------------------------------------------------------
-    // 2. Retrieve by ID
-    // ------------------------------------------------------------------
-    if doc, ok := store.Get(id2); ok {
-        b, _ := json.Marshal(doc)
-        fmt.Printf("Fetched doc2 → %s\n", string(b))
-    }
+	// ------------------------------------------------------------------
+	// 2. Retrieve by ID
+	// ------------------------------------------------------------------
+	if doc, ok := store.Get(id2); ok {
+		b, _ := json.Marshal(doc)
+		fmt.Printf("Fetched doc2 → %s\n", string(b))
+	}
 
-    // ------------------------------------------------------------------
-    // 3. Simple search
-    // ------------------------------------------------------------------
-    hits := store.Search("hello", "vector", 0)
-    fmt.Printf("Search for 'hello' in vector backend returned: %v\n", hits)
+	// ------------------------------------------------------------------
+	// 3. Simple search
+	// ------------------------------------------------------------------
+	hits := store.Search("hello", "vector", 0)
+	fmt.Printf("Search for 'hello' in vector backend returned: %v\n", hits)
 }

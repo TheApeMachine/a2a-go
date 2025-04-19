@@ -6,21 +6,21 @@ package main
 // error.
 
 import (
-    "context"
-    "encoding/json"
-    "fmt"
-    "log"
-    "time"
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"time"
 
-    "github.com/theapemachine/a2a-go/pkg/tools/docker"
+	"github.com/theapemachine/a2a-go/pkg/tools/docker"
 )
 
 func main() {
-    res, err := docker.Exec(context.Background(), "busybox:latest", []string{"uname", "-a"}, 30*time.Second)
-    if err != nil {
-        log.Fatalf("docker exec failed: %v", err)
-    }
+	res, err := docker.Exec(context.Background(), "busybox:latest", []string{"uname", "-a"}, 30*time.Second, &docker.ExecOptions{})
+	if err != nil {
+		log.Fatalf("docker exec failed: %v", err)
+	}
 
-    b, _ := json.MarshalIndent(res, "", "  ")
-    fmt.Println(string(b))
+	b, _ := json.MarshalIndent(res, "", "  ")
+	fmt.Println(string(b))
 }

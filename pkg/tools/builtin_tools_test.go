@@ -14,7 +14,7 @@ func TestOrchestratorHandlerCreatesTask(t *testing.T) {
 	handler := makeOrchestratorHandler(store)
 
 	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]interface{}{"objective": "write docs"}
+	req.Params.Arguments = map[string]any{"objective": "write docs"}
 
 	res, err := handler(context.Background(), req)
 	if err != nil {

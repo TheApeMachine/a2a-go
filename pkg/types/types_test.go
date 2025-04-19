@@ -95,3 +95,141 @@ func containsJSONField(b []byte, name, value string) bool {
 func jsonContains(b []byte, substr string) bool {
     return strings.Contains(string(b), substr)
 }
+
+func TestPartValidate(t *testing.T) {
+	tests := []struct {
+		name        string
+		part        Part
+		expectError bool
+	}{
+		{
+			name: "Valid text part",
+			part: Part{
+				Type: PartTypeText,
+				Text: "Hello",
+			},
+			expectError: false,
+		},
+		{
+			name: "Invalid text part - empty text",
+			part: Part{
+				Type: PartTypeText,
+				Text: "",
+			},
+			expectError: true,
+		},
+		{
+			name: "Multiple fields populated",
+			part: Part{
+				Type: PartTypeText,
+				Text: "Hello",
+				Data: map[string]any{"key": "value"},
+			},
+			expectError: true,
+		},
+		{
+			name: "Valid file part",
+			part: Part{
+				Type: PartTypeFile,
+				File: &FilePart{
+					URI: "https://example.com",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Invalid file part - nil",
+			part: Part{
+				Type: PartTypeFile,
+				File: nil,
+			},
+			expectError: true,
+		},
+		{
+			name: "Valid data part",
+			part: Part{
+				Type: PartTypeData,
+				Data: map[string]any{"key": "value"},
+			},
+			expectError: false,
+		},
+		{
+			name: "Invalid data part - nil",
+			part: Part{
+				Type: PartTypeData,
+				Data: nil,
+			},
+			expectError: true,
+		},
+		{
+			name: "Invalid part type",
+			part: Part{
+				Type: "invalid",
+				Text: "Hello",
+			},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.part.Validate()
+			
+			if tt.expectError && err == nil {
+				t.Errorf("Expected an error but got none")
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestFilePartValidate(t *testing.T) {
+	tests := []struct {
+		name        string
+		filePart    FilePart
+		expectError bool
+	}{
+		{
+			name: "Valid file part with URI",
+			filePart: FilePart{
+				URI: "https://example.com",
+			},
+			expectError: false,
+		},
+		{
+			name: "Valid file part with bytes",
+			filePart: FilePart{
+				Bytes: "base64data",
+			},
+			expectError: false,
+		},
+		{
+			name: "Invalid file part - both URI and bytes",
+			filePart: FilePart{
+				URI:   "https://example.com",
+				Bytes: "base64data",
+			},
+			expectError: true,
+		},
+		{
+			name: "Invalid file part - neither URI nor bytes",
+			filePart: FilePart{},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.filePart.Validate()
+			
+			if tt.expectError && err == nil {
+				t.Errorf("Expected an error but got none")
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+		})
+	}
+}

@@ -20,11 +20,15 @@ type TaskEntry struct {
 	ID string
 	// ParentID is nil for top‑level tasks.  Child tasks store the ID of their
 	// immediate parent to enable hierarchical traversal and orchestration.
-	ParentID    *string
-	Description string
-	State       types.TaskState
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ParentID         *string
+	SessionID        string
+	Description      string
+	Content          string
+	State            types.TaskState
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	History          []types.Message
+	PushNotification *types.PushNotificationConfig
 }
 
 // InMemoryTaskStore satisfies the (future) TaskStore interface expected by
@@ -49,9 +53,11 @@ func (s *InMemoryTaskStore) Create(id, desc string) *TaskEntry {
 		ID:          id,
 		ParentID:    nil,
 		Description: desc,
+		Content:     desc,
 		State:       types.TaskStateSubmitted,
 		CreatedAt:   now,
 		UpdatedAt:   now,
+		History:     make([]types.Message, 0),
 	}
 	s.mu.Lock()
 	s.tasks[id] = entry
@@ -97,4 +103,47 @@ func (s *InMemoryTaskStore) List() []*TaskEntry {
 		out = append(out, e)
 	}
 	return out
+}
+
+// AddMessageToHistory adds a message to the task's history
+func (s *InMemoryTaskStore) AddMessageToHistory(id string, msg types.Message) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.tasks[id]
+	if !ok {
+		return false
+	}
+	e.History = append(e.History, msg)
+	e.UpdatedAt = time.Now().UTC()
+	return true
+}
+
+// SetPushNotification configures a push notification URL for a task
+func (s *InMemoryTaskStore) SetPushNotification(id string, config types.PushNotificationConfig) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.tasks[id]
+	if !ok {
+		return false
+	}
+	e.PushNotification = &config
+	e.UpdatedAt = time.Now().UTC()
+	return true
+}
+
+// GetHistory returns a slice of recent messages from the task's history
+func (s *InMemoryTaskStore) GetHistory(id string, limit int) []types.Message {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	e, ok := s.tasks[id]
+	if !ok || len(e.History) == 0 {
+		return nil
+	}
+	
+	if limit <= 0 || limit >= len(e.History) {
+		return e.History
+	}
+	
+	// Return the most recent messages up to the limit
+	return e.History[len(e.History)-limit:]
 }

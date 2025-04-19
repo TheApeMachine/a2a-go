@@ -35,7 +35,7 @@ func main() {
 		return
 	}
 
-	executor := func(ctx context.Context, t mcp.Tool, args map[string]interface{}) (string, error) {
+	executor := func(ctx context.Context, t mcp.Tool, args map[string]any) (string, error) {
 		return fmt.Sprintf("tool %s invoked with %v", t.Name, args), nil
 	}
 

@@ -89,7 +89,7 @@ func (b *SSEBroker) Subscribe(w http.ResponseWriter, r *http.Request) {
 }
 
 // Broadcast marshals v to JSON and sends it to all connected clients.
-func (b *SSEBroker) Broadcast(v interface{}) error {
+func (b *SSEBroker) Broadcast(v any) error {
 	msg, err := json.Marshal(v)
 	if err != nil {
 		return err

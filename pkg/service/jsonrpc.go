@@ -26,14 +26,14 @@ type RPCRequest struct {
 type RPCResponse struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      json.RawMessage `json:"id,omitempty"`
-	Result  interface{}     `json:"result,omitempty"`
+	Result  any             `json:"result,omitempty"`
 	Error   *rpcError       `json:"error,omitempty"`
 }
 
 type rpcError struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
 }
 
 // RPCError is an exported alias so that external packages (e.g. examples) can
@@ -55,7 +55,7 @@ var (
 
 // HandlerFunc processes the raw params field and returns a result or a *rpcError.
 // Returning (nil, nil) is treated as null‑result (i.e. {"result":null}).
-type HandlerFunc func(ctx context.Context, params json.RawMessage) (interface{}, *rpcError)
+type HandlerFunc func(ctx context.Context, params json.RawMessage) (any, *rpcError)
 
 // RPCServer multiplexes JSON‑RPC method names to handler functions.
 type RPCServer struct {

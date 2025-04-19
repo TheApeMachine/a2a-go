@@ -19,7 +19,7 @@ const DefaultModel = openai.ChatModelGPT4o
 
 // ToolExecutor abstracts the execution of an MCP tool.  Users should implement
 // this to wire in their own business logic / data sources.
-type ToolExecutor func(ctx context.Context, tool mcp.Tool, args map[string]interface{}) (string, error)
+type ToolExecutor func(ctx context.Context, tool mcp.Tool, args map[string]any) (string, error)
 
 // ChatClient wraps an *openai.Client and provides convenience methods for
 // executing non‑streaming or streaming chat completions while automatically
@@ -75,7 +75,7 @@ func (c *ChatClient) Complete(ctx context.Context, messages []types.Message, too
 			}
 
 			// Parse args.
-			var args map[string]interface{}
+			var args map[string]any
 			if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
 				return "", fmt.Errorf("malformed tool args: %w", err)
 			}
@@ -165,7 +165,7 @@ func convertMessages(mm []types.Message) []openai.ChatCompletionMessageParamUnio
 func convertTools(tools []mcp.Tool) []openai.ChatCompletionToolParam {
 	out := make([]openai.ChatCompletionToolParam, 0, len(tools))
 	for _, t := range tools {
-		var paramSchema map[string]interface{}
+		var paramSchema map[string]any
 		if t.RawInputSchema != nil {
 			_ = json.Unmarshal(t.RawInputSchema, &paramSchema)
 		} else {

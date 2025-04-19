@@ -14,12 +14,12 @@ import (
 
 func main() {
 	// Build a structured FORM part using the new helper.
-	schema := map[string]interface{}{
+	schema := map[string]any{
 		"type": "object",
-		"properties": map[string]interface{}{
-			"date":    map[string]interface{}{"type": "string", "format": "date"},
-			"amount":  map[string]interface{}{"type": "number"},
-			"purpose": map[string]interface{}{"type": "string"},
+		"properties": map[string]any{
+			"date":    map[string]any{"type": "string", "format": "date"},
+			"amount":  map[string]any{"type": "number"},
+			"purpose": map[string]any{"type": "string"},
 		},
 		"required": []string{"date", "amount", "purpose"},
 	}

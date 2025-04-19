@@ -52,7 +52,7 @@ type Agent struct {
 
 	// Optional hooks – callers may set these after construction.
 	AuthHeader func(*http.Request) // injects auth / tracing headers
-	Logger     func(string, ...interface{})
+	Logger     func(string, ...any)
 }
 
 // NewAgentFromCard constructs an Agent from an already‑fetched AgentCard.  No
@@ -176,6 +176,100 @@ func (a *Agent) Cancel(ctx context.Context, id string) error {
 		ID string `json:"id"`
 	}{ID: id}
 	return a.call(ctx, "tasks/cancel", params, nil)
+}
+
+// Resubscribe reconnects to an existing task's event stream.
+func (a *Agent) Resubscribe(
+	ctx context.Context,
+	id string,
+	historyLength int,
+	onStatus func(types.TaskStatusUpdateEvent),
+	onArtifact func(types.TaskArtifactUpdateEvent),
+) error {
+	params := struct {
+		ID            string `json:"id"`
+		HistoryLength int    `json:"historyLength,omitempty"`
+	}{ID: id, HistoryLength: historyLength}
+
+	// First perform the JSON‑RPC call but keep the HTTP response body for SSE
+	payload := service.RPCRequest{
+		JSONRPC: "2.0",
+		ID:      marshalID(1),
+		Method:  "tasks/resubscribe",
+	}
+	b, _ := json.Marshal(params)
+	payload.Params = b
+
+	body, _ := json.Marshal(payload)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.rpcEndpoint, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if a.AuthHeader != nil {
+		a.AuthHeader(req)
+	}
+
+	httpClient := a.httpClient()
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("resubscribe request failed: HTTP %d", resp.StatusCode)
+	}
+
+	// Read the first response event which contains the task status
+	var firstResponse struct {
+		JSONRPC string          `json:"jsonrpc"`
+		ID      json.RawMessage `json:"id"`
+		Result  json.RawMessage `json:"result"`
+		Error   *service.RPCError `json:"error,omitempty"`
+	}
+	
+	if err := json.NewDecoder(resp.Body).Decode(&firstResponse); err != nil {
+		return err
+	}
+	
+	if firstResponse.Error != nil {
+		return fmt.Errorf("resubscribe failed: %s", firstResponse.Error.Message)
+	}
+
+	// Process the SSE stream for subsequent events
+	reader := bufio.NewReader(resp.Body)
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, ":") { // comments / keep‑alive
+			continue
+		}
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+
+		// Determine event type by probing presence of fields
+		if strings.Contains(data, "\"artifact\"") {
+			var evt types.TaskArtifactUpdateEvent
+			if err := json.Unmarshal([]byte(data), &evt); err == nil && onArtifact != nil {
+				onArtifact(evt)
+			}
+		} else {
+			var evt types.TaskStatusUpdateEvent
+			if err := json.Unmarshal([]byte(data), &evt); err == nil && onStatus != nil {
+				onStatus(evt)
+				if evt.Final {
+					return nil
+				}
+			}
+		}
+	}
 }
 
 // SetPush sets or updates the push‑notification config.
