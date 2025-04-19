@@ -174,7 +174,94 @@ curl -s -X POST localhost:8080/rpc \
 
 ---
 
-## 6  Next Steps
+## 6  Unified Memory System
+
+A2A-Go provides a unified long-term memory system that combines vector and graph stores for AI agents.
+
+In-memory implementation (no external databases needed):
+```bash
+go run ./examples/memory-store
+```
+
+External databases implementation (uses Qdrant and Neo4j):
+```bash
+# Start the databases with Docker Compose
+docker-compose -f docker-compose.memory.yml up -d
+
+# Set your OpenAI API key
+export OPENAI_API_KEY=sk-...
+
+# Run the example
+go run ./examples/memory-external
+```
+
+For more details on the memory system architecture, see [Memory Architecture](memory-architecture.md).
+
+### Setting Up Qdrant and Neo4j
+
+For production use, you'll want to use real vector and graph databases instead of the in-memory implementations.
+
+#### Qdrant Setup (Vector Store)
+
+1. Run Qdrant using Docker:
+   ```bash
+   docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
+   ```
+
+2. Connect to Qdrant in your code:
+   ```go
+   embeddingService := memory.NewOpenAIEmbeddingService(os.Getenv("OPENAI_API_KEY"))
+   vectorStore := memory.NewQdrantVectorStore("http://localhost:6333", "memories", embeddingService)
+   ```
+
+#### Neo4j Setup (Graph Store)
+
+1. Run Neo4j using Docker:
+   ```bash
+   docker run -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/password neo4j:latest
+   ```
+
+2. Connect to Neo4j in your code:
+   ```go
+   graphStore := memory.NewNeo4jGraphStore("http://localhost:7474", "neo4j", "password")
+   ```
+
+### Using the Unified Memory System in Your Code
+
+```go
+// Initialize the memory system components
+embeddingService := memory.NewOpenAIEmbeddingService(openaiClient) // or memory.NewMockEmbeddingService() for testing
+vectorStore := memory.NewQdrantVectorStore("http://localhost:6333", "memories", embeddingService)
+graphStore := memory.NewNeo4jGraphStore("http://localhost:7474", "neo4j", "password")
+unifiedStore := memory.NewUnifiedStore(embeddingService, vectorStore, graphStore)
+
+// Store a memory
+id, err := unifiedStore.StoreMemory(ctx, "Important information to remember", 
+    map[string]any{"topic": "knowledge", "importance": 8}, "knowledge")
+
+// Create relationships between memories
+err = unifiedStore.CreateRelation(ctx, sourceID, targetID, "related_to", 
+    map[string]any{"strength": 0.7})
+
+// Retrieve a memory by ID
+memory, err := unifiedStore.GetMemory(ctx, id)
+
+// Search for semantically similar memories
+searchParams := memory.SearchParams{
+    Query:       "vector databases for AI memory",
+    Limit:       10,
+    Types:       []string{"knowledge", "concept"},
+    Filters:     []memory.Filter{{Field: "topic", Operator: "eq", Value: "memory"}},
+}
+results, err := unifiedStore.SearchSimilar(ctx, searchParams.Query, searchParams)
+
+// Find related memories through graph relationships
+related, err := unifiedStore.FindRelated(ctx, id, []string{"related_to"}, 10)
+```
+
+---
+
+## 7  Next Steps
 
 * Expose a file via the Resource manager (`resources/list`).
 * Export `OPENAI_API_KEY` to enable real LLM completions.
