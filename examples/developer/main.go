@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 
+	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/huh/spinner"
 	"github.com/google/uuid"
 	"github.com/spf13/viper"
 	"github.com/theapemachine/a2a-go/pkg/ai"
@@ -39,7 +41,7 @@ func main() {
 		types.AgentCard{
 			Name:    "developer",
 			Version: "0.0.1",
-			Description: utils.Ptr[string](
+			Description: utils.Ptr(
 				"A tool that can execute commands in a Docker container.",
 			),
 			URL: "http://localhost:3210/agents/docker-exec",
@@ -65,27 +67,39 @@ func main() {
 
 	client := jsonrpc.NewRPCClient("http://localhost:3210/rpc")
 
-	task := types.Task{
-		ID:        uuid.NewString(),
-		SessionID: uuid.NewString(),
-		History: []types.Message{
-			{
-				Role: "user",
-				Parts: []types.Part{
-					{
-						Type: types.PartTypeText,
-						Text: "Write an HTTP Echo server in Go. Make sure the code works, and you have tested it.",
+	var (
+		prompt string
+		task   types.Task
+	)
+
+	huh.NewInput().
+		Title("Prompt?").
+		Value(&prompt).
+		Run()
+
+	err = spinner.New().Action(func() {
+		task = types.Task{
+			ID:        uuid.NewString(),
+			SessionID: uuid.NewString(),
+			History: []types.Message{
+				{
+					Role: "user",
+					Parts: []types.Part{
+						{
+							Type: types.PartTypeText,
+							Text: prompt,
+						},
 					},
 				},
 			},
-		},
-	}
+		}
 
-	if err = client.Call(
-		context.Background(), "tasks/send", task, &task,
-	); err != nil {
-		log.Fatalf("failed to send task: %v", err)
-	}
+		if err = client.Call(
+			context.Background(), "tasks/send", task, &task,
+		); err != nil {
+			log.Fatalf("failed to send task: %v", err)
+		}
+	}).Run()
 
 	log.Printf("task sent: %v", task)
 }

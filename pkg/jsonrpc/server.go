@@ -107,7 +107,7 @@ func (srv *RPCServer) handle(ctx context.Context, req *RPCRequest) RPCResponse {
 	switch req.Method {
 	case "tasks/send":
 		log.Printf("tasks/send: %v", string(req.Params))
-		var params types.TaskSendParams
+		var params types.Task
 
 		if err := json.Unmarshal(req.Params, &params); err != nil {
 			return newErrorResponse(req.ID, errors.ErrInvalidParams)
@@ -163,7 +163,7 @@ func (srv *RPCServer) handle(ctx context.Context, req *RPCRequest) RPCResponse {
 		}
 
 	case "tasks/stream":
-		var params types.TaskSendParams
+		var params types.Task
 
 		if err := json.Unmarshal(req.Params, &params); err != nil {
 			return newErrorResponse(req.ID, errors.ErrInvalidParams)

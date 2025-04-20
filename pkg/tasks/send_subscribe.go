@@ -15,7 +15,7 @@ func SendSubscribe(
 	tm types.TaskManager,
 	broker *sse.SSEBroker,
 ) (any, *errors.RpcError) {
-	var params types.TaskSendParams
+	var params types.Task
 	if err := json.Unmarshal(raw, &params); err != nil {
 		return nil, errors.ErrInvalidParams
 	}

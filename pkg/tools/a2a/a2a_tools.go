@@ -118,11 +118,13 @@ func handleA2ASendTask(
 		})
 	}
 
-	params := types.TaskSendParams{
+	params := types.Task{
 		ID: fmt.Sprintf("task-%d", time.Now().UnixNano()),
-		Message: types.Message{
-			Role:  "user",
-			Parts: parts,
+		History: []types.Message{
+			{
+				Role:  "user",
+				Parts: parts,
+			},
 		},
 	}
 

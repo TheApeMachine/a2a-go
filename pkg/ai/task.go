@@ -9,13 +9,10 @@ import (
 
 func (agent *Agent) SendTask(
 	ctx context.Context,
-	params types.TaskSendParams,
+	params types.Task,
 ) (types.Task, *errors.RpcError) {
-	task := agent.paramsToTask(params)
-
-	agent.chatClient.Complete(ctx, task.History, agent.card.Tools())
-
-	return task, nil
+	agent.chatClient.Complete(ctx, &params, agent.card.Tools())
+	return params, nil
 }
 
 func (agent *Agent) GetTask(
@@ -35,7 +32,7 @@ func (agent *Agent) CancelTask(
 
 func (agent *Agent) StreamTask(
 	ctx context.Context,
-	params types.TaskSendParams,
+	params types.Task,
 ) (<-chan any, *errors.RpcError) {
 	return nil, nil
 }
@@ -60,22 +57,4 @@ func (agent *Agent) GetPushNotification(
 	id string,
 ) (types.TaskPushNotificationConfig, *errors.RpcError) {
 	return types.TaskPushNotificationConfig{}, nil
-}
-
-func (agent *Agent) paramsToTask(params types.TaskSendParams) types.Task {
-	return types.Task{
-		ID:        params.ID,
-		SessionID: params.SessionID,
-		Status: types.TaskStatus{
-			State: types.TaskStateWorking,
-		},
-		History: []types.Message{
-			{
-				Role:  "user",
-				Parts: params.Message.Parts,
-			},
-		},
-		Artifacts: []types.Artifact{},
-		Metadata:  map[string]any{},
-	}
 }

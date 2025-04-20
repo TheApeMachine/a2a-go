@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/charmbracelet/log"
 	"github.com/openai/openai-go"
 	"github.com/theapemachine/a2a-go/pkg/types"
+	"github.com/theapemachine/a2a-go/pkg/utils"
 )
 
 // DefaultModel is used when the caller does not specify a model explicitly.
@@ -43,59 +45,49 @@ func NewChatClient(executor ToolExecutor) *ChatClient {
 // provided ToolExecutor and the conversation auto‑continues until the final
 // assistant reply no longer contains tool calls.
 func (c *ChatClient) Complete(
-	ctx context.Context, messages []types.Message, tools map[string]*types.MCPClient,
-) (string, error) {
-	oaMsgs := convertMessages(messages)
-	oaTools := convertTools(tools)
+	ctx context.Context, task *types.Task, tools map[string]*types.MCPClient,
+) (err error) {
+	var (
+		resp   *openai.ChatCompletion
+		params = openai.ChatCompletionNewParams{
+			Model:    openai.ChatModel(c.modelName()),
+			Messages: convertMessages(task.History),
+			Tools:    convertTools(tools),
+		}
+	)
 
-	params := openai.ChatCompletionNewParams{
-		Model:    openai.ChatModel(c.modelName()),
-		Messages: oaMsgs,
-		Tools:    oaTools,
-	}
+	task.ToState(types.TaskStateWorking, "thinking...")
+	artifacts := make([]types.Artifact, 0)
 
-	for {
-		resp, err := c.OpenAI.Chat.Completions.New(ctx, params)
-
-		if err != nil {
-			return "", err
+	for task.Status.State == types.TaskStateWorking {
+		if resp, err = c.OpenAI.Chat.Completions.New(ctx, params); err != nil {
+			task.ToState(types.TaskStateFailed, err.Error())
+			return err
 		}
 
 		msg := resp.Choices[0].Message
+		artifacts = append(artifacts, types.Artifact{
+			Parts:    []types.Part{{Type: types.PartTypeText, Text: msg.Content}},
+			Index:    0,
+			Append:   utils.Ptr(true),
+			Metadata: map[string]any{"role": "assistant", "name": c.Model},
+		})
 
-		// No tool call? return text.
-		if len(msg.ToolCalls) == 0 {
-			return msg.Content, nil
-		}
-
-		// Otherwise execute each tool call serially and continue the loop.
 		for _, tc := range msg.ToolCalls {
-			tool, ok := tools[tc.Function.Name]
-
-			if !ok {
-				return "", fmt.Errorf("unknown tool called: %s", tc.Function.Name)
+			if err := c.handleToolCall(ctx, &params, task, tools, msg, tc); err != nil {
+				return err
 			}
-
-			var args map[string]any
-
-			if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
-				return "", fmt.Errorf("malformed tool args: %w", err)
-			}
-
-			if c.Execute == nil {
-				return "", errors.New("tool executor not configured")
-			}
-
-			result, err := c.Execute(ctx, tool, args)
-
-			if err != nil {
-				return "", err
-			}
-
-			oaToolMsg := openai.ToolMessage(result, tc.ID)
-			params.Messages = append(params.Messages, msg.ToParam(), oaToolMsg)
 		}
+
+		for _, a := range artifacts {
+			a.LastChunk = utils.Ptr(true)
+			task.AddArtifact(a)
+		}
+
+		task.ToState(types.TaskStateCompleted, "completed")
 	}
+
+	return nil
 }
 
 // Stream executes a streaming chat completion.  Tokens are delivered through
@@ -142,6 +134,47 @@ func (c *ChatClient) Stream(
 	}
 
 	return finalContent, nil
+}
+
+func (client *ChatClient) handleToolCall(
+	ctx context.Context,
+	params *openai.ChatCompletionNewParams,
+	task *types.Task,
+	tools map[string]*types.MCPClient,
+	msg openai.ChatCompletionMessage,
+	tc openai.ChatCompletionMessageToolCall,
+) error {
+	log.Info("tool call", "tool", tc.Function.Name)
+	tool, ok := tools[tc.Function.Name]
+
+	if !ok {
+		task.ToState(types.TaskStateFailed, fmt.Sprintf("unknown tool called: %s", tc.Function.Name))
+		return fmt.Errorf("unknown tool called: %s", tc.Function.Name)
+	}
+
+	var args map[string]any
+
+	if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
+		task.ToState(types.TaskStateFailed, fmt.Sprintf("malformed tool args: %s", err))
+		return fmt.Errorf("malformed tool args: %w", err)
+	}
+
+	if client.Execute == nil {
+		task.ToState(types.TaskStateFailed, "tool executor not configured")
+		return errors.New("tool executor not configured")
+	}
+
+	result, err := client.Execute(ctx, tool, args)
+
+	if err != nil {
+		task.ToState(types.TaskStateFailed, err.Error())
+		return err
+	}
+
+	oaToolMsg := openai.ToolMessage(result, tc.ID)
+	params.Messages = append(params.Messages, msg.ToParam(), oaToolMsg)
+
+	return nil
 }
 
 func (c *ChatClient) modelName() string {

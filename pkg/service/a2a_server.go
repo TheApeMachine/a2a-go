@@ -54,7 +54,10 @@ routing frameworks (std net/http, gin, chi, …).
 */
 func NewA2AServer(agent types.IdentifiableTaskManager) *A2AServer {
 	srv := &A2AServer{
-		app:             fiber.New(),
+		app: fiber.New(fiber.Config{
+			AppName:      "A2A Server",
+			ServerHeader: "A2A-Server",
+		}),
 		agentRegistry:   catalog.NewRegistry(),
 		Agent:           agent,
 		PromptManager:   prompts.NewDefaultManager(),
@@ -128,7 +131,9 @@ func (srv *A2AServer) Start() error {
 		return nil
 	})
 
-	return srv.app.Listen(":3210")
+	return srv.app.Listen(":3210", fiber.ListenConfig{
+		DisableStartupMessage: true,
+	})
 }
 
 // responseWriter adapts fiber.Ctx to http.ResponseWriter

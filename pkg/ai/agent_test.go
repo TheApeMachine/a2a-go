@@ -63,21 +63,23 @@ func TestAgentSend(t *testing.T) {
 	})
 
 	// Test Send
-	params := types.TaskSendParams{
+	params := types.Task{
 		ID: "test-task-id",
-		Message: types.Message{
-			Role: "user",
-			Parts: []types.Part{
-				{
-					Type: types.PartTypeText,
-					Text: "test message",
+		History: []types.Message{
+			{
+				Role: "user",
+				Parts: []types.Part{
+					{
+						Type: types.PartTypeText,
+						Text: "test message",
+					},
 				},
 			},
 		},
 	}
-	task, err := agent.Send(context.Background(), params)
+	task, err := agent.SendTask(context.Background(), params)
 
-	assert.NoError(t, err)
+	assert.NoError(t, errors.New(err.Message))
 	assert.Equal(t, "test-task-id", task.ID)
 	assert.Equal(t, types.TaskStateWorking, task.Status.State)
 }
@@ -195,14 +197,16 @@ func TestAgentSendStream(t *testing.T) {
 
 	err := agent.SendStream(
 		context.Background(),
-		types.TaskSendParams{
+		types.Task{
 			ID: "test-task-id",
-			Message: types.Message{
-				Role: "user",
-				Parts: []types.Part{
-					{
-						Type: types.PartTypeText,
-						Text: "test message",
+			History: []types.Message{
+				{
+					Role: "user",
+					Parts: []types.Part{
+						{
+							Type: types.PartTypeText,
+							Text: "test message",
+						},
 					},
 				},
 			},

@@ -39,9 +39,25 @@ func (o *OpenAISamplingManager) CreateMessage(ctx context.Context, content strin
 	}
 
 	start := time.Now()
-	reply, err := o.chat.Complete(ctx, msgs, nil)
+
+	// Create a task to hold the response
+	task := &types.Task{History: msgs}
+
+	err := o.chat.Complete(ctx, task, nil)
 	if err != nil {
 		return nil, err
+	}
+
+	// Extract the response from the task's artifacts
+	var reply string
+	if len(task.Artifacts) > 0 {
+		for _, artifact := range task.Artifacts {
+			for _, part := range artifact.Parts {
+				if part.Type == types.PartTypeText {
+					reply += part.Text
+				}
+			}
+		}
 	}
 
 	msg := sampling.Message{

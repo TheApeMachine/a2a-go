@@ -62,24 +62,6 @@ func NewAgentFromCard(card types.AgentCard) *Agent {
 }
 
 /*
-Send issues a tasks/send request and returns the resulting Task.
-*/
-func (agent *Agent) Send(
-	ctx context.Context,
-	params types.TaskSendParams,
-) (*types.Task, error) {
-	var task types.Task
-
-	if err := agent.call(
-		ctx, "tasks/send", params, &task,
-	); err != nil {
-		return nil, err
-	}
-
-	return &task, nil
-}
-
-/*
 SendStream sends tasks/sendSubscribe and dispatches streaming events to the
 provided callbacks.  If the agent reports final=true the function returns
 nil.  Note: this implementation performs a best‑effort SSE parse; for
@@ -88,7 +70,7 @@ parser with reconnection logic.
 */
 func (agent *Agent) SendStream(
 	ctx context.Context,
-	params types.TaskSendParams,
+	params types.Task,
 	onStatus func(types.TaskStatusUpdateEvent),
 	onArtifact func(types.TaskArtifactUpdateEvent),
 ) error {

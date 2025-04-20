@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/theapemachine/a2a-go/pkg/errors"
+	"github.com/theapemachine/a2a-go/pkg/utils"
 )
 
 type IdentifiableTaskManager interface {
@@ -17,25 +18,13 @@ type IdentifiableTaskManager interface {
 // validation and return a *errors.RpcError value if the request is invalid or cannot
 // be fulfilled.
 type TaskManager interface {
-	SendTask(ctx context.Context, params TaskSendParams) (Task, *errors.RpcError)
-	GetTask(ctx context.Context, id string, historyLength int) (Task, *errors.RpcError)
-	CancelTask(ctx context.Context, id string) (Task, *errors.RpcError)
-
-	// StreamTask starts processing the task and returns a read‑only channel from
-	// which the caller will receive TaskStatusUpdateEvent or TaskArtifactUpdate
-	// objects until the task finishes (the final flag will be set on the last
-	// status event).  The channel should be closed by the TaskManager when the
-	// stream is finished.
-	StreamTask(ctx context.Context, params TaskSendParams) (<-chan any, *errors.RpcError)
-
-	// ResubscribeTask reconnects to an existing task's event stream
-	ResubscribeTask(ctx context.Context, id string, historyLength int) (<-chan any, *errors.RpcError)
-
-	// SetPushNotification configures a push notification URL for a task
-	SetPushNotification(ctx context.Context, config TaskPushNotificationConfig) (TaskPushNotificationConfig, *errors.RpcError)
-
-	// GetPushNotification retrieves the current push notification configuration for a task
-	GetPushNotification(ctx context.Context, id string) (TaskPushNotificationConfig, *errors.RpcError)
+	SendTask(context.Context, Task) (Task, *errors.RpcError)
+	GetTask(context.Context, string, int) (Task, *errors.RpcError)
+	CancelTask(context.Context, string) (Task, *errors.RpcError)
+	StreamTask(context.Context, Task) (<-chan any, *errors.RpcError)
+	ResubscribeTask(context.Context, string, int) (<-chan any, *errors.RpcError)
+	SetPushNotification(context.Context, TaskPushNotificationConfig) (TaskPushNotificationConfig, *errors.RpcError)
+	GetPushNotification(context.Context, string) (TaskPushNotificationConfig, *errors.RpcError)
 }
 
 /*
@@ -120,6 +109,28 @@ type Task struct {
 	Metadata  map[string]any `json:"metadata,omitempty"`
 }
 
+func (t *Task) AddMessage(role, name, text string) {
+	t.History = append(t.History, Message{
+		Role:  role,
+		Parts: []Part{{Type: PartTypeText, Text: text}},
+		Metadata: map[string]any{
+			"name": name,
+		},
+	})
+}
+
+func (t *Task) AddArtifact(artifact Artifact) {
+	t.Artifacts = append(t.Artifacts, artifact)
+}
+
+func (t *Task) ToState(state TaskState, message string) {
+	t.Status = TaskStatus{
+		State:     state,
+		Message:   &Message{Role: "agent", Parts: []Part{{Type: PartTypeText, Text: message}}},
+		Timestamp: utils.Ptr(time.Now()),
+	}
+}
+
 type TaskStatus struct {
 	State     TaskState  `json:"state"`
 	Message   *Message   `json:"message,omitempty"`
@@ -145,17 +156,6 @@ type TaskArtifactUpdateEvent struct {
 	ID       string         `json:"id"`
 	Artifact Artifact       `json:"artifact"`
 	Metadata map[string]any `json:"metadata,omitempty"`
-}
-
-// TaskSendParams represents the payload the client sends in the `tasks/send`
-// JSON‑RPC call.
-type TaskSendParams struct {
-	ID               string                  `json:"id"`
-	SessionID        string                  `json:"sessionId,omitempty"`
-	Message          Message                 `json:"message"`
-	HistoryLength    int                     `json:"historyLength,omitempty"`
-	PushNotification *PushNotificationConfig `json:"pushNotification,omitempty"`
-	Metadata         map[string]any          `json:"metadata,omitempty"`
 }
 
 type TaskGetParams struct {
