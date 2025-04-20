@@ -13,7 +13,7 @@ func TestNewInMemorySessionStore(t *testing.T) {
 	assert.Empty(t, store.data)
 }
 
-func TestSessionStore_Get(t *testing.T) {
+func TestSessionStoreGet(t *testing.T) {
 	store := NewInMemorySessionStore()
 
 	// Test getting non-existent session
@@ -34,7 +34,7 @@ func TestSessionStore_Get(t *testing.T) {
 	assert.Equal(t, testData, data)
 }
 
-func TestSessionStore_Set(t *testing.T) {
+func TestSessionStoreSet(t *testing.T) {
 	store := NewInMemorySessionStore()
 
 	// Test setting new session
@@ -61,7 +61,7 @@ func TestSessionStore_Set(t *testing.T) {
 	assert.Equal(t, newData, data)
 }
 
-func TestSessionStore_Delete(t *testing.T) {
+func TestSessionStoreDelete(t *testing.T) {
 	store := NewInMemorySessionStore()
 
 	// Set some data

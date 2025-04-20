@@ -12,12 +12,19 @@ import (
 	"github.com/tj/assert"
 )
 
+const (
+	eventsPath  = "/events"
+	testURL     = "http://test.local"
+	contentType = "Content-Type"
+	jsonContent = "application/json"
+)
+
 func TestNewA2AServerWithDefaults(t *testing.T) {
-	server := NewA2AServerWithDefaults("http://test.local")
+	server := NewA2AServerWithDefaults(testURL)
 
 	// Verify server configuration
 	assert.NotNil(t, server)
-	assert.Equal(t, "http://test.local", server.Card.URL)
+	assert.Equal(t, testURL, server.Card.URL)
 	assert.True(t, server.Card.Capabilities.Streaming)
 	assert.True(t, server.Card.Capabilities.PushNotifications)
 	assert.True(t, server.Card.Capabilities.StateTransitionHistory)
@@ -28,11 +35,11 @@ func TestNewA2AServerWithDefaults(t *testing.T) {
 	// Verify handlers are registered
 	handlers := server.Handlers()
 	assert.NotNil(t, handlers["/rpc"])
-	assert.NotNil(t, handlers["/events"])
+	assert.NotNil(t, handlers[eventsPath])
 }
 
-func TestA2AServer_RPCEndpoint(t *testing.T) {
-	server := NewA2AServerWithDefaults("http://test.local")
+func TestA2AServerRPCEndpoint(t *testing.T) {
+	server := NewA2AServerWithDefaults(testURL)
 	rpcHandler := server.Handlers()["/rpc"]
 
 	tests := []struct {
@@ -81,7 +88,7 @@ func TestA2AServer_RPCEndpoint(t *testing.T) {
 			body, _ := json.Marshal(reqBody)
 
 			req := httptest.NewRequest(http.MethodPost, "/rpc", strings.NewReader(string(body)))
-			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set(contentType, jsonContent)
 			rec := httptest.NewRecorder()
 
 			rpcHandler.ServeHTTP(rec, req)
@@ -102,12 +109,12 @@ func TestA2AServer_RPCEndpoint(t *testing.T) {
 	}
 }
 
-func TestA2AServer_SSEEndpoint(t *testing.T) {
-	server := NewA2AServerWithDefaults("http://test.local")
-	sseHandler := server.Handlers()["/events"]
+func TestA2AServerSSEEndpoint(t *testing.T) {
+	server := NewA2AServerWithDefaults(testURL)
+	sseHandler := server.Handlers()[eventsPath]
 
 	// Create a test request
-	req := httptest.NewRequest(http.MethodGet, "/events", nil)
+	req := httptest.NewRequest(http.MethodGet, eventsPath, nil)
 	rec := httptest.NewRecorder()
 
 	go func() {
@@ -122,8 +129,8 @@ func TestA2AServer_SSEEndpoint(t *testing.T) {
 	assert.Equal(t, "keep-alive", rec.Header().Get("Connection"))
 }
 
-func TestA2AServer_TaskStreaming(t *testing.T) {
-	server := NewA2AServerWithDefaults("http://test.local")
+func TestA2AServerTaskStreaming(t *testing.T) {
+	server := NewA2AServerWithDefaults(testURL)
 	rpcHandler := server.Handlers()["/rpc"]
 
 	// Create streaming task request
@@ -142,7 +149,7 @@ func TestA2AServer_TaskStreaming(t *testing.T) {
 	body, _ := json.Marshal(reqBody)
 
 	req := httptest.NewRequest(http.MethodPost, "/rpc", strings.NewReader(string(body)))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(contentType, jsonContent)
 	rec := httptest.NewRecorder()
 
 	rpcHandler.ServeHTTP(rec, req)
@@ -165,8 +172,8 @@ func TestA2AServer_TaskStreaming(t *testing.T) {
 	assert.False(t, event.Final)
 }
 
-func TestA2AServer_Prompts(t *testing.T) {
-	server := NewA2AServerWithDefaults("http://test.local")
+func TestA2AServerPrompts(t *testing.T) {
+	server := NewA2AServerWithDefaults(testURL)
 	rpcHandler := server.Handlers()["/rpc"]
 
 	// Test prompts/list
@@ -178,7 +185,7 @@ func TestA2AServer_Prompts(t *testing.T) {
 	body, _ := json.Marshal(listReq)
 
 	req := httptest.NewRequest(http.MethodPost, "/rpc", strings.NewReader(string(body)))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(contentType, jsonContent)
 	rec := httptest.NewRecorder()
 
 	rpcHandler.ServeHTTP(rec, req)
