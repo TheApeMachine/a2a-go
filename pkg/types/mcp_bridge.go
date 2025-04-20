@@ -1,4 +1,4 @@
-package tools
+package types
 
 // This file contains helper utilities for inter‑operability between the A2A
 // protocol and Model Context Protocol (MCP).  The guiding principle (see
@@ -7,10 +7,9 @@ package tools
 // through a familiar interface.
 
 import (
-	"fmt"
+	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/a2a-go/pkg/types"
 )
 
 // ToMCPResource converts an AgentCard into an MCP Resource descriptor.  The
@@ -25,11 +24,11 @@ import (
 //   - Resource.MIMEType   → "application/json" (agent‑card mime‑type)
 //   - Optionally audience annotations can indicate the card is meant for
 //     assistants as well as users.
-func ToMCPResource(card types.AgentCard) mcp.Resource {
+func ToMCPResource(card AgentCard) mcp.Resource {
 	res := mcp.NewResource(
 		card.URL,
 		card.Name,
-		mcp.WithResourceDescription(deref(card.Description)),
+		mcp.WithResourceDescription(*card.Description),
 		mcp.WithMIMEType("application/json"),
 	)
 
@@ -54,25 +53,29 @@ func ToMCPResource(card types.AgentCard) mcp.Resource {
 // represents the textual instruction to forward to the agent.  The tool call
 // simply proxies to tasks/send under the hood (the caller must implement the
 // proxy logic – this helper only defines the schema).
-func ToMCPTool(skill types.AgentSkill) mcp.Tool {
-	desc := deref(skill.Description)
-	if desc == "" {
-		desc = fmt.Sprintf("Invoke skill %s of the target A2A agent", skill.Name)
-	}
-
-	tool := mcp.NewTool(skill.ID,
-		mcp.WithDescription(desc),
-		mcp.WithString("task",
-			mcp.Description("Free‑form user instruction to perform with this skill"),
-			mcp.Required(),
-		),
-	)
-	return tool
+func ToMCPTool(skill AgentSkill) *MCPClient {
+	mcpClient := &MCPClient{}
+	return mcpClient
 }
 
-func deref(ptr *string) string {
-	if ptr == nil {
-		return ""
-	}
-	return *ptr
+type MCPClient struct {
+}
+
+func (c *MCPClient) Start(ctx context.Context) error {
+	return nil
+}
+
+func (c *MCPClient) SendRequest(ctx context.Context, request mcp.JSONRPCRequest) (*mcp.JSONRPCResponse, error) {
+	return nil, nil
+}
+
+func (c *MCPClient) SendNotification(ctx context.Context, notification mcp.JSONRPCNotification) error {
+	return nil
+}
+
+func (c *MCPClient) SetNotificationHandler(handler func(notification mcp.JSONRPCNotification)) {
+}
+
+func (c *MCPClient) Close() error {
+	return nil
 }

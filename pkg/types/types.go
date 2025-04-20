@@ -1,25 +1,47 @@
 package types
 
-// This package provides a Go representation of the core A2A (Agent‑to‑Agent)
-// protocol objects as described in TECHSpec.txt and JSONSpec.json.  The
-// primary goal is to give Go developers a pleasant, idiomatic API surface for
-// serialising and deserialising A2A JSON messages while remaining very close
-// to the original specification.
-//
-// Every struct purposefully keeps the exact field names (camel‑cased) used in
-// the JSON so that the default `encoding/json` marshaller can be used without
-// any bespoke glue code.  Optional properties are represented with pointer
-// types or `omitempty` struct tags to keep the wire format compact.
-
 import (
+	"context"
 	"fmt"
 	"time"
+
+	"github.com/theapemachine/a2a-go/pkg/errors"
 )
 
-// ===== Agent Card =================================================================================
+type IdentifiableTaskManager interface {
+	TaskManager
+	Card() AgentCard
+}
 
-// AgentCard conveys the top‑level capabilities and metadata exposed by a remote
-// agent that supports the A2A protocol.
+// TaskManager is plugged into an A2AServer.  Each method should do its own
+// validation and return a *errors.RpcError value if the request is invalid or cannot
+// be fulfilled.
+type TaskManager interface {
+	SendTask(ctx context.Context, params TaskSendParams) (Task, *errors.RpcError)
+	GetTask(ctx context.Context, id string, historyLength int) (Task, *errors.RpcError)
+	CancelTask(ctx context.Context, id string) (Task, *errors.RpcError)
+
+	// StreamTask starts processing the task and returns a read‑only channel from
+	// which the caller will receive TaskStatusUpdateEvent or TaskArtifactUpdate
+	// objects until the task finishes (the final flag will be set on the last
+	// status event).  The channel should be closed by the TaskManager when the
+	// stream is finished.
+	StreamTask(ctx context.Context, params TaskSendParams) (<-chan any, *errors.RpcError)
+
+	// ResubscribeTask reconnects to an existing task's event stream
+	ResubscribeTask(ctx context.Context, id string, historyLength int) (<-chan any, *errors.RpcError)
+
+	// SetPushNotification configures a push notification URL for a task
+	SetPushNotification(ctx context.Context, config TaskPushNotificationConfig) (TaskPushNotificationConfig, *errors.RpcError)
+
+	// GetPushNotification retrieves the current push notification configuration for a task
+	GetPushNotification(ctx context.Context, id string) (TaskPushNotificationConfig, *errors.RpcError)
+}
+
+/*
+AgentCard conveys the top‑level capabilities and metadata exposed by a remote
+agent that supports the A2A protocol.
+*/
 type AgentCard struct {
 	Name               string               `json:"name"`
 	Description        *string              `json:"description,omitempty"`
@@ -32,6 +54,19 @@ type AgentCard struct {
 	DefaultInputModes  []string             `json:"defaultInputModes,omitempty"`
 	DefaultOutputModes []string             `json:"defaultOutputModes,omitempty"`
 	Skills             []AgentSkill         `json:"skills"`
+}
+
+func (card *AgentCard) Tools() map[string]*MCPClient {
+	skillTools := map[string]*MCPClient{}
+
+	for _, skill := range card.Skills {
+		switch skill.ID {
+		case "development":
+			skillTools[skill.ID] = ToMCPTool(skill)
+		}
+	}
+
+	return skillTools
 }
 
 type AgentProvider struct {
@@ -60,10 +95,10 @@ type AgentSkill struct {
 	OutputModes []string `json:"outputModes,omitempty"`
 }
 
-// ===== Task & Related Types ======================================================================
-
-// TaskState enumerates the mutually‑exclusive states a task may be in.  The
-// zero value is "unknown" per the spec.
+/*
+TaskState enumerates the mutually‑exclusive states a task may be in.  The
+zero value is "unknown" per the spec.
+*/
 type TaskState string
 
 const (
@@ -89,11 +124,12 @@ type TaskStatus struct {
 	State     TaskState  `json:"state"`
 	Message   *Message   `json:"message,omitempty"`
 	Timestamp *time.Time `json:"timestamp,omitempty"`
-	// metadata is intentionally excluded – the spec doesn’t mention it.
 }
 
-// TaskStatusUpdateEvent is sent when the agent wishes to inform the client of
-// a status transition.
+/*
+TaskStatusUpdateEvent is sent when the agent wishes to inform the client of
+a status transition.
+*/
 type TaskStatusUpdateEvent struct {
 	ID       string         `json:"id"`
 	Status   TaskStatus     `json:"status"`
@@ -101,8 +137,10 @@ type TaskStatusUpdateEvent struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-// TaskArtifactUpdateEvent is emitted when a new or updated artefact is
-// available for a task.
+/*
+TaskArtifactUpdateEvent is emitted when a new or updated artefact is
+available for a task.
+*/
 type TaskArtifactUpdateEvent struct {
 	ID       string         `json:"id"`
 	Artifact Artifact       `json:"artifact"`
@@ -120,7 +158,21 @@ type TaskSendParams struct {
 	Metadata         map[string]any          `json:"metadata,omitempty"`
 }
 
-// ===== Artifacts, Messages, Parts ================================================================
+type TaskGetParams struct {
+	ID string `json:"id"`
+}
+
+type TaskCancelParams struct {
+	ID string `json:"id"`
+}
+
+type TaskResubscribeParams struct {
+	ID string `json:"id"`
+}
+
+type TaskPushNotificationParams struct {
+	ID string `json:"id"`
+}
 
 type Artifact struct {
 	Name        *string        `json:"name,omitempty"`
@@ -139,13 +191,15 @@ type Message struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-// Part is a discriminated union over Text, File and Data parts.  We keep it
-// simple by embedding all optional fields in a single struct – this avoids
-// heavy custom JSON marshalling logic while remaining spec‑compliant.
-//
-// NOTE: As per A2A spec, exactly ONE of Text, File, or Data should be populated
-// according to the Type field. This is not enforced at the struct level, but
-// applications should ensure this constraint is respected when creating Parts.
+/*
+Part is a discriminated union over Text, File and Data parts.  We keep it
+simple by embedding all optional fields in a single struct – this avoids
+heavy custom JSON marshalling logic while remaining spec‑compliant.
+
+NOTE: As per A2A spec, exactly ONE of Text, File, or Data should be populated
+according to the Type field. This is not enforced at the struct level, but
+applications should ensure this constraint is respected when creating Parts.
+*/
 type Part struct {
 	Type PartType `json:"type"`
 
@@ -162,7 +216,7 @@ type Part struct {
 func (p *Part) Validate() error {
 	// Count how many fields are populated
 	fieldsPopulated := 0
-	
+
 	if p.Text != "" {
 		fieldsPopulated++
 	}
@@ -223,23 +277,23 @@ type FilePart struct {
 	URI   string `json:"uri,omitempty"`
 }
 
-// Validate checks if the FilePart is valid according to the A2A spec.
-// Returns an error if it violates the "oneof" constraint (bytes XOR uri).
+/*
+Validate checks if the FilePart is valid according to the A2A spec.
+Returns an error if it violates the "oneof" constraint (bytes XOR uri).
+*/
 func (fp *FilePart) Validate() error {
 	// Either bytes or uri must be set, but not both
 	if fp.Bytes != "" && fp.URI != "" {
 		return fmt.Errorf("file part cannot have both bytes and uri fields set")
 	}
-	
+
 	// At least one of bytes or uri must be set
 	if fp.Bytes == "" && fp.URI == "" {
 		return fmt.Errorf("file part must have either bytes or uri field set")
 	}
-	
+
 	return nil
 }
-
-// ===== Push Notifications =======================================================================
 
 type PushNotificationConfig struct {
 	URL            string              `json:"url"`

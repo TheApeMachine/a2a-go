@@ -1,177 +1,158 @@
 package docker
 
-// Lightweight wrapper around the local `docker` CLI.  It requires Docker to
-// be installed and the current user to have permission to run containers.
-
 import (
-    "bytes"
-    "context"
-    "errors"
-    "fmt"
-    "os/exec"
-    "strings"
-    "time"
+	"archive/tar"
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path"
+
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/client"
 )
 
-// ExecOptions provides configuration options for Docker container execution.
-type ExecOptions struct {
-    // Volumes maps host paths to container paths for mounting
-    Volumes map[string]string
-    // Env specifies environment variables to set in the container
-    Env map[string]string
-    // Network specifies the network configuration (default: "none")
-    Network string
-    // Memory specifies the memory limit (default: "256m")
-    Memory string
-    // MaxRetries specifies how many times to retry on temporary failures
-    MaxRetries int
-    // RetryDelay specifies the delay between retries
-    RetryDelay time.Duration
-}
-
-// Result captures the command output from inside the container.
 type Result struct {
-    Stdout   string `json:"stdout"`
-    Stderr   string `json:"stderr"`
-    ExitCode int    `json:"exit_code"`
-    Duration int64  `json:"duration_ms"`
-    Retries  int    `json:"retries"`
-    Error    string `json:"error,omitempty"`
+	Stdout string `json:"stdout"`
+	Stderr string `json:"stderr"`
 }
 
-// DefaultExecOptions returns the default options for Docker execution.
-func DefaultExecOptions() *ExecOptions {
-    return &ExecOptions{
-        Volumes:    make(map[string]string),
-        Env:        make(map[string]string),
-        Network:    "none",
-        Memory:     "256m",
-        MaxRetries: 3,
-        RetryDelay: 2 * time.Second,
-    }
+type Environment struct {
+	client      *client.Client
+	containerID string
 }
 
-// Exec runs `docker run --rm <image> <cmd...>` with configurable options.
-// If Docker is not available we return an error.
-func Exec(ctx context.Context, image string, cmd []string, timeout time.Duration, opts *ExecOptions) (*Result, error) {
-    if len(cmd) == 0 {
-        return nil, errors.New("cmd must not be empty")
-    }
-    if image == "" {
-        image = "busybox:latest"
-    }
-    if timeout <= 0 || timeout > 2*time.Minute {
-        timeout = 60 * time.Second
-    }
-    if opts == nil {
-        opts = DefaultExecOptions()
-    }
-
-    var retriesCount int
-    var lastErr error
-    var isTemporaryError bool
-
-    for attempt := 0; attempt <= opts.MaxRetries; attempt++ {
-        if attempt > 0 {
-            // This is a retry attempt
-            retriesCount++
-            time.Sleep(opts.RetryDelay)
-        }
-
-        // Build docker command with all options
-        args := []string{"run", "--rm"}
-
-        // Add network configuration
-        if opts.Network != "" {
-            args = append(args, "--network", opts.Network)
-        }
-
-        // Add memory limit
-        if opts.Memory != "" {
-            args = append(args, "--memory", opts.Memory)
-        }
-
-        // Add volume mounts
-        for hostPath, containerPath := range opts.Volumes {
-            volumeArg := fmt.Sprintf("%s:%s", hostPath, containerPath)
-            args = append(args, "-v", volumeArg)
-        }
-
-        // Add environment variables
-        for key, value := range opts.Env {
-            envArg := fmt.Sprintf("%s=%s", key, value)
-            args = append(args, "-e", envArg)
-        }
-
-        // Add image and command
-        args = append(args, image)
-        args = append(args, cmd...)
-
-        // Create a new context with timeout for this attempt
-        execCtx, cancel := context.WithTimeout(ctx, timeout)
-        defer cancel()
-
-        c := exec.CommandContext(execCtx, "docker", args...)
-        var stdout, stderr bytes.Buffer
-        c.Stdout = &stdout
-        c.Stderr = &stderr
-
-        start := time.Now()
-        err := c.Run()
-        duration := time.Since(start).Milliseconds()
-
-        exitCode := 0
-        if err != nil {
-            if ee, ok := err.(*exec.ExitError); ok {
-                exitCode = ee.ExitCode()
-                // Consider certain exit codes as temporary errors that can be retried
-                isTemporaryError = exitCode == 125 || // Docker daemon error
-                    exitCode == 126 || // Command cannot be invoked
-                    exitCode == 137    // Container killed (likely OOM)
-            } else if errors.Is(err, context.DeadlineExceeded) {
-                lastErr = errors.New("docker exec timed out")
-                isTemporaryError = true
-                continue
-            } else {
-                // Unknown error (e.g. Docker not installed)
-                lastErr = err
-                isTemporaryError = false
-                break
-            }
-        } else {
-            // Execution succeeded
-            return &Result{
-                Stdout:   strings.TrimSpace(stdout.String()),
-                Stderr:   strings.TrimSpace(stderr.String()),
-                ExitCode: exitCode,
-                Duration: duration,
-                Retries:  retriesCount,
-            }, nil
-        }
-
-        // If this is not a temporary error or we've exhausted our retries, return the result
-        if !isTemporaryError || attempt >= opts.MaxRetries {
-            errMsg := ""
-            if lastErr != nil {
-                errMsg = lastErr.Error()
-            }
-            
-            return &Result{
-                Stdout:   strings.TrimSpace(stdout.String()),
-                Stderr:   strings.TrimSpace(stderr.String()),
-                ExitCode: exitCode,
-                Duration: duration,
-                Retries:  retriesCount,
-                Error:    errMsg,
-            }, nil
-        }
-    }
-
-    // If we reached here, we've exhausted all retries
-    return nil, fmt.Errorf("docker exec failed after %d retries: %w", opts.MaxRetries, lastErr)
+func NewEnvironment() (*Environment, error) {
+	client, err := client.NewClientWithOpts(
+		client.FromEnv, client.WithAPIVersionNegotiation(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &Environment{
+		client: client,
+	}, nil
 }
 
-// ExecWithDefaults runs docker exec with default options for backward compatibility.
-func ExecWithDefaults(ctx context.Context, image string, cmd []string, timeout time.Duration) (*Result, error) {
-    return Exec(ctx, image, cmd, timeout, DefaultExecOptions())
+func (env *Environment) Exec(
+	ctx context.Context, cmd string,
+) (Result, error) {
+	exec, err := env.client.ContainerExecCreate(
+		ctx,
+		env.containerID,
+		container.ExecOptions{
+			Cmd:          []string{"/bin/sh", "-c", cmd},
+			AttachStdout: true,
+			AttachStderr: true,
+		},
+	)
+
+	if err != nil {
+		return Result{}, err
+	}
+
+	env.client.ContainerExecAttach(
+		ctx, exec.ID, container.ExecStartOptions{},
+	)
+
+	return Result{}, nil
+}
+
+/*
+BuildImage builds a Docker image from a Dockerfile.
+
+It creates a tar archive containing the Dockerfile, builds the image,
+and processes the build output. Returns an error if the build fails.
+*/
+func (env *Environment) BuildImage(
+	ctx context.Context, imageName string,
+) error {
+	home, err := os.UserHomeDir()
+
+	if err != nil {
+		return err
+	}
+
+	dockerfile, err := os.ReadFile(path.Join(home, "Dockerfile"))
+
+	if err != nil {
+		return err
+	}
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+
+	header := &tar.Header{
+		Name: "Dockerfile",
+		Mode: 0600,
+		Size: int64(len(dockerfile)),
+	}
+
+	if err := tw.WriteHeader(header); err != nil {
+		return err
+	}
+
+	if _, err := tw.Write(dockerfile); err != nil {
+		return err
+	}
+
+	if err := tw.Close(); err != nil {
+		return err
+	}
+
+	opts := types.ImageBuildOptions{
+		Dockerfile: "Dockerfile",
+		Tags:       []string{imageName},
+		Remove:     true,
+		BuildArgs: map[string]*string{
+			"TARGETARCH": nil,
+		},
+	}
+
+	resp, err := env.client.ImageBuild(ctx, &buf, opts)
+
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	return env.print(resp.Body)
+}
+
+/*
+print processes Docker build output.
+
+It decodes the JSON stream from the build process and prints progress
+information. Returns an error if output processing fails or if the
+build reports an error.
+*/
+func (env *Environment) print(reader io.Reader) error {
+	decoder := json.NewDecoder(reader)
+	for {
+		var message struct {
+			Stream string `json:"stream"`
+			Error  string `json:"error"`
+		}
+
+		if err := decoder.Decode(&message); err != nil {
+			if err == io.EOF {
+				return nil
+			}
+
+			return err
+		}
+
+		if message.Error != "" {
+			return errors.New(message.Error)
+		}
+
+		if message.Stream != "" {
+			fmt.Print(message.Stream)
+		}
+	}
 }

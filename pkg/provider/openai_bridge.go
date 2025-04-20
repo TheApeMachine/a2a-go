@@ -1,8 +1,5 @@
 package provider
 
-// Integration helpers for the official OpenAI Go SDK
-// https://github.com/openai/openai-go
-
 import (
 	"context"
 	"encoding/json"
@@ -15,11 +12,13 @@ import (
 )
 
 // DefaultModel is used when the caller does not specify a model explicitly.
-const DefaultModel = openai.ChatModelGPT4o
+const DefaultModel = openai.ChatModelGPT4oMini
 
 // ToolExecutor abstracts the execution of an MCP tool.  Users should implement
 // this to wire in their own business logic / data sources.
-type ToolExecutor func(ctx context.Context, tool mcp.Tool, args map[string]any) (string, error)
+type ToolExecutor func(
+	ctx context.Context, tool mcp.Tool, args map[string]any,
+) (string, error)
 
 // ChatClient wraps an *openai.Client and provides convenience methods for
 // executing non‑streaming or streaming chat completions while automatically
@@ -44,7 +43,9 @@ func NewChatClient(executor ToolExecutor) *ChatClient {
 // message history.  If the assistant returns a tool call it is executed via the
 // provided ToolExecutor and the conversation auto‑continues until the final
 // assistant reply no longer contains tool calls.
-func (c *ChatClient) Complete(ctx context.Context, messages []types.Message, tools []mcp.Tool) (string, error) {
+func (c *ChatClient) Complete(
+	ctx context.Context, messages []types.Message, tools []mcp.Tool,
+) (string, error) {
 	oaMsgs := convertMessages(messages)
 	oaTools := convertTools(tools)
 
@@ -56,6 +57,7 @@ func (c *ChatClient) Complete(ctx context.Context, messages []types.Message, too
 
 	for {
 		resp, err := c.OpenAI.Chat.Completions.New(ctx, params)
+
 		if err != nil {
 			return "", err
 		}
@@ -70,12 +72,13 @@ func (c *ChatClient) Complete(ctx context.Context, messages []types.Message, too
 		// Otherwise execute each tool call serially and continue the loop.
 		for _, tc := range msg.ToolCalls {
 			tool, ok := findTool(tools, tc.Function.Name)
+
 			if !ok {
 				return "", fmt.Errorf("unknown tool called: %s", tc.Function.Name)
 			}
 
-			// Parse args.
 			var args map[string]any
+
 			if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
 				return "", fmt.Errorf("malformed tool args: %w", err)
 			}
@@ -85,11 +88,11 @@ func (c *ChatClient) Complete(ctx context.Context, messages []types.Message, too
 			}
 
 			result, err := c.Execute(ctx, tool, args)
+
 			if err != nil {
 				return "", err
 			}
 
-			// Append the tool message so the model sees the result.
 			oaToolMsg := openai.ToolMessage(result, tc.ID)
 			params.Messages = append(params.Messages, msg.ToParam(), oaToolMsg)
 		}
@@ -101,7 +104,12 @@ func (c *ChatClient) Complete(ctx context.Context, messages []types.Message, too
 // returned.  Tool‑calling is handled after the first assistant message is fully
 // streamed (OpenAI currently does not stream function call arguments token by
 // token but sends them in a single delta once finished).
-func (c *ChatClient) Stream(ctx context.Context, messages []types.Message, tools []mcp.Tool, onDelta func(string)) (string, error) {
+func (c *ChatClient) Stream(
+	ctx context.Context,
+	messages []types.Message,
+	tools []mcp.Tool,
+	onDelta func(string),
+) (string, error) {
 	oaMsgs := convertMessages(messages)
 	oaTools := convertTools(tools)
 
@@ -114,38 +122,45 @@ func (c *ChatClient) Stream(ctx context.Context, messages []types.Message, tools
 	var finalContent string
 
 	stream := c.OpenAI.Chat.Completions.NewStreaming(ctx, params)
+
 	for stream.Next() {
 		evt := stream.Current()
+
 		if len(evt.Choices) == 0 {
 			continue
 		}
+
 		delta := evt.Choices[0].Delta
+
 		if delta.Content != "" {
 			onDelta(delta.Content)
 			finalContent += delta.Content
 		}
 	}
+
 	if err := stream.Err(); err != nil {
 		return "", err
 	}
 
-	return finalContent, nil // tool calls currently unsupported in streaming mode
+	return finalContent, nil
 }
 
 func (c *ChatClient) modelName() string {
 	if c.Model == "" {
 		return DefaultModel
 	}
+
 	return c.Model
 }
 
-// ============= internal helpers ===============================================================
-
-func convertMessages(mm []types.Message) []openai.ChatCompletionMessageParamUnion {
+func convertMessages(
+	mm []types.Message,
+) []openai.ChatCompletionMessageParamUnion {
 	out := make([]openai.ChatCompletionMessageParamUnion, 0, len(mm))
+
 	for _, m := range mm {
-		// extract first text part (fallback to empty string)
 		text := ""
+
 		for _, p := range m.Parts {
 			if p.Type == types.PartTypeText {
 				text = p.Text
@@ -159,17 +174,21 @@ func convertMessages(mm []types.Message) []openai.ChatCompletionMessageParamUnio
 			out = append(out, openai.UserMessage(text))
 		}
 	}
+
 	return out
 }
 
-func convertTools(tools []mcp.Tool) []openai.ChatCompletionToolParam {
+func convertTools(
+	tools []mcp.Tool,
+) []openai.ChatCompletionToolParam {
 	out := make([]openai.ChatCompletionToolParam, 0, len(tools))
+
 	for _, t := range tools {
 		var paramSchema map[string]any
+
 		if t.RawInputSchema != nil {
 			_ = json.Unmarshal(t.RawInputSchema, &paramSchema)
 		} else {
-			// marshal then unmarshal struct → map
 			b, _ := json.Marshal(t.InputSchema)
 			_ = json.Unmarshal(b, &paramSchema)
 		}
@@ -182,6 +201,7 @@ func convertTools(tools []mcp.Tool) []openai.ChatCompletionToolParam {
 			},
 		})
 	}
+
 	return out
 }
 
@@ -191,5 +211,6 @@ func findTool(tools []mcp.Tool, name string) (mcp.Tool, bool) {
 			return t, true
 		}
 	}
+
 	return mcp.Tool{}, false
 }

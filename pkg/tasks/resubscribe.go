@@ -6,12 +6,13 @@ import (
 
 	errors "github.com/theapemachine/a2a-go/pkg/errors"
 	"github.com/theapemachine/a2a-go/pkg/service/sse"
+	"github.com/theapemachine/a2a-go/pkg/types"
 )
 
 func ResubscribeTask(
 	ctx context.Context,
 	raw json.RawMessage,
-	tm TaskManager,
+	tm types.TaskManager,
 	broker *sse.SSEBroker,
 ) (any, *errors.RpcError) {
 	var p struct {

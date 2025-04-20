@@ -24,10 +24,6 @@ func registerGitHubTools(srv *server.MCPServer) {
 	srv.AddTool(buildGHCommentPRTool(), handleGHCommentPR)
 }
 
-// ---------------------------------------------------------------------
-// Tool specs
-// ---------------------------------------------------------------------
-
 func buildGHListPRsTool() mcp.Tool {
 	return mcp.NewTool(
 		"github_list_prs",

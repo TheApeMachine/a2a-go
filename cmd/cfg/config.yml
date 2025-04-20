@@ -1,23 +1,48 @@
-# Server configuration
 server:
   host: "localhost"
   port: 3210
   defaultRPCPath: "/rpc"
   defaultSSEPath: "/events"
+  defaultCatalogPath: "/.well-known/catalog.json"
 
-# Agent configuration
 agent:
-  name: "Echo Agent"
-  version: "0.1.0"
-  capabilities:
-    streaming: true
-    pushNotifications: true
-    stateTransitionHistory: true
+  manager:
+    name: "Manager Agent"
+    version: "0.1.0"
+    capabilities:
+      streaming: true
+      pushNotifications: true
+      stateTransitionHistory: true
+    messages:
+      - role: system
+        parts:
+          - You are an advanced AI agent, performing in the role of manager.
+          - You are able to discover, and interact with, other agents.
 
-# OpenAI configuration
-openai:
-  apiKey: "" # Set via environment variable or command line flag
-
-# MCP configuration
 mcp:
   embedded_agent: false
+
+skills:
+  development:
+    id: "development"
+    name: "development"
+    description: "Development of code."
+    examples:
+      - "Write a program to analyze the provided data."
+      - "Develop a web-service which interfaces with MongoDB."
+    input_modes:
+      - "text/plain"
+    output_modes:
+      - "text/plain"
+  penetration-testing:
+    id: "penetration-testing"
+    name: "penetration-testing"
+    description: "Evaluate the security of code and services."
+    examples:
+      - "Test the security of the provided server."
+      - "Identify the vulnerabilities in the provided code."
+      - "Test the code for SQL injection vulnerabilities."
+    input_modes:
+      - "text/plain"
+    output_modes:
+      - "text/plain"

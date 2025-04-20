@@ -139,11 +139,11 @@ func (s *InMemoryTaskStore) GetHistory(id string, limit int) []types.Message {
 	if !ok || len(e.History) == 0 {
 		return nil
 	}
-	
+
 	if limit <= 0 || limit >= len(e.History) {
 		return e.History
 	}
-	
+
 	// Return the most recent messages up to the limit
 	return e.History[len(e.History)-limit:]
 }

@@ -1,9 +1,5 @@
 package provider
 
-// This file adapts ChatClient to the generic sampling.Manager interface so it
-// can be plugged into the MCP "sampling/*" JSON‑RPC namespace with real OpenAI
-// completions instead of the dummy echo manager.
-
 import (
 	"context"
 	"os"
@@ -64,17 +60,22 @@ func (o *OpenAISamplingManager) CreateMessage(ctx context.Context, content strin
 }
 
 // StreamMessage streams tokens through channel.
-func (o *OpenAISamplingManager) StreamMessage(ctx context.Context, content string, opts sampling.SamplingOptions) (<-chan *sampling.SamplingResult, error) {
+func (o *OpenAISamplingManager) StreamMessage(
+	ctx context.Context, content string, opts sampling.SamplingOptions,
+) (<-chan *sampling.SamplingResult, error) {
 	ch := make(chan *sampling.SamplingResult)
 
 	msgs := convertSamplingContext(opts.Context)
+
 	if content != "" {
 		msgs = append([]types.Message{{Role: "user", Parts: []types.Part{{Type: types.PartTypeText, Text: content}}}}, msgs...)
 	}
 
 	go func() {
 		defer close(ch)
+
 		start := time.Now()
+
 		_, err := o.chat.Stream(ctx, msgs, nil, func(delta string) {
 			sr := &sampling.SamplingResult{
 				Message:  sampling.Message{ID: uuid.NewString(), Role: "assistant", Content: delta, CreatedAt: time.Now()},
@@ -82,6 +83,7 @@ func (o *OpenAISamplingManager) StreamMessage(ctx context.Context, content strin
 			}
 			ch <- sr
 		})
+
 		if err != nil {
 			// send an error sentinel? we just close for now.
 		}
@@ -90,12 +92,16 @@ func (o *OpenAISamplingManager) StreamMessage(ctx context.Context, content strin
 	return ch, nil
 }
 
-func (o *OpenAISamplingManager) GetModelPreferences(ctx context.Context) (*sampling.ModelPreferences, error) {
+func (o *OpenAISamplingManager) GetModelPreferences(
+	ctx context.Context,
+) (*sampling.ModelPreferences, error) {
 	// Not supported – return nil so caller falls back to defaults.
 	return nil, nil
 }
 
-func (o *OpenAISamplingManager) UpdateModelPreferences(ctx context.Context, prefs sampling.ModelPreferences) error {
+func (o *OpenAISamplingManager) UpdateModelPreferences(
+	ctx context.Context, prefs sampling.ModelPreferences,
+) error {
 	// no‑op for now.
 	return nil
 }
@@ -105,9 +111,12 @@ func convertSamplingContext(c *sampling.Context) []types.Message {
 	if c == nil {
 		return nil
 	}
+
 	out := make([]types.Message, len(c.Messages))
+
 	for i, m := range c.Messages {
 		out[i] = types.Message{Role: m.Role, Parts: []types.Part{{Type: types.PartTypeText, Text: m.Content}}}
 	}
+
 	return out
 }

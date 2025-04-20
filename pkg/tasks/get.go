@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 
 	errors "github.com/theapemachine/a2a-go/pkg/errors"
+	"github.com/theapemachine/a2a-go/pkg/types"
 )
 
 func Get(
 	ctx context.Context,
 	raw json.RawMessage,
-	tm TaskManager,
+	tm types.TaskManager,
 ) (any, *errors.RpcError) {
 	var qp struct {
 		ID            string `json:"id"`

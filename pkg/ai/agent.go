@@ -1,11 +1,5 @@
 package ai
 
-// Agent is a high‑level façade that hides the raw JSON‑RPC wiring and exposes
-// convenience methods that map directly to the A2A Task operations described
-// in TECHSpec.txt.  It intentionally stays thin – all heavy lifting is still
-// performed by RPCClient, SSEBroker, etc. – but provides a single entry point
-// developers can reason about when interacting with a remote agent.
-
 import (
 	"bufio"
 	"bytes"
@@ -15,15 +9,16 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/spf13/viper"
-	"github.com/theapemachine/a2a-go/pkg/errors"
-	"github.com/theapemachine/a2a-go/pkg/service"
-	"github.com/theapemachine/a2a-go/pkg/tools"
+	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
+	"github.com/theapemachine/a2a-go/pkg/provider"
 	"github.com/theapemachine/a2a-go/pkg/types"
+	"github.com/theapemachine/a2a-go/pkg/utils"
 )
 
-// Helper function to marshal an ID for JSON-RPC
+/*
+Helper function to marshal an ID for JSON-RPC
+*/
 func marshalID(v int) json.RawMessage {
 	b, _ := json.Marshal(v)
 	return b
@@ -37,16 +32,13 @@ behaviour is easily customisable by swapping the underlying *http.Client* or
 adding an AuthHeader callback.
 */
 type Agent struct {
-	Card types.AgentCard
-
-	rpcEndpoint string // fully‑qualified URL for JSON‑RPC POSTs
-	sseEndpoint string // optional URL for SSE stream (if Card.Capabilities.Streaming)
-
-	rpc service.RPCClient
-
-	// Optional hooks – callers may set these after construction.
-	AuthHeader func(*http.Request) // injects auth / tracing headers
-	Logger     func(string, ...any)
+	chatClient  *provider.ChatClient
+	card        types.AgentCard
+	rpcEndpoint string
+	sseEndpoint string
+	rpc         jsonrpc.RPCClient
+	AuthHeader  func(*http.Request)
+	Logger      func(string, ...any)
 }
 
 /*
@@ -59,23 +51,31 @@ func NewAgentFromCard(card types.AgentCard) *Agent {
 	base := strings.TrimRight(card.URL, "/")
 
 	agent := &Agent{
-		Card:        card,
+		card:        card,
 		rpcEndpoint: base + v.GetString("server.defaultRPCPath"),
 		sseEndpoint: base + v.GetString("server.defaultSSEPath"),
 	}
 
 	agent.rpc.Endpoint = agent.rpcEndpoint
+	agent.chatClient = provider.NewChatClient(agent.execute)
 	return agent
 }
 
 /*
 Send issues a tasks/send request and returns the resulting Task.
 */
-func (agent *Agent) Send(ctx context.Context, params types.TaskSendParams) (*types.Task, error) {
+func (agent *Agent) Send(
+	ctx context.Context,
+	params types.TaskSendParams,
+) (*types.Task, error) {
 	var task types.Task
-	if err := agent.call(ctx, "tasks/send", params, &task); err != nil {
+
+	if err := agent.call(
+		ctx, "tasks/send", params, &task,
+	); err != nil {
 		return nil, err
 	}
+
 	return &task, nil
 }
 
@@ -94,13 +94,18 @@ func (agent *Agent) SendStream(
 ) error {
 	// First perform the JSON‑RPC call but keep the HTTP response body for SSE.
 	// Encode request manually because RPCClient currently hides http.Response.
-	payload := service.RPCRequest{
+	payload := jsonrpc.RPCRequest{
 		JSONRPC: "2.0",
 		ID:      marshalID(1),
 		Method:  "tasks/sendSubscribe",
 	}
 
-	b, _ := json.Marshal(params)
+	b, err := json.Marshal(params)
+
+	if err != nil {
+		return err
+	}
+
 	payload.Params = b
 
 	body, err := json.Marshal(payload)
@@ -109,7 +114,12 @@ func (agent *Agent) SendStream(
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, agent.rpcEndpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		agent.rpcEndpoint,
+		bytes.NewReader(body),
+	)
 
 	if err != nil {
 		return err
@@ -137,28 +147,23 @@ func (agent *Agent) SendStream(
 	reader := bufio.NewReader(resp.Body)
 
 	for {
-		line, err := reader.ReadString('\n')
+		data, err := utils.ReadSSE(reader)
 
 		if err != nil {
 			return err
 		}
 
-		line = strings.TrimSpace(line)
-
-		if line == "" || strings.HasPrefix(line, ":") { // comments / keep‑alive
+		if data == "" {
 			continue
 		}
-
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-
-		data := strings.TrimPrefix(line, "data: ")
 
 		// Determine event type by probing presence of fields.
 		if strings.Contains(data, "\"artifact\"") {
 			var evt types.TaskArtifactUpdateEvent
-			if err := json.Unmarshal([]byte(data), &evt); err == nil && onArtifact != nil {
+
+			if err := json.Unmarshal(
+				[]byte(data), &evt,
+			); err == nil && onArtifact != nil {
 				onArtifact(evt)
 			}
 
@@ -167,7 +172,9 @@ func (agent *Agent) SendStream(
 
 		var evt types.TaskStatusUpdateEvent
 
-		if err := json.Unmarshal([]byte(data), &evt); err == nil && onStatus != nil {
+		if err := json.Unmarshal(
+			[]byte(data), &evt,
+		); err == nil && onStatus != nil {
 			onStatus(evt)
 
 			if evt.Final {
@@ -175,150 +182,6 @@ func (agent *Agent) SendStream(
 			}
 		}
 	}
-}
-
-/*
-Get retrieves a task.
-*/
-func (a *Agent) Get(ctx context.Context, id string, historyLength int) (*types.Task, error) {
-	params := struct {
-		ID            string `json:"id"`
-		HistoryLength int    `json:"historyLength,omitempty"`
-	}{ID: id, HistoryLength: historyLength}
-
-	var task types.Task
-	if err := a.call(ctx, "tasks/get", params, &task); err != nil {
-		return nil, err
-	}
-	return &task, nil
-}
-
-/*
-Cancel cancels a running task.
-*/
-func (a *Agent) Cancel(ctx context.Context, id string) error {
-	params := struct {
-		ID string `json:"id"`
-	}{ID: id}
-	return a.call(ctx, "tasks/cancel", params, nil)
-}
-
-/*
-Resubscribe reconnects to an existing task's event stream.
-*/
-func (a *Agent) Resubscribe(
-	ctx context.Context,
-	id string,
-	historyLength int,
-	onStatus func(types.TaskStatusUpdateEvent),
-	onArtifact func(types.TaskArtifactUpdateEvent),
-) error {
-	params := struct {
-		ID            string `json:"id"`
-		HistoryLength int    `json:"historyLength,omitempty"`
-	}{ID: id, HistoryLength: historyLength}
-
-	// First perform the JSON‑RPC call but keep the HTTP response body for SSE
-	payload := service.RPCRequest{
-		JSONRPC: "2.0",
-		ID:      marshalID(1),
-		Method:  "tasks/resubscribe",
-	}
-	b, _ := json.Marshal(params)
-	payload.Params = b
-
-	body, _ := json.Marshal(payload)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.rpcEndpoint, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if a.AuthHeader != nil {
-		a.AuthHeader(req)
-	}
-
-	httpClient := a.httpClient()
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("resubscribe request failed: HTTP %d", resp.StatusCode)
-	}
-
-	// Read the first response event which contains the task status
-	var firstResponse struct {
-		JSONRPC string           `json:"jsonrpc"`
-		ID      json.RawMessage  `json:"id"`
-		Result  json.RawMessage  `json:"result"`
-		Error   *errors.RpcError `json:"error,omitempty"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&firstResponse); err != nil {
-		return err
-	}
-
-	if firstResponse.Error != nil {
-		return fmt.Errorf("resubscribe failed: %s", firstResponse.Error.Message)
-	}
-
-	// Process the SSE stream for subsequent events
-	reader := bufio.NewReader(resp.Body)
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			return err
-		}
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, ":") { // comments / keep‑alive
-			continue
-		}
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-		data := strings.TrimPrefix(line, "data: ")
-
-		// Determine event type by probing presence of fields
-		if strings.Contains(data, "\"artifact\"") {
-			var evt types.TaskArtifactUpdateEvent
-			if err := json.Unmarshal([]byte(data), &evt); err == nil && onArtifact != nil {
-				onArtifact(evt)
-			}
-		} else {
-			var evt types.TaskStatusUpdateEvent
-			if err := json.Unmarshal([]byte(data), &evt); err == nil && onStatus != nil {
-				onStatus(evt)
-				if evt.Final {
-					return nil
-				}
-			}
-		}
-	}
-}
-
-/*
-SetPush sets or updates the push‑notification config.
-*/
-func (a *Agent) SetPush(ctx context.Context, cfg types.TaskPushNotificationConfig) error {
-	return a.call(ctx, "tasks/pushNotification/set", cfg, nil)
-}
-
-/*
-GetPush fetches the push‑notification config for a task.
-*/
-func (a *Agent) GetPush(ctx context.Context, id string) (*types.TaskPushNotificationConfig, error) {
-	params := struct {
-		ID string `json:"id"`
-	}{ID: id}
-
-	var out types.TaskPushNotificationConfig
-	if err := a.call(ctx, "tasks/pushNotification/get", params, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
 }
 
 /*
@@ -333,6 +196,7 @@ func (a *Agent) call(ctx context.Context, method string, params any, result any)
 	// Wrap http.Client.Transport to inject headers.
 	if a.AuthHeader != nil {
 		base := a.rpc.HTTP.Transport
+
 		if base == nil {
 			base = http.DefaultTransport
 		}
@@ -350,61 +214,6 @@ func (a *Agent) httpClient() *http.Client {
 	if a.rpc.HTTP != nil {
 		return a.rpc.HTTP
 	}
+
 	return http.DefaultClient
-}
-
-/*
-authInjectingRoundTripper adds custom headers right before the request is
-sent.  Needed because RPCClient hides the underlying *http.Request*.
-*/
-type authInjectingRoundTripper struct {
-	base       http.RoundTripper
-	injectFunc func(*http.Request)
-}
-
-func (rt authInjectingRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	if rt.injectFunc != nil {
-		rt.injectFunc(r)
-	}
-	return rt.base.RoundTrip(r)
-}
-
-/*
-ToMCPResource proxies to the existing helper on AgentCard.
-*/
-func (a *Agent) ToMCPResource() mcp.Resource {
-	return tools.ToMCPResource(a.Card)
-}
-
-/*
-ToMCPTools converts all skills to MCP tools.
-*/
-func (a *Agent) ToMCPTools() []mcp.Tool {
-	out := make([]mcp.Tool, 0, len(a.Card.Skills))
-	for _, s := range a.Card.Skills {
-		out = append(out, tools.ToMCPTool(s))
-	}
-	return out
-}
-
-/*
-FetchAgentCard retrieves the published agent card from the well‑known path
-and constructs an Agent instance.  Convenience helper for quick experiments.
-*/
-func FetchAgentCard(ctx context.Context, baseURL string) (*Agent, error) {
-	wellKnown := strings.TrimRight(baseURL, "/") + "/.well-known/agent.json"
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, wellKnown, nil)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch agent card: HTTP %d", resp.StatusCode)
-	}
-	var card types.AgentCard
-	if err := json.NewDecoder(resp.Body).Decode(&card); err != nil {
-		return nil, err
-	}
-	return NewAgentFromCard(card), nil
 }

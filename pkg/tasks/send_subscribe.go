@@ -12,7 +12,7 @@ import (
 func SendSubscribe(
 	ctx context.Context,
 	raw json.RawMessage,
-	tm TaskManager,
+	tm types.TaskManager,
 	broker *sse.SSEBroker,
 ) (any, *errors.RpcError) {
 	var params types.TaskSendParams

@@ -3,12 +3,13 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/spf13/viper"
-	"github.com/theapemachine/a2a-go/pkg/service"
+	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
 	"github.com/theapemachine/a2a-go/pkg/types"
 	"github.com/tj/assert"
 )
@@ -29,7 +30,7 @@ func TestNewAgentFromCard(t *testing.T) {
 
 	agent := NewAgentFromCard(card)
 
-	assert.Equal(t, card, agent.Card)
+	assert.Equal(t, card, agent.card)
 	assert.Equal(t, "http://example.com/rpc", agent.rpcEndpoint)
 	assert.Equal(t, "http://example.com/events", agent.sseEndpoint)
 }
@@ -42,7 +43,7 @@ func TestAgentSend(t *testing.T) {
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
 		// Send response in JSON-RPC format
-		response := service.RPCResponse{
+		response := jsonrpc.RPCResponse{
 			JSONRPC: "2.0",
 			ID:      json.RawMessage(`1`),
 			Result: types.Task{
@@ -86,7 +87,7 @@ func TestAgentGet(t *testing.T) {
 		assert.Equal(t, "/rpc", r.URL.Path)
 
 		// Send response in JSON-RPC format
-		response := service.RPCResponse{
+		response := jsonrpc.RPCResponse{
 			JSONRPC: "2.0",
 			ID:      json.RawMessage(`1`),
 			Result: types.Task{
@@ -104,9 +105,9 @@ func TestAgentGet(t *testing.T) {
 		URL: server.URL,
 	})
 
-	task, err := agent.Get(context.Background(), "test-task-id", 10)
+	task, err := agent.GetTask(context.Background(), "test-task-id", 10)
 
-	assert.NoError(t, err)
+	assert.NoError(t, errors.New(err.Message))
 	assert.Equal(t, "test-task-id", task.ID)
 	assert.Equal(t, types.TaskStateCompleted, task.Status.State)
 }
@@ -116,7 +117,7 @@ func TestAgentCancel(t *testing.T) {
 		assert.Equal(t, "/rpc", r.URL.Path)
 
 		// Send response in JSON-RPC format
-		response := service.RPCResponse{
+		response := jsonrpc.RPCResponse{
 			JSONRPC: "2.0",
 			ID:      json.RawMessage(`1`),
 			Result:  nil, // Cancel operation returns null result
@@ -129,8 +130,10 @@ func TestAgentCancel(t *testing.T) {
 		URL: server.URL,
 	})
 
-	err := agent.Cancel(context.Background(), "test-task-id")
-	assert.NoError(t, err)
+	task, err := agent.CancelTask(context.Background(), "test-task-id")
+	assert.NoError(t, errors.New(err.Message))
+	assert.Equal(t, "test-task-id", task.ID)
+	assert.Equal(t, types.TaskStateCanceled, task.Status.State)
 }
 
 func TestAgentSendStream(t *testing.T) {
@@ -235,9 +238,10 @@ func TestFetchAgentCard(t *testing.T) {
 	}))
 	defer server.Close()
 
-	agent, err := FetchAgentCard(context.Background(), server.URL)
+	card := NewAgentFromCard(types.AgentCard{
+		URL: server.URL,
+	}).Card()
 
-	assert.NoError(t, err)
-	assert.Equal(t, "http://example.com", agent.Card.URL)
-	assert.True(t, agent.Card.Capabilities.Streaming)
+	assert.Equal(t, "http://example.com", card.URL)
+	assert.True(t, card.Capabilities.Streaming)
 }

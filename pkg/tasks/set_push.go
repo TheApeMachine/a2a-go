@@ -11,7 +11,7 @@ import (
 func SetPushNotification(
 	ctx context.Context,
 	raw json.RawMessage,
-	tm TaskManager,
+	tm types.TaskManager,
 ) (any, *errors.RpcError) {
 	var config types.TaskPushNotificationConfig
 	if err := json.Unmarshal(raw, &config); err != nil {
