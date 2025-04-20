@@ -17,6 +17,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/spf13/viper"
+	"github.com/theapemachine/a2a-go/pkg/errors"
 	"github.com/theapemachine/a2a-go/pkg/service"
 	"github.com/theapemachine/a2a-go/pkg/tools"
 	"github.com/theapemachine/a2a-go/pkg/types"
@@ -165,10 +166,10 @@ func (agent *Agent) SendStream(
 		}
 
 		var evt types.TaskStatusUpdateEvent
-		
+
 		if err := json.Unmarshal([]byte(data), &evt); err == nil && onStatus != nil {
 			onStatus(evt)
-			
+
 			if evt.Final {
 				return nil
 			}
@@ -250,10 +251,10 @@ func (a *Agent) Resubscribe(
 
 	// Read the first response event which contains the task status
 	var firstResponse struct {
-		JSONRPC string            `json:"jsonrpc"`
-		ID      json.RawMessage   `json:"id"`
-		Result  json.RawMessage   `json:"result"`
-		Error   *service.RPCError `json:"error,omitempty"`
+		JSONRPC string           `json:"jsonrpc"`
+		ID      json.RawMessage  `json:"id"`
+		Result  json.RawMessage  `json:"result"`
+		Error   *errors.RpcError `json:"error,omitempty"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&firstResponse); err != nil {

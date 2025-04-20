@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/theapemachine/a2a-go/pkg/service"
+	"github.com/theapemachine/a2a-go/pkg/tasks"
 	"github.com/theapemachine/a2a-go/pkg/types"
 )
 
@@ -78,7 +79,7 @@ func serveAgent() error {
 		Skills: []types.AgentSkill{{ID: "echo", Name: "Echo"}},
 	}
 
-	server := service.NewA2AServer(card, service.NewEchoTaskManager(nil))
+	server := service.NewA2AServer(card, tasks.NewEchoTaskManager(nil))
 	mux := http.NewServeMux()
 
 	for path, handler := range server.Handlers() {
@@ -156,7 +157,7 @@ func serveMCP() error {
 		}
 
 		// Create and mount the agent
-		agentServer := service.NewA2AServer(card, service.NewEchoTaskManager(nil))
+		agentServer := service.NewA2AServer(card, tasks.NewEchoTaskManager(nil))
 		for path, handler := range agentServer.Handlers() {
 			mux.Handle("/agent"+path, handler)
 		}

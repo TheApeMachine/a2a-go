@@ -1,4 +1,4 @@
-package service
+package sse
 
 // A minimal Server‑Sent Events (SSE) helper to stream TaskStatusUpdateEvent and
 // TaskArtifactUpdateEvent objects to connected HTTP clients.  This is **not** a

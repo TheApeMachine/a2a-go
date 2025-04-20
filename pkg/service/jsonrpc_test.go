@@ -7,16 +7,18 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	errors "github.com/theapemachine/a2a-go/pkg/errors"
 )
 
 func TestJSONRPCServerClientRoundTrip(t *testing.T) {
 	srv := NewRPCServer()
 
 	// Register echo method.
-	srv.Register("echo", func(ctx context.Context, params json.RawMessage) (any, *rpcError) {
+	srv.Register("echo", func(ctx context.Context, params json.RawMessage) (any, *errors.RpcError) {
 		var v string
 		if err := json.Unmarshal(params, &v); err != nil {
-			return nil, errInvalidParams
+			return nil, errors.ErrInvalidParams
 		}
 		return v, nil
 	})
@@ -46,8 +48,8 @@ func TestJSONRPCServerClientRoundTrip(t *testing.T) {
 
 func TestJSONRPCServerHandlerReturnsError(t *testing.T) {
 	srv := NewRPCServer()
-	srv.Register("fail", func(ctx context.Context, params json.RawMessage) (any, *rpcError) {
-		return nil, &rpcError{Code: 123, Message: "boom"}
+	srv.Register("fail", func(ctx context.Context, params json.RawMessage) (any, *errors.RpcError) {
+		return nil, &errors.RpcError{Code: 123, Message: "boom"}
 	})
 
 	ts, errTS := newTestServer(srv)

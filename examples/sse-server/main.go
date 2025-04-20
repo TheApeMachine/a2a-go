@@ -11,12 +11,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/theapemachine/a2a-go/pkg/service"
+	"github.com/theapemachine/a2a-go/pkg/service/sse"
 	"github.com/theapemachine/a2a-go/pkg/types"
 )
 
 func main() {
-	broker := service.NewSSEBroker()
+	broker := sse.NewSSEBroker()
 
 	http.HandleFunc("/events", broker.Subscribe)
 

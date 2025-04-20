@@ -1,4 +1,4 @@
-package service
+package tasks
 
 import (
 	"context"
@@ -130,24 +130,24 @@ func TestEchoTaskManagerPartValidation(t *testing.T) {
 				Message: tt.message,
 			}
 			_, err := manager.SendTask(ctx, params)
-			
+
 			if tt.expectError && err == nil {
 				t.Errorf("SendTask expected an error but got none")
 			}
 			if !tt.expectError && err != nil {
 				t.Errorf("SendTask unexpected error: %v", err)
 			}
-			
+
 			// Test StreamTask
 			stream, err := manager.StreamTask(ctx, params)
-			
+
 			if tt.expectError && err == nil {
 				t.Errorf("StreamTask expected an error but got none")
 			}
 			if !tt.expectError && err != nil {
 				t.Errorf("StreamTask unexpected error: %v", err)
 			}
-			
+
 			// Clean up if a stream was created
 			if stream != nil {
 				for range stream {

@@ -8,10 +8,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"sync"
+
+	errs "errors"
+
+	errors "github.com/theapemachine/a2a-go/pkg/errors"
 )
 
 // --------------------------- Wire Types ------------------------------------
@@ -24,38 +27,17 @@ type RPCRequest struct {
 }
 
 type RPCResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"`
-	Result  any             `json:"result,omitempty"`
-	Error   *rpcError       `json:"error,omitempty"`
+	JSONRPC string           `json:"jsonrpc"`
+	ID      json.RawMessage  `json:"id,omitempty"`
+	Result  any              `json:"result,omitempty"`
+	Error   *errors.RpcError `json:"error,omitempty"`
 }
-
-type rpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Data    any    `json:"data,omitempty"`
-}
-
-// RPCError is an exported alias so that external packages (e.g. examples) can
-// satisfy the HandlerFunc signature without accessing the unexported rpcError
-// identifier directly.  It intentionally re‑exports the same underlying type
-// without widening the public API surface.
-type RPCError = rpcError
-
-// Convenience errors (JSON‑RPC reserved codes  -32600 .. -32000)
-var (
-	errParseError     = &rpcError{Code: -32700, Message: "Parse error"}
-	errInvalidRequest = &rpcError{Code: -32600, Message: "Invalid Request"}
-	errMethodNotFound = &rpcError{Code: -32601, Message: "Method not found"}
-	errInvalidParams  = &rpcError{Code: -32602, Message: "Invalid params"}
-	errInternal       = &rpcError{Code: -32603, Message: "Internal error"}
-)
 
 // --------------------------- Server  ---------------------------------------
 
-// HandlerFunc processes the raw params field and returns a result or a *rpcError.
+// HandlerFunc processes the raw params field and returns a result or a *errors.RpcError.
 // Returning (nil, nil) is treated as null‑result (i.e. {"result":null}).
-type HandlerFunc func(ctx context.Context, params json.RawMessage) (any, *rpcError)
+type HandlerFunc func(ctx context.Context, params json.RawMessage) (any, *errors.RpcError)
 
 // RPCServer multiplexes JSON‑RPC method names to handler functions.
 type RPCServer struct {
@@ -83,21 +65,21 @@ func (s *RPCServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		respondError(w, nil, errParseError)
+		respondError(w, nil, errors.ErrParseError)
 		return
 	}
 
 	// Support batch requests if the first byte is '['
 	body = bytes.TrimSpace(body)
 	if len(body) == 0 {
-		respondError(w, nil, errInvalidRequest)
+		respondError(w, nil, errors.ErrInvalidRequest)
 		return
 	}
 
 	if body[0] == '[' {
 		var batch []RPCRequest
 		if err := json.Unmarshal(body, &batch); err != nil {
-			respondError(w, nil, errParseError)
+			respondError(w, nil, errors.ErrParseError)
 			return
 		}
 		var responses []RPCResponse
@@ -118,7 +100,7 @@ func (s *RPCServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var req RPCRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		respondError(w, nil, errParseError)
+		respondError(w, nil, errors.ErrParseError)
 		return
 	}
 
@@ -133,14 +115,14 @@ func (s *RPCServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *RPCServer) handle(ctx context.Context, req *RPCRequest) RPCResponse {
 	if req.JSONRPC != "2.0" {
-		return newErrorResponse(req.ID, errInvalidRequest)
+		return newErrorResponse(req.ID, errors.ErrInvalidRequest)
 	}
 
 	s.mu.RLock()
 	h, ok := s.handlers[req.Method]
 	s.mu.RUnlock()
 	if !ok {
-		return newErrorResponse(req.ID, errMethodNotFound)
+		return newErrorResponse(req.ID, errors.ErrMethodNotFound)
 	}
 
 	result, rpcErr := h(ctx, req.Params)
@@ -155,10 +137,10 @@ func (s *RPCServer) handle(ctx context.Context, req *RPCRequest) RPCResponse {
 	}
 }
 
-func newErrorResponse(id json.RawMessage, e *rpcError) RPCResponse {
+func newErrorResponse(id json.RawMessage, e *errors.RpcError) RPCResponse {
 	// Ensure mandatory Code/Message.
 	if e == nil {
-		e = errInternal
+		e = errors.ErrInternal
 	}
 	return RPCResponse{
 		JSONRPC: "2.0",
@@ -167,7 +149,7 @@ func newErrorResponse(id json.RawMessage, e *rpcError) RPCResponse {
 	}
 }
 
-func respondError(w http.ResponseWriter, id json.RawMessage, e *rpcError) {
+func respondError(w http.ResponseWriter, id json.RawMessage, e *errors.RpcError) {
 	_ = json.NewEncoder(w).Encode(newErrorResponse(id, e))
 }
 
@@ -221,7 +203,7 @@ func (c *RPCClient) Call(ctx context.Context, method string, params any, result 
 		return err
 	}
 	if rpcResp.Error != nil {
-		return errors.New(rpcResp.Error.Message)
+		return errs.New(rpcResp.Error.Message)
 	}
 	if result != nil {
 		// Marshal the "result" field back into user‑provided struct.

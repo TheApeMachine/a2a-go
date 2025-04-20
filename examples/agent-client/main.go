@@ -17,6 +17,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/theapemachine/a2a-go/pkg/service"
+	"github.com/theapemachine/a2a-go/pkg/tasks"
 	"github.com/theapemachine/a2a-go/pkg/tools"
 	"github.com/theapemachine/a2a-go/pkg/types"
 )
@@ -29,7 +30,7 @@ func main() {
 	// Create the MCP server with memory tools
 	mcpServer := server.NewMCPServer("memory-agent", "1.0.0")
 	tools.RegisterBuiltInTools(mcpServer, nil)
-	
+
 	// Memory system setup is handled internally by tools.RegisterBuiltInTools
 
 	// Create a custom agent card
@@ -48,7 +49,7 @@ func main() {
 	}
 
 	// Create an A2A server
-	taskManager := service.NewEchoTaskManager(nil)
+	taskManager := tasks.NewEchoTaskManager(nil)
 	a2aServer := service.NewA2AServer(memoryAgentCard, taskManager)
 
 	// Set up HTTP server

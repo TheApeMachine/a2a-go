@@ -25,6 +25,7 @@ import (
 	"github.com/theapemachine/a2a-go/pkg/provider"
 	"github.com/theapemachine/a2a-go/pkg/service"
 	"github.com/theapemachine/a2a-go/pkg/stores"
+	"github.com/theapemachine/a2a-go/pkg/tasks"
 	"github.com/theapemachine/a2a-go/pkg/tools"
 	"github.com/theapemachine/a2a-go/pkg/types"
 )
@@ -82,7 +83,7 @@ func main() {
 	}
 
 	// Create an A2A server with custom settings
-	a2aServer := service.NewA2AServer(toolAgentCard, service.NewEchoTaskManager(nil))
+	a2aServer := service.NewA2AServer(toolAgentCard, tasks.NewEchoTaskManager(nil))
 	a2aServer.SamplingManager = provider.NewOpenAISamplingManager(func(ctx context.Context, t mcp.Tool, args map[string]any) (string, error) {
 		// Create a JSON-RPC request
 		req := mcp.CallToolRequest{
@@ -245,12 +246,12 @@ func tryTask(ctx context.Context, mcpServer *server.MCPServer, a2a *service.A2AS
 	}
 
 	// Create a task with the results and store it
-	entry := a2a.TaskManager.(*service.EchoTaskManager).GetStore().Create(taskID, final)
+	entry := a2a.TaskManager.(*tasks.EchoTaskManager).GetStore().Create(taskID, final)
 	entry.SessionID = sessionID
 	entry.State = types.TaskStateCompleted
 
 	// Add the message to history
-	a2a.TaskManager.(*service.EchoTaskManager).GetStore().AddMessageToHistory(taskID, msg)
+	a2a.TaskManager.(*tasks.EchoTaskManager).GetStore().AddMessageToHistory(taskID, msg)
 
 	// Add a response message to history
 	responseMsg := types.Message{
@@ -260,7 +261,7 @@ func tryTask(ctx context.Context, mcpServer *server.MCPServer, a2a *service.A2AS
 			Text: final,
 		}},
 	}
-	a2a.TaskManager.(*service.EchoTaskManager).GetStore().AddMessageToHistory(taskID, responseMsg)
+	a2a.TaskManager.(*tasks.EchoTaskManager).GetStore().AddMessageToHistory(taskID, responseMsg)
 
 	fmt.Printf("\n\nTask %s completed\n", taskID)
 }

@@ -1,13 +1,5 @@
 package service
 
-// A2AServer bundles JSON‑RPC, SSE and a TaskManager to expose a fully
-// functional A2A server with minimal glue code.  Callers create the server,
-// register their TaskManager implementation and then mount the HTTP handlers
-// returned by Handlers() on their preferred mux.
-
-// For simple demos use NewA2AServerWithDefaults which wires an EchoTaskManager
-// and an InMemoryTaskStore.
-
 import (
 	"context"
 	"encoding/json"
@@ -15,20 +7,24 @@ import (
 
 	"os"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	errors "github.com/theapemachine/a2a-go/pkg/errors"
 	"github.com/theapemachine/a2a-go/pkg/prompts"
 	"github.com/theapemachine/a2a-go/pkg/provider"
 	"github.com/theapemachine/a2a-go/pkg/resources"
 	"github.com/theapemachine/a2a-go/pkg/roots"
 	"github.com/theapemachine/a2a-go/pkg/sampling"
+	"github.com/theapemachine/a2a-go/pkg/service/sse"
+	"github.com/theapemachine/a2a-go/pkg/tasks"
 	"github.com/theapemachine/a2a-go/pkg/types"
 )
 
-// A2AServer is safe for concurrent use by default because RPCServer &
-// SSEBroker are.
+/*
+A2AServer is safe for concurrent use by default because
+RPCServer & SSEBroker are.
+*/
 type A2AServer struct {
 	Card        types.AgentCard
-	TaskManager TaskManager
+	TaskManager tasks.TaskManager
 
 	PromptManager   prompts.PromptManager
 	ResourceManager resources.ResourceManager
@@ -36,11 +32,13 @@ type A2AServer struct {
 	RootManager     *roots.Manager
 
 	rpc    *RPCServer
-	broker *SSEBroker
+	broker *sse.SSEBroker
 }
 
-// chooseSamplingManager returns OpenAI manager if API key available otherwise
-// falls back to dummy echo manager.
+/*
+chooseSamplingManager returns OpenAI manager if API key available 
+otherwise falls back to dummy echo manager.
+*/
 func chooseSamplingManager() sampling.Manager {
 	if os.Getenv("OPENAI_API_KEY") != "" {
 		return provider.NewOpenAISamplingManager(nil)
@@ -48,10 +46,13 @@ func chooseSamplingManager() sampling.Manager {
 	return sampling.NewDefaultManager()
 }
 
-// NewA2AServer constructs a server with the supplied TaskManager.  The caller
-// must later mount Handlers().  This decouples protocol concerns from HTTP
-// routing frameworks (std net/http, gin, chi, …).
-func NewA2AServer(card types.AgentCard, tm TaskManager) *A2AServer {
+/*
+NewA2AServer constructs a server with the supplied TaskManager.  The caller
+
+must later mount Handlers().  This decouples protocol concerns from HTTP
+routing frameworks (std net/http, gin, chi, …).
+*/
+func NewA2AServer(card types.AgentCard, tm tasks.TaskManager) *A2AServer {
 	srv := &A2AServer{
 		Card:            card,
 		TaskManager:     tm,
@@ -60,14 +61,16 @@ func NewA2AServer(card types.AgentCard, tm TaskManager) *A2AServer {
 		SamplingManager: chooseSamplingManager(),
 		RootManager:     roots.NewManager(),
 		rpc:             NewRPCServer(),
-		broker:          NewSSEBroker(),
+		broker:          sse.NewSSEBroker(),
 	}
 	srv.registerRPCHandlers()
 	return srv
 }
 
-// NewA2AServerWithDefaults returns a fully working server that echoes user
-// input.  Great for smoke tests.
+/*
+NewA2AServerWithDefaults returns a fully working server that echoes 
+user input. Great for smoke tests.
+*/
 func NewA2AServerWithDefaults(url string) *A2AServer {
 	card := types.AgentCard{
 		Name:        "Echo Agent (Go)",
@@ -82,24 +85,27 @@ func NewA2AServerWithDefaults(url string) *A2AServer {
 		DefaultInputModes:  []string{"text/plain"},
 		DefaultOutputModes: []string{"text/plain"},
 		Skills: []types.AgentSkill{{
-			ID:          "echo", 
+			ID:          "echo",
 			Name:        "Echo",
 			Description: stringPtr("Echoes back user input"),
 			Examples:    []string{"Hello A2A!", "Echo this message"},
 		}},
 	}
-	return NewA2AServer(card, NewEchoTaskManager(nil))
+	return NewA2AServer(card, tasks.NewEchoTaskManager(nil))
 }
 
 func stringPtr(s string) *string {
 	return &s
 }
 
-// Handlers returns a map of path → http.Handler to be mounted by the host
-// application.  By default two endpoints are exposed:
-//
-//	/rpc     – JSON‑RPC 2.0
-//	/events  – SSE stream
+/*
+Handlers returns a map of path → http.Handler to be mounted by the host
+
+application.  By default two endpoints are exposed:
+
+/rpc     – JSON‑RPC 2.0
+/events  – SSE stream
+*/
 func (s *A2AServer) Handlers() map[string]http.Handler {
 	return map[string]http.Handler{
 		"/rpc":    s.rpc,
@@ -107,279 +113,129 @@ func (s *A2AServer) Handlers() map[string]http.Handler {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Internal wiring
-// ---------------------------------------------------------------------------
-
 func (s *A2AServer) registerRPCHandlers() {
-	// tasks/send
-	s.rpc.Register("tasks/send", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
-		var params types.TaskSendParams
-		if err := json.Unmarshal(raw, &params); err != nil {
-			return nil, errInvalidParams
-		}
-		task, rpcErr := s.TaskManager.SendTask(ctx, params)
-		if rpcErr != nil {
-			return nil, rpcErr
-		}
-		return task, nil
-	})
-	
-	// tasks/pushNotification/set
-	s.rpc.Register("tasks/pushNotification/set", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
-		var config types.TaskPushNotificationConfig
-		if err := json.Unmarshal(raw, &config); err != nil {
-			return nil, errInvalidParams
-		}
-		taskPushConfig, rpcErr := s.TaskManager.SetPushNotification(ctx, config)
-		if rpcErr != nil {
-			return nil, rpcErr
-		}
-		return taskPushConfig, nil
-	})
-	
-	// tasks/pushNotification/get
-	s.rpc.Register("tasks/pushNotification/get", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
-		var p struct {
-			ID string `json:"id"`
-		}
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return nil, errInvalidParams
-		}
-		taskPushConfig, rpcErr := s.TaskManager.GetPushNotification(ctx, p.ID)
-		if rpcErr != nil {
-			return nil, rpcErr
-		}
-		return taskPushConfig, nil
-	})
-	
-	// tasks/resubscribe
-	s.rpc.Register("tasks/resubscribe", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
-		var p struct {
-			ID string `json:"id"`
-			HistoryLength int `json:"historyLength,omitempty"`
-		}
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return nil, errInvalidParams
-		}
-		stream, rpcErr := s.TaskManager.ResubscribeTask(ctx, p.ID, p.HistoryLength)
-		if rpcErr != nil {
-			return nil, rpcErr
-		}
-		
-		// Consume first event to return immediately per JSON‑RPC semantics
-		var first any
-		select {
-		case first = <-stream:
-		default:
-			// no event yet – return empty result
-			first = nil
-		}
-		
-		// Forward rest of events to SSE broker
-		go func() {
-			for evt := range stream {
-				_ = s.broker.Broadcast(evt)
-			}
-		}()
-		
-		return first, nil
-	})
+	s.rpc.Register(
+		"tasks/send",
+		func(
+			ctx context.Context, raw json.RawMessage,
+		) (any, *errors.RpcError) {
+			return tasks.Send(ctx, raw, s.TaskManager)
+		},
+	)
 
-	// ---------------------------------------------------------------------
-	// MCP‑Prompts namespace
-	// ---------------------------------------------------------------------
+	s.rpc.Register(
+		"tasks/pushNotification/set",
+		func(
+			ctx context.Context, raw json.RawMessage,
+		) (any, *errors.RpcError) {
+			return tasks.SetPushNotification(ctx, raw, s.TaskManager)
+		},
+	)
+
+	s.rpc.Register(
+		"tasks/pushNotification/get",
+		func(
+			ctx context.Context, raw json.RawMessage,
+		) (any, *errors.RpcError) {
+			return tasks.GetPushNotification(ctx, raw, s.TaskManager)
+		},
+	)
+
+	s.rpc.Register(
+		"tasks/resubscribe",
+		func(
+			ctx context.Context, raw json.RawMessage,
+		) (any, *errors.RpcError) {
+			return tasks.ResubscribeTask(ctx, raw, s.TaskManager, s.broker)
+		},
+	)
 
 	promptHandler := prompts.NewMCPHandler(s.PromptManager)
 
-	s.rpc.Register("prompts/list", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
-		res, err := promptHandler.HandleListPrompts(ctx, &mcp.ListPromptsRequest{})
-		if err != nil {
-			return nil, &rpcError{Code: -32000, Message: err.Error()}
-		}
-		return res, nil
+	s.rpc.Register("prompts/list", func(
+		ctx context.Context,
+		raw json.RawMessage,
+	) (any, *errors.RpcError) {
+		return prompts.List(ctx, raw, promptHandler)
 	})
 
-	s.rpc.Register("prompts/get", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
-		var p struct {
-			Name string `json:"name"`
-		}
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return nil, errInvalidParams
-		}
-		req := &mcp.GetPromptRequest{}
-		req.Params.Name = p.Name
-		res, err := promptHandler.HandleGetPrompt(ctx, req)
-		if err != nil {
-			return nil, &rpcError{Code: -32000, Message: err.Error()}
-		}
-		return res, nil
+	s.rpc.Register("prompts/get", func(
+		ctx context.Context,
+		raw json.RawMessage,
+	) (any, *errors.RpcError) {
+		return prompts.Get(ctx, raw, promptHandler)
 	})
-
-	// ---------------------------------------------------------------------
-	// MCP‑Resources namespace
-	// ---------------------------------------------------------------------
 
 	resHandler := resources.NewMCPHandler(s.ResourceManager)
 
-	s.rpc.Register("resources/list", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
-		res, err := resHandler.HandleListResources(ctx, &mcp.ListResourcesRequest{})
-		if err != nil {
-			return nil, &rpcError{Code: -32000, Message: err.Error()}
-		}
-		return res, nil
+	s.rpc.Register("resources/list", func(
+		ctx context.Context,
+		raw json.RawMessage,
+	) (any, *errors.RpcError) {
+		return resources.List(ctx, raw, resHandler)
 	})
 
-	s.rpc.Register("resources/read", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
-		var p struct {
-			URI string `json:"uri"`
-		}
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return nil, errInvalidParams
-		}
-		req := &mcp.ReadResourceRequest{}
-		req.Params.URI = p.URI
-		res, err := resHandler.HandleReadResource(ctx, req)
-		if err != nil {
-			return nil, &rpcError{Code: -32000, Message: err.Error()}
-		}
-		return res, nil
+	s.rpc.Register("resources/read", func(
+		ctx context.Context,
+		raw json.RawMessage,
+	) (any, *errors.RpcError) {
+		return resources.Read(ctx, raw, resHandler)
 	})
-
-	// ---------------------------------------------------------------------
-	// MCP‑Roots namespace (minimal subset list + create)
-	// ---------------------------------------------------------------------
 
 	rootsHandler := roots.NewMCPHandler(s.RootManager)
 
-	s.rpc.Register("roots/list", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
-		res, err := rootsHandler.HandleListRoots(ctx)
-		if err != nil {
-			return nil, &rpcError{Code: -32000, Message: err.Error()}
-		}
-		return res, nil
+	s.rpc.Register("roots/list", func(
+		ctx context.Context,
+		raw json.RawMessage,
+	) (any, *errors.RpcError) {
+		return roots.List(ctx, raw, rootsHandler)
 	})
 
-	s.rpc.Register("roots/create", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
-		root, err := rootsHandler.HandleCreateRoot(ctx, raw)
-		if err != nil {
-			return nil, &rpcError{Code: -32000, Message: err.Error()}
-		}
-		return root, nil
+	s.rpc.Register("roots/create", func(
+		ctx context.Context,
+		raw json.RawMessage,
+	) (any, *errors.RpcError) {
+		return roots.Create(ctx, raw, rootsHandler)
 	})
-
-	// ---------------------------------------------------------------------
-	// MCP‑Sampling namespace (createMessage, no streaming yet)
-	// ---------------------------------------------------------------------
 
 	sampHandler := sampling.NewMCPHandler(s.SamplingManager)
 
-	s.rpc.Register("sampling/createMessage", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
-		var req mcp.CreateMessageRequest
-		if err := json.Unmarshal(raw, &req); err != nil {
-			return nil, errInvalidParams
-		}
-		res, err := sampHandler.HandleCreateMessage(ctx, &req)
-		if err != nil {
-			return nil, &rpcError{Code: -32000, Message: err.Error()}
-		}
-		return res, nil
+	s.rpc.Register("sampling/createMessage", func(
+		ctx context.Context,
+		raw json.RawMessage,
+	) (any, *errors.RpcError) {
+		return sampling.CreateMessage(ctx, raw, sampHandler)
 	})
 
 	// sampling/createMessageStream – first delta returned, rest over SSE
-	s.rpc.Register("sampling/createMessageStream", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
-		var req mcp.CreateMessageRequest
-		if err := json.Unmarshal(raw, &req); err != nil {
-			return nil, errInvalidParams
-		}
-
-		stream, err := sampHandler.HandleStreamMessage(ctx, &req)
-		if err != nil {
-			return nil, &rpcError{Code: -32000, Message: err.Error()}
-		}
-
-		// retrieve first result synchronously
-		var first *mcp.CreateMessageResult
-		select {
-		case first = <-stream:
-		default:
-			// if none ready yet produce empty chunk so caller can start reading.
-			first = &mcp.CreateMessageResult{}
-		}
-
-		// forward remainder asynchronously to SSE.
-		go func() {
-			for res := range stream {
-				_ = s.broker.Broadcast(res)
-			}
-		}()
-
-		return first, nil
+	s.rpc.Register("sampling/createMessageStream", func(
+		ctx context.Context,
+		raw json.RawMessage,
+	) (any, *errors.RpcError) {
+		return sampling.CreateMessageStream(ctx, raw, sampHandler, s.broker)
 	})
 
 	// tasks/get
-	s.rpc.Register("tasks/get", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
-		var qp struct {
-			ID            string `json:"id"`
-			HistoryLength int    `json:"historyLength,omitempty"`
-		}
-		if err := json.Unmarshal(raw, &qp); err != nil {
-			return nil, errInvalidParams
-		}
-		task, rpcErr := s.TaskManager.GetTask(ctx, qp.ID, qp.HistoryLength)
-		if rpcErr != nil {
-			return nil, rpcErr
-		}
-		return task, nil
+	s.rpc.Register("tasks/get", func(
+		ctx context.Context,
+		raw json.RawMessage,
+	) (any, *errors.RpcError) {
+		return tasks.Get(ctx, raw, s.TaskManager)
 	})
 
 	// tasks/cancel
-	s.rpc.Register("tasks/cancel", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
-		var p struct {
-			ID string `json:"id"`
-		}
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return nil, errInvalidParams
-		}
-		task, rpcErr := s.TaskManager.CancelTask(ctx, p.ID)
-		if rpcErr != nil {
-			return nil, rpcErr
-		}
-		return task, nil
+	s.rpc.Register("tasks/cancel", func(
+		ctx context.Context,
+		raw json.RawMessage,
+	) (any, *errors.RpcError) {
+		return tasks.Cancel(ctx, raw, s.TaskManager)
 	})
 
 	// tasks/sendSubscribe (basic implementation)
-	s.rpc.Register("tasks/sendSubscribe", func(ctx context.Context, raw json.RawMessage) (any, *rpcError) {
-		var params types.TaskSendParams
-		if err := json.Unmarshal(raw, &params); err != nil {
-			return nil, errInvalidParams
-		}
-
-		stream, rpcErr := s.TaskManager.StreamTask(ctx, params)
-		if rpcErr != nil {
-			return nil, rpcErr
-		}
-
-		// Consume first event to return immediately per JSON‑RPC semantics.
-		var first any
-		select {
-		case first = <-stream:
-		default:
-			// no event yet – fabricate a working status so caller gets something
-			first = types.TaskStatusUpdateEvent{
-				ID:     params.ID,
-				Status: types.TaskStatus{State: types.TaskStateWorking},
-				Final:  false,
-			}
-		}
-
-		// forward rest of events to SSE broker
-		go func() {
-			for evt := range stream {
-				_ = s.broker.Broadcast(evt)
-			}
-		}()
-
-		return first, nil
+	s.rpc.Register("tasks/sendSubscribe", func(
+		ctx context.Context,
+		raw json.RawMessage,
+	) (any, *errors.RpcError) {
+		return tasks.SendSubscribe(ctx, raw, s.TaskManager, s.broker)
 	})
 }
