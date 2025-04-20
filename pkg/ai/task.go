@@ -13,7 +13,7 @@ func (agent *Agent) SendTask(
 ) (types.Task, *errors.RpcError) {
 	task := agent.paramsToTask(params)
 
-	agent.chatClient.Complete(ctx, task.History, nil)
+	agent.chatClient.Complete(ctx, task.History, agent.card.Tools())
 
 	return task, nil
 }

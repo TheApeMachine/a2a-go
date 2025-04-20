@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openai/openai-go"
 	"github.com/theapemachine/a2a-go/pkg/types"
 )
@@ -17,7 +16,7 @@ const DefaultModel = openai.ChatModelGPT4oMini
 // ToolExecutor abstracts the execution of an MCP tool.  Users should implement
 // this to wire in their own business logic / data sources.
 type ToolExecutor func(
-	ctx context.Context, tool mcp.Tool, args map[string]any,
+	ctx context.Context, tool *types.MCPClient, args map[string]any,
 ) (string, error)
 
 // ChatClient wraps an *openai.Client and provides convenience methods for
@@ -44,7 +43,7 @@ func NewChatClient(executor ToolExecutor) *ChatClient {
 // provided ToolExecutor and the conversation auto‑continues until the final
 // assistant reply no longer contains tool calls.
 func (c *ChatClient) Complete(
-	ctx context.Context, messages []types.Message, tools []mcp.Tool,
+	ctx context.Context, messages []types.Message, tools map[string]*types.MCPClient,
 ) (string, error) {
 	oaMsgs := convertMessages(messages)
 	oaTools := convertTools(tools)
@@ -71,7 +70,7 @@ func (c *ChatClient) Complete(
 
 		// Otherwise execute each tool call serially and continue the loop.
 		for _, tc := range msg.ToolCalls {
-			tool, ok := findTool(tools, tc.Function.Name)
+			tool, ok := tools[tc.Function.Name]
 
 			if !ok {
 				return "", fmt.Errorf("unknown tool called: %s", tc.Function.Name)
@@ -107,7 +106,7 @@ func (c *ChatClient) Complete(
 func (c *ChatClient) Stream(
 	ctx context.Context,
 	messages []types.Message,
-	tools []mcp.Tool,
+	tools map[string]*types.MCPClient,
 	onDelta func(string),
 ) (string, error) {
 	oaMsgs := convertMessages(messages)
@@ -179,38 +178,19 @@ func convertMessages(
 }
 
 func convertTools(
-	tools []mcp.Tool,
+	tools map[string]*types.MCPClient,
 ) []openai.ChatCompletionToolParam {
 	out := make([]openai.ChatCompletionToolParam, 0, len(tools))
 
 	for _, t := range tools {
-		var paramSchema map[string]any
-
-		if t.RawInputSchema != nil {
-			_ = json.Unmarshal(t.RawInputSchema, &paramSchema)
-		} else {
-			b, _ := json.Marshal(t.InputSchema)
-			_ = json.Unmarshal(b, &paramSchema)
-		}
-
 		out = append(out, openai.ChatCompletionToolParam{
 			Function: openai.FunctionDefinitionParam{
-				Name:        t.Name,
-				Description: openai.String(t.Description),
-				Parameters:  openai.FunctionParameters(paramSchema),
+				Name:        t.Schema.Properties["name"].(string),
+				Description: openai.String(t.Schema.Properties["description"].(string)),
+				Parameters:  openai.FunctionParameters(t.Schema.Properties),
 			},
 		})
 	}
 
 	return out
-}
-
-func findTool(tools []mcp.Tool, name string) (mcp.Tool, bool) {
-	for _, t := range tools {
-		if t.Name == name {
-			return t, true
-		}
-	}
-
-	return mcp.Tool{}, false
 }

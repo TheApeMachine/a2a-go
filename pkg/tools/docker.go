@@ -25,7 +25,7 @@ func NewDockerTools() mcp.Tool {
 	return tool
 }
 
-func registerDockerTools(srv *server.MCPServer) {
+func RegisterDockerTools(srv *server.MCPServer) {
 	tool := mcp.NewTool(
 		"docker_exec",
 		mcp.WithDescription("A fully featured Debian terminal, useful for when you require access to a computer."),
@@ -58,6 +58,7 @@ func handleDockerExec(
 	}
 
 	env, err := docker.NewEnvironment()
+
 	if err = env.BuildImage(ctx, "docker-environment"); err != nil {
 		return mcp.NewToolResultError(err.Error()), err
 	}
@@ -68,6 +69,11 @@ func handleDockerExec(
 		return nil, err
 	}
 
-	b, _ := json.Marshal(res)
+	b, err := json.Marshal(res)
+
+	if err != nil {
+		return nil, err
+	}
+
 	return mcp.NewToolResultText(string(b)), nil
 }

@@ -10,6 +10,7 @@ import (
 	"context"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/a2a-go/pkg/tools"
 )
 
 // ToMCPResource converts an AgentCard into an MCP Resource descriptor.  The
@@ -54,11 +55,18 @@ func ToMCPResource(card AgentCard) mcp.Resource {
 // simply proxies to tasks/send under the hood (the caller must implement the
 // proxy logic – this helper only defines the schema).
 func ToMCPTool(skill AgentSkill) *MCPClient {
-	mcpClient := &MCPClient{}
+	tool := getTool(skill.ID)
+
+	mcpClient := &MCPClient{
+		Schema: &tool.InputSchema,
+	}
+
 	return mcpClient
 }
 
 type MCPClient struct {
+	Schema *mcp.ToolInputSchema
+	NotificationHandler func(notification mcp.JSONRPCNotification)
 }
 
 func (c *MCPClient) Start(ctx context.Context) error {
@@ -74,8 +82,18 @@ func (c *MCPClient) SendNotification(ctx context.Context, notification mcp.JSONR
 }
 
 func (c *MCPClient) SetNotificationHandler(handler func(notification mcp.JSONRPCNotification)) {
+	c.NotificationHandler = handler
 }
 
 func (c *MCPClient) Close() error {
 	return nil
+}
+
+func getTool(id string) mcp.Tool {
+	switch id {
+	case "development":
+		return tools.NewDockerTools()
+	}
+
+	return mcp.Tool{}
 }
