@@ -8,6 +8,9 @@
 protocol](https://google.github.io/A2A/#/) by Google, including the proposed
 interoperability with the [**Model Context Protocol (MCP)**](https://modelcontextprotocol.io).
 
+> 🚧 **Work in progress** 🚧 Consider this project a proof of concept at best, and subject
+> to sudden changes.
+
 ## ✨ Features
 
 - [ ] **Agent‑to‑Agent (A2A)** protocol implementation
@@ -37,3 +40,26 @@ interoperability with the [**Model Context Protocol (MCP)**](https://modelcontex
   - [ ] _Neo4j_ to store and retrieve graph data 🔜
 
 ---
+
+## 🚀 Quick Start
+
+Run the `docker-compose.yml` for a full distributed system, demonstrating
+A2A and MCP interoperability.
+
+```bash
+docker compose up
+```
+
+To run individual, more contained examples, use the `example` cli command.
+
+```bash
+a2a-go example <example-name>
+```
+
+Add the `--interactive` flag to run the example in interactive mode.
+
+```bash
+a2a-go example <example-name> --interactive
+```
+
+All example code lives in the [`examples`](examples) directory.
