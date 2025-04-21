@@ -6,6 +6,16 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/theapemachine/a2a-go)](https://goreportcard.com/report/github.com/theapemachine/a2a-go)
 [![GoDoc](https://godoc.org/github.com/theapemachine/a2a-go?status.svg)](https://godoc.org/github.com/theapemachine/a2a-go)
 [![License: UNLICENSE](https://img.shields.io/badge/License-UNLICENSE-green.svg)](https://opensource.org/licenses/MIT)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_a2a-go&metric=bugs)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_a2a-go)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_a2a-go&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_a2a-go)
+[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_a2a-go&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_a2a-go)
+[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_a2a-go&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_a2a-go)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_a2a-go&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_a2a-go)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_a2a-go&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_a2a-go)
+[![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_a2a-go&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_a2a-go)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_a2a-go&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_a2a-go)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_a2a-go&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_a2a-go)
+
 
 ![A2A‑Go](a2a-go.png)
 
