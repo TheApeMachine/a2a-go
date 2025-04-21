@@ -56,6 +56,8 @@ func (prvdr *OpenAIProvider) Complete(
 		}
 	)
 
+	prvdr.setSchema(task, &params)
+
 	task.ToState(types.TaskStateWorking, "thinking...")
 
 	for task.Status.State == types.TaskStateWorking {
@@ -306,6 +308,29 @@ func (prvdr *OpenAIProvider) convertTools(
 	}
 
 	return out
+}
+
+/*
+Schema adheres to the structured outputs specification of the A2A Protocol,
+and converts it to be compatible with OpenAI's structured outputs.
+*/
+func (prvdr *OpenAIProvider) setSchema(
+	task *types.Task, params *openai.ChatCompletionNewParams,
+) {
+	lastMessage := task.History[len(task.History)-1]
+
+	if schema, ok := lastMessage.Metadata["schema"].(map[string]any); ok {
+		params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{
+				JSONSchema: openai.ResponseFormatJSONSchemaJSONSchemaParam{
+					Name:        schema["name"].(string),
+					Description: openai.String(schema["description"].(string)),
+					Schema:      schema["schema"].(map[string]any),
+					Strict:      openai.Bool(true),
+				},
+			},
+		}
+	}
 }
 
 type OpenAIEmbedder struct {
