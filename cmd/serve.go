@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
+	"github.com/theapemachine/a2a-go/pkg/tools"
 )
 
 var (
@@ -31,7 +33,14 @@ var (
 		Use:   "mcp",
 		Short: "Serve an MCP server",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return nil
+			s := server.NewMCPServer(
+				"Demo 🚀",
+				"1.0.0",
+				server.WithLogging(),
+			)
+
+			tools.RegisterDockerTools(s)
+			return server.ServeStdio(s)
 		},
 	}
 )
@@ -53,11 +62,11 @@ Serve an A2A agent or MCP server with various configurations.
 
 Examples:
   # Serve an A2A agent on port 8080
-  caramba serve agent --port 8080
+  a2a-go serve agent --port 8080
 
   # Serve an MCP server on port 3000
-  caramba serve mcp --port 3000
+  a2a-go serve mcp --port 3000
 
   # Serve an MCP server with an embedded agent
-  caramba serve mcp --with-agent --port 3000
+  a2a-go serve mcp --with-agent --port 3000
 `

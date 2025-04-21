@@ -7,8 +7,6 @@ package types
 // through a familiar interface.
 
 import (
-	"context"
-
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/a2a-go/pkg/tools"
 )
@@ -25,7 +23,7 @@ import (
 //   - Resource.MIMEType   → "application/json" (agent‑card mime‑type)
 //   - Optionally audience annotations can indicate the card is meant for
 //     assistants as well as users.
-func ToMCPResource(card AgentCard) mcp.Resource {
+func ToMCPResource(card *AgentCard) mcp.Resource {
 	res := mcp.NewResource(
 		card.URL,
 		card.Name,
@@ -55,45 +53,29 @@ func ToMCPResource(card AgentCard) mcp.Resource {
 // simply proxies to tasks/send under the hood (the caller must implement the
 // proxy logic – this helper only defines the schema).
 func ToMCPTool(skill AgentSkill) *MCPClient {
-	tool := getTool(skill.ID)
+	name, description, tool := getTool(skill.ID)
 
-	mcpClient := &MCPClient{
-		Schema: &tool.InputSchema,
+	client := &MCPClient{
+		Name:        name,
+		Description: description,
+		Schema:      &tool.InputSchema,
 	}
 
-	return mcpClient
+	return client
 }
 
 type MCPClient struct {
-	Schema *mcp.ToolInputSchema
-	NotificationHandler func(notification mcp.JSONRPCNotification)
+	Name        string
+	Description string
+	Schema      *mcp.ToolInputSchema
+	Toolcall    *mcp.CallToolRequest
 }
 
-func (c *MCPClient) Start(ctx context.Context) error {
-	return nil
-}
-
-func (c *MCPClient) SendRequest(ctx context.Context, request mcp.JSONRPCRequest) (*mcp.JSONRPCResponse, error) {
-	return nil, nil
-}
-
-func (c *MCPClient) SendNotification(ctx context.Context, notification mcp.JSONRPCNotification) error {
-	return nil
-}
-
-func (c *MCPClient) SetNotificationHandler(handler func(notification mcp.JSONRPCNotification)) {
-	c.NotificationHandler = handler
-}
-
-func (c *MCPClient) Close() error {
-	return nil
-}
-
-func getTool(id string) mcp.Tool {
+func getTool(id string) (string, string, mcp.Tool) {
 	switch id {
 	case "development":
-		return tools.NewDockerTools()
+		return "terminal", "A fully featured Debian Linux terminal, useful for development tasks or anything that may require access to a computer.", tools.NewDockerTools()
 	}
 
-	return mcp.Tool{}
+	return "", "", mcp.Tool{}
 }

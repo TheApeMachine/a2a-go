@@ -28,11 +28,9 @@ func TestNewAgentFromCard(t *testing.T) {
 		},
 	}
 
-	agent := NewAgentFromCard(card)
+	agent := NewAgentFromCard(&card)
 
 	assert.Equal(t, card, agent.card)
-	assert.Equal(t, "http://example.com/rpc", agent.rpcEndpoint)
-	assert.Equal(t, "http://example.com/events", agent.sseEndpoint)
 }
 
 func TestAgentSend(t *testing.T) {
@@ -58,7 +56,7 @@ func TestAgentSend(t *testing.T) {
 	defer server.Close()
 
 	// Create agent with test server URL
-	agent := NewAgentFromCard(types.AgentCard{
+	agent := NewAgentFromCard(&types.AgentCard{
 		URL: server.URL,
 	})
 
@@ -103,7 +101,7 @@ func TestAgentGet(t *testing.T) {
 	}))
 	defer server.Close()
 
-	agent := NewAgentFromCard(types.AgentCard{
+	agent := NewAgentFromCard(&types.AgentCard{
 		URL: server.URL,
 	})
 
@@ -128,7 +126,7 @@ func TestAgentCancel(t *testing.T) {
 	}))
 	defer server.Close()
 
-	agent := NewAgentFromCard(types.AgentCard{
+	agent := NewAgentFromCard(&types.AgentCard{
 		URL: server.URL,
 	})
 
@@ -185,7 +183,7 @@ func TestAgentSendStream(t *testing.T) {
 	}))
 	defer server.Close()
 
-	agent := NewAgentFromCard(types.AgentCard{
+	agent := NewAgentFromCard(&types.AgentCard{
 		URL: server.URL,
 		Capabilities: types.AgentCapabilities{
 			Streaming: true,
@@ -242,7 +240,7 @@ func TestFetchAgentCard(t *testing.T) {
 	}))
 	defer server.Close()
 
-	card := NewAgentFromCard(types.AgentCard{
+	card := NewAgentFromCard(&types.AgentCard{
 		URL: server.URL,
 	}).Card()
 

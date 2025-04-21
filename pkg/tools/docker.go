@@ -2,10 +2,10 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 
+	"github.com/charmbracelet/log"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
@@ -14,7 +14,7 @@ import (
 
 func NewDockerTools() mcp.Tool {
 	tool := mcp.NewTool(
-		"docker_exec",
+		"terminal",
 		mcp.WithDescription("A fully featured Debian terminal, useful for when you require access to a computer."),
 		mcp.WithString("cmd",
 			mcp.Description("Shell command to execute inside the container"),
@@ -27,7 +27,7 @@ func NewDockerTools() mcp.Tool {
 
 func RegisterDockerTools(srv *server.MCPServer) {
 	tool := mcp.NewTool(
-		"docker_exec",
+		"terminal",
 		mcp.WithDescription("A fully featured Debian terminal, useful for when you require access to a computer."),
 		mcp.WithString("cmd",
 			mcp.Description("Shell command to execute inside the container"),
@@ -41,6 +41,8 @@ func RegisterDockerTools(srv *server.MCPServer) {
 func handleDockerExec(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
+	log.Info("terminal executing")
+
 	var (
 		args   = req.Params.Arguments
 		cmdStr string
@@ -59,21 +61,20 @@ func handleDockerExec(
 
 	env, err := docker.NewEnvironment()
 
-	if err = env.BuildImage(ctx, "docker-environment"); err != nil {
-		return mcp.NewToolResultError(err.Error()), err
+	if err != nil {
+		return nil, err
 	}
 
-	res, err := env.Exec(ctx, cmdStr)
+	res, err := env.Exec(ctx, cmdStr, "a2a-go")
 
 	if err != nil {
 		return nil, err
 	}
 
-	b, err := json.Marshal(res)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return mcp.NewToolResultText(string(b)), nil
+	return mcp.NewToolResultText(
+		strings.TrimSpace(strings.Join([]string{
+			res.Stdout.String(),
+			res.Stderr.String(),
+		}, "\n")),
+	), nil
 }

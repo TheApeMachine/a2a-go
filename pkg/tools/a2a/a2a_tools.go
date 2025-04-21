@@ -19,7 +19,7 @@ import (
 
 type A2AClient struct{}
 
-func registerA2ATools(srv *server.MCPServer) {
+func RegisterA2ATools(srv *server.MCPServer) {
 	srv.AddTool(mcp.NewTool(
 		"discover_agents",
 		mcp.WithDescription("Discover other agents you can communicate with."),
@@ -142,21 +142,21 @@ func handleA2ASendTask(
 	), nil
 }
 
-func getAgentCard(req mcp.CallToolRequest) (types.AgentCard, error) {
+func getAgentCard(req mcp.CallToolRequest) (*types.AgentCard, error) {
 	registry := catalog.NewRegistry()
 
 	name, ok := req.Params.Arguments["agent_name"].(string)
 
 	if !ok {
 		err := errors.New("unable to retrieve agent")
-		return types.AgentCard{}, err
+		return nil, err
 	}
 
 	agent := registry.GetAgent(name)
 
 	if agent == nil {
 		err := errors.New("agent not found")
-		return types.AgentCard{}, err
+		return nil, err
 	}
 
 	return agent.Card(), nil

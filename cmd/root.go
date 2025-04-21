@@ -30,13 +30,13 @@ var embedded embed.FS
 rootCmd represents the base command when called without any subcommands
 */
 var (
-	projectName  = "caramba"
+	projectName  = "a2a-go"
 	cfgFile      string
 	openaiAPIKey string
 
 	rootCmd = &cobra.Command{
-		Use:   "caramba",
-		Short: "A sophisticated multi-agent AI orchestration system",
+		Use:   "a2a-go",
+		Short: "A reference implementation of the Agent-to-Agent (A2A) protocol",
 		Long:  longRoot,
 	}
 )
@@ -96,32 +96,37 @@ func writeConfig() (err error) {
 		buf     bytes.Buffer
 	)
 
-	fullPath := home + "/.caramba/" + cfgFile
+	for idx, file := range []string{cfgFile, "Dockerfile"} {
+		fullPath := home + "/.a2a-go/" + file
 
-	if CheckFileExists(fullPath) {
-		return
+		if CheckFileExists(fullPath) {
+			continue
+		}
+
+		if fh, err = embedded.Open("cfg/" + file); err != nil {
+			return fmt.Errorf("failed to open embedded config file: %w", err)
+		}
+
+		if _, err = io.Copy(&buf, fh); err != nil {
+			return fmt.Errorf("failed to read embedded config file: %w", err)
+		}
+
+		if idx == 0 {
+			if err = os.Mkdir(home+"/.a2a-go", os.ModePerm); err != nil {
+				return fmt.Errorf("failed to create config directory: %w", err)
+			}
+		}
+
+		if err = os.WriteFile(fullPath, buf.Bytes(), 0644); err != nil {
+			return fmt.Errorf("failed to write config file: %w", err)
+		}
+
+		log.Println("wrote config file to", fullPath)
+		buf.Reset()
+		fh.Close()
 	}
 
-	if fh, err = embedded.Open("cfg/" + cfgFile); err != nil {
-		return fmt.Errorf("failed to open embedded config file: %w", err)
-	}
-
-	defer fh.Close()
-
-	if _, err = io.Copy(&buf, fh); err != nil {
-		return fmt.Errorf("failed to read embedded config file: %w", err)
-	}
-
-	if err = os.Mkdir(home+"/.caramba", os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
-
-	if err = os.WriteFile(fullPath, buf.Bytes(), 0644); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
-	}
-
-	log.Println("wrote config file to", fullPath)
-	return
+	return nil
 }
 
 func CheckFileExists(filePath string) bool {

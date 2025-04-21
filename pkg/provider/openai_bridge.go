@@ -3,10 +3,10 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/charmbracelet/log"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openai/openai-go"
 	"github.com/theapemachine/a2a-go/pkg/types"
 	"github.com/theapemachine/a2a-go/pkg/utils"
@@ -45,7 +45,7 @@ func NewChatClient(executor ToolExecutor) *ChatClient {
 // provided ToolExecutor and the conversation auto‑continues until the final
 // assistant reply no longer contains tool calls.
 func (c *ChatClient) Complete(
-	ctx context.Context, task *types.Task, tools map[string]*types.MCPClient,
+	ctx context.Context, task *types.Task, tools *map[string]*types.MCPClient,
 ) (err error) {
 	var (
 		resp   *openai.ChatCompletion
@@ -57,7 +57,6 @@ func (c *ChatClient) Complete(
 	)
 
 	task.ToState(types.TaskStateWorking, "thinking...")
-	artifacts := make([]types.Artifact, 0)
 
 	for task.Status.State == types.TaskStateWorking {
 		if resp, err = c.OpenAI.Chat.Completions.New(ctx, params); err != nil {
@@ -66,22 +65,22 @@ func (c *ChatClient) Complete(
 		}
 
 		msg := resp.Choices[0].Message
-		artifacts = append(artifacts, types.Artifact{
-			Parts:    []types.Part{{Type: types.PartTypeText, Text: msg.Content}},
-			Index:    0,
-			Append:   utils.Ptr(true),
-			Metadata: map[string]any{"role": "assistant", "name": c.Model},
-		})
 
-		for _, tc := range msg.ToolCalls {
-			if err := c.handleToolCall(ctx, &params, task, tools, msg, tc); err != nil {
-				return err
-			}
+		if len(resp.Choices[0].Message.ToolCalls) == 0 {
+			task.Artifacts = append(task.Artifacts, types.Artifact{
+				Parts:    []types.Part{{Type: types.PartTypeText, Text: msg.Content}},
+				Index:    0,
+				Append:   utils.Ptr(true),
+				Metadata: map[string]any{"role": "agent", "name": c.Model},
+			})
 		}
 
-		for _, a := range artifacts {
-			a.LastChunk = utils.Ptr(true)
-			task.AddArtifact(a)
+		for _, tc := range msg.ToolCalls {
+			if err := c.handleToolCall(
+				ctx, &params, task, tools, msg, tc,
+			); err != nil {
+				return err
+			}
 		}
 
 		task.ToState(types.TaskStateCompleted, "completed")
@@ -98,7 +97,7 @@ func (c *ChatClient) Complete(
 func (c *ChatClient) Stream(
 	ctx context.Context,
 	messages []types.Message,
-	tools map[string]*types.MCPClient,
+	tools *map[string]*types.MCPClient,
 	onDelta func(string),
 ) (string, error) {
 	oaMsgs := convertMessages(messages)
@@ -140,12 +139,12 @@ func (client *ChatClient) handleToolCall(
 	ctx context.Context,
 	params *openai.ChatCompletionNewParams,
 	task *types.Task,
-	tools map[string]*types.MCPClient,
+	tools *map[string]*types.MCPClient,
 	msg openai.ChatCompletionMessage,
 	tc openai.ChatCompletionMessageToolCall,
 ) error {
 	log.Info("tool call", "tool", tc.Function.Name)
-	tool, ok := tools[tc.Function.Name]
+	tool, ok := (*tools)[tc.Function.Name]
 
 	if !ok {
 		task.ToState(types.TaskStateFailed, fmt.Sprintf("unknown tool called: %s", tc.Function.Name))
@@ -159,12 +158,26 @@ func (client *ChatClient) handleToolCall(
 		return fmt.Errorf("malformed tool args: %w", err)
 	}
 
-	if client.Execute == nil {
-		task.ToState(types.TaskStateFailed, "tool executor not configured")
-		return errors.New("tool executor not configured")
+	tool.Toolcall = &mcp.CallToolRequest{
+		Params: struct {
+			Name      string         `json:"name"`
+			Arguments map[string]any `json:"arguments,omitempty"`
+			Meta      *struct {
+				ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
+			} `json:"_meta,omitempty"`
+		}{
+			Name:      tc.Function.Name,
+			Arguments: args,
+		},
 	}
 
 	result, err := client.Execute(ctx, tool, args)
+
+	task.History = append(task.History, types.Message{
+		Role:     "agent",
+		Parts:    []types.Part{{Type: types.PartTypeText, Text: result}},
+		Metadata: map[string]any{"name": tool.Name},
+	})
 
 	if err != nil {
 		task.ToState(types.TaskStateFailed, err.Error())
@@ -200,10 +213,13 @@ func convertMessages(
 			}
 		}
 
-		if m.Role == "agent" {
-			out = append(out, openai.AssistantMessage(text))
-		} else {
+		switch m.Role {
+		case "system":
+			out = append(out, openai.SystemMessage(text))
+		case "user":
 			out = append(out, openai.UserMessage(text))
+		case "agent", "assistant":
+			out = append(out, openai.AssistantMessage(text))
 		}
 	}
 
@@ -211,16 +227,23 @@ func convertMessages(
 }
 
 func convertTools(
-	tools map[string]*types.MCPClient,
+	tools *map[string]*types.MCPClient,
 ) []openai.ChatCompletionToolParam {
-	out := make([]openai.ChatCompletionToolParam, 0, len(tools))
+	out := make([]openai.ChatCompletionToolParam, 0, len(*tools))
 
-	for _, t := range tools {
+	for _, t := range *tools {
+		// Create a proper OpenAI function parameters schema
+		schema := map[string]any{
+			"type":       t.Schema.Type,
+			"properties": t.Schema.Properties,
+			"required":   t.Schema.Required,
+		}
+
 		out = append(out, openai.ChatCompletionToolParam{
 			Function: openai.FunctionDefinitionParam{
-				Name:        t.Schema.Properties["name"].(string),
-				Description: openai.String(t.Schema.Properties["description"].(string)),
-				Parameters:  openai.FunctionParameters(t.Schema.Properties),
+				Name:        t.Name,
+				Description: openai.String(t.Description),
+				Parameters:  openai.FunctionParameters(schema),
 			},
 		})
 	}

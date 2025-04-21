@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 
+	"github.com/charmbracelet/log"
 	errors "github.com/theapemachine/a2a-go/pkg/errors"
 	"github.com/theapemachine/a2a-go/pkg/types"
 )
@@ -11,7 +12,11 @@ func (agent *Agent) SendTask(
 	ctx context.Context,
 	params types.Task,
 ) (types.Task, *errors.RpcError) {
-	agent.chatClient.Complete(ctx, &params, agent.card.Tools())
+	log.Info("task received", "agent", agent.card.Name, "task", params.ID)
+
+	tools := agent.card.Tools()
+	agent.chatClient.Complete(ctx, &params, &tools)
+
 	return params, nil
 }
 

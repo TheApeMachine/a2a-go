@@ -3,15 +3,14 @@ package types
 import (
 	"context"
 	"fmt"
-	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/theapemachine/a2a-go/pkg/errors"
-	"github.com/theapemachine/a2a-go/pkg/utils"
 )
 
 type IdentifiableTaskManager interface {
 	TaskManager
-	Card() AgentCard
+	Card() *AgentCard
 }
 
 // TaskManager is plugged into an A2AServer.  Each method should do its own
@@ -51,7 +50,9 @@ func (card *AgentCard) Tools() map[string]*MCPClient {
 	for _, skill := range card.Skills {
 		switch skill.ID {
 		case "development":
-			skillTools[skill.ID] = ToMCPTool(skill)
+			log.Info("skill assigned", "agent", card.Name, "skill", skill.Name)
+			tool := ToMCPTool(skill)
+			skillTools[tool.Name] = tool
 		}
 	}
 
@@ -82,96 +83,6 @@ type AgentSkill struct {
 	Examples    []string `json:"examples,omitempty"`
 	InputModes  []string `json:"inputModes,omitempty"`
 	OutputModes []string `json:"outputModes,omitempty"`
-}
-
-/*
-TaskState enumerates the mutually‑exclusive states a task may be in.  The
-zero value is "unknown" per the spec.
-*/
-type TaskState string
-
-const (
-	TaskStateSubmitted TaskState = "submitted"
-	TaskStateWorking   TaskState = "working"
-	TaskStateInputReq  TaskState = "input-required"
-	TaskStateCompleted TaskState = "completed"
-	TaskStateCanceled  TaskState = "canceled"
-	TaskStateFailed    TaskState = "failed"
-	TaskStateUnknown   TaskState = "unknown"
-)
-
-type Task struct {
-	ID        string         `json:"id"`
-	SessionID string         `json:"sessionId,omitempty"`
-	Status    TaskStatus     `json:"status"`
-	History   []Message      `json:"history,omitempty"`
-	Artifacts []Artifact     `json:"artifacts,omitempty"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
-}
-
-func (t *Task) AddMessage(role, name, text string) {
-	t.History = append(t.History, Message{
-		Role:  role,
-		Parts: []Part{{Type: PartTypeText, Text: text}},
-		Metadata: map[string]any{
-			"name": name,
-		},
-	})
-}
-
-func (t *Task) AddArtifact(artifact Artifact) {
-	t.Artifacts = append(t.Artifacts, artifact)
-}
-
-func (t *Task) ToState(state TaskState, message string) {
-	t.Status = TaskStatus{
-		State:     state,
-		Message:   &Message{Role: "agent", Parts: []Part{{Type: PartTypeText, Text: message}}},
-		Timestamp: utils.Ptr(time.Now()),
-	}
-}
-
-type TaskStatus struct {
-	State     TaskState  `json:"state"`
-	Message   *Message   `json:"message,omitempty"`
-	Timestamp *time.Time `json:"timestamp,omitempty"`
-}
-
-/*
-TaskStatusUpdateEvent is sent when the agent wishes to inform the client of
-a status transition.
-*/
-type TaskStatusUpdateEvent struct {
-	ID       string         `json:"id"`
-	Status   TaskStatus     `json:"status"`
-	Final    bool           `json:"final"`
-	Metadata map[string]any `json:"metadata,omitempty"`
-}
-
-/*
-TaskArtifactUpdateEvent is emitted when a new or updated artefact is
-available for a task.
-*/
-type TaskArtifactUpdateEvent struct {
-	ID       string         `json:"id"`
-	Artifact Artifact       `json:"artifact"`
-	Metadata map[string]any `json:"metadata,omitempty"`
-}
-
-type TaskGetParams struct {
-	ID string `json:"id"`
-}
-
-type TaskCancelParams struct {
-	ID string `json:"id"`
-}
-
-type TaskResubscribeParams struct {
-	ID string `json:"id"`
-}
-
-type TaskPushNotificationParams struct {
-	ID string `json:"id"`
 }
 
 type Artifact struct {

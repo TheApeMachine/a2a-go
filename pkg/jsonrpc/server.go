@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 
 	"github.com/theapemachine/a2a-go/pkg/errors"
@@ -106,7 +105,6 @@ func (srv *RPCServer) handle(ctx context.Context, req *RPCRequest) RPCResponse {
 
 	switch req.Method {
 	case "tasks/send":
-		log.Printf("tasks/send: %v", string(req.Params))
 		var params types.Task
 
 		if err := json.Unmarshal(req.Params, &params); err != nil {

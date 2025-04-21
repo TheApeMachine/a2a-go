@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/theapemachine/a2a-go/pkg/catalog"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
 	"github.com/theapemachine/a2a-go/pkg/prompts"
@@ -33,6 +34,7 @@ type A2AServer struct {
 	RootManager     *roots.Manager
 	rpc             *jsonrpc.RPCServer
 	broker          *sse.SSEBroker
+	mcp             *sse.MCPBroker
 }
 
 /*
@@ -55,8 +57,9 @@ routing frameworks (std net/http, gin, chi, …).
 func NewA2AServer(agent types.IdentifiableTaskManager) *A2AServer {
 	srv := &A2AServer{
 		app: fiber.New(fiber.Config{
-			AppName:      "A2A Server",
-			ServerHeader: "A2A-Server",
+			AppName:           "A2A Server",
+			ServerHeader:      "A2A-Server",
+			StreamRequestBody: true,
 		}),
 		agentRegistry:   catalog.NewRegistry(),
 		Agent:           agent,
@@ -66,6 +69,7 @@ func NewA2AServer(agent types.IdentifiableTaskManager) *A2AServer {
 		RootManager:     roots.NewManager(),
 		rpc:             jsonrpc.NewRPCServer(agent),
 		broker:          sse.NewSSEBroker(),
+		mcp:             sse.NewMCPBroker(),
 	}
 
 	srv.agentRegistry.AddAgent(agent)
@@ -73,6 +77,8 @@ func NewA2AServer(agent types.IdentifiableTaskManager) *A2AServer {
 }
 
 func (srv *A2AServer) Start() error {
+	srv.app.Use(logger.New())
+
 	srv.app.Get("/", func(ctx fiber.Ctx) error {
 		return ctx.Status(fiber.StatusOK).SendString("OK")
 	})
@@ -99,17 +105,6 @@ func (srv *A2AServer) Start() error {
 		return ctx.Status(fiber.StatusOK).JSON(agent.Card())
 	})
 
-	srv.app.Get("/events", func(ctx fiber.Ctx) error {
-		srv.broker.Subscribe(
-			&responseWriter{ctx: ctx},
-			&http.Request{
-				Method: ctx.Method(),
-				URL:    &url.URL{Path: ctx.Path()},
-			},
-		)
-		return nil
-	})
-
 	srv.app.Post("/rpc", func(ctx fiber.Ctx) error {
 		// Create a response writer adapter
 		w := &responseWriter{ctx: ctx}
@@ -131,7 +126,12 @@ func (srv *A2AServer) Start() error {
 		return nil
 	})
 
-	return srv.app.Listen(":3210", fiber.ListenConfig{
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3210"
+	}
+
+	return srv.app.Listen(":"+port, fiber.ListenConfig{
 		DisableStartupMessage: true,
 	})
 }
