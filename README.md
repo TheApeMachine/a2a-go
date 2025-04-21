@@ -2,6 +2,11 @@
 
 > _"Combine A2A and MCP to create advanced agentic systems!"_
 
+[![Go CI/CD](https://github.com/theapemachine/a2a-go/actions/workflows/main.yml/badge.svg)](https://github.com/theapemachine/a2a-go/actions/workflows/main.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/theapemachine/a2a-go)](https://goreportcard.com/report/github.com/theapemachine/a2a-go)
+[![GoDoc](https://godoc.org/github.com/theapemachine/a2a-go?status.svg)](https://godoc.org/github.com/theapemachine/a2a-go)
+[![License: UNLICENSE](https://img.shields.io/badge/License-UNLICENSE-green.svg)](https://opensource.org/licenses/MIT)
+
 ![A2A‑Go](a2a-go.png)
 
 **a2a‑go** is a reference Go implementation of the [**Agent‑to‑Agent (A2A)**
