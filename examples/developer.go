@@ -17,19 +17,39 @@ import (
 	"github.com/theapemachine/a2a-go/pkg/utils"
 )
 
-type DeveloperExample struct{}
+/*
+DeveloperExample is a naive implementation of a developer agent.
+It is used to demonstrate the capabilities of combining A2A with MCP.
 
+You need to have a running Docker daemon for this to work, as the agent will
+use a Docker container as a tool to have a working environment.
+*/
+type DeveloperExample struct {
+	devSkill types.AgentSkill
+	agent    *ai.Agent
+	client   *jsonrpc.RPCClient
+	task     types.Task
+}
+
+/*
+NewDeveloperExample creates a new DeveloperExample instance.
+*/
 func NewDeveloperExample() *DeveloperExample {
 	return &DeveloperExample{}
 }
 
-func (example *DeveloperExample) Run(interactive bool) error {
-	var (
-		v   = viper.GetViper()
-		err error
-	)
+/*
+Initialize the DeveloperExample instance, by setting up the agent,
+and any skills it needs.
 
-	devSkill := types.AgentSkill{
+Skills are defined in the A2A spec, and are used to describe the capabilities
+of the agent, which in turn will map to the tools it can use.
+
+To get a better understanding of how skills work, have a look at
+types/card.go, specifically the Tools() method of the AgentCard type.
+*/
+func (example *DeveloperExample) Initialize(v *viper.Viper) {
+	example.devSkill = types.AgentSkill{
 		ID:   v.GetString("skills.development.id"),
 		Name: v.GetString("skills.development.name"),
 		Description: utils.Ptr(
@@ -40,7 +60,7 @@ func (example *DeveloperExample) Run(interactive bool) error {
 		OutputModes: v.GetStringSlice("skills.development.output_modes"),
 	}
 
-	agent := ai.NewAgentFromCard(
+	example.agent = ai.NewAgentFromCard(
 		&types.AgentCard{
 			Name:    "developer",
 			Version: "0.0.1",
@@ -58,33 +78,77 @@ func (example *DeveloperExample) Run(interactive bool) error {
 				StateTransitionHistory: true,
 			},
 			Skills: []types.AgentSkill{
-				devSkill,
+				example.devSkill,
 			},
 		},
 	)
 
-	go func() {
-		srv := service.NewA2AServer(agent)
-		srv.Start()
-	}()
+	// Use the client to communicate with the agent. We are no longer
+	// calling methods on the agent directly, but rather through the
+	// client, which follows the A2A protocol.
+	example.client = jsonrpc.NewRPCClient("http://localhost:3210/rpc")
+}
 
-	client := jsonrpc.NewRPCClient("http://localhost:3210/rpc")
-
+func (example *DeveloperExample) Run(interactive bool) error {
 	var (
+		v      = viper.GetViper()
 		prompt string
 		task   types.Task
 	)
+
+	example.Initialize(v)
+
+	// Start the agent as a service, so it can be used by the client.
+	// We use a goroutine here to avoid blocking the main thread in
+	// the example, but a more likely scenario would be to start the
+	// service using the CLI serve method, in which case you would not
+	// do this, as you want it to be blocking. Have a look at the
+	// docker-compose.yml at the root of the repository for an example.
+	go func() {
+		srv := service.NewA2AServer(example.agent)
+		srv.Start()
+	}()
+
+	prompt = "Develop an echo server in Go, and run it to show it works."
 
 	if interactive {
 		huh.NewInput().
 			Title("Prompt?").
 			Value(&prompt).
 			Run()
-	} else {
-		prompt = "Develop an echo server in Go, and run it to show it works."
 	}
 
-	task = types.Task{
+	example.setTask(prompt)
+
+	return spinner.New().Action(func() {
+		example.processTask(example.client, &task)
+	}).Run()
+}
+
+func (example *DeveloperExample) processTask(
+	client *jsonrpc.RPCClient, task *types.Task,
+) {
+	var err error
+
+	for {
+		if err = client.Call(
+			context.Background(), "tasks/send", *task, task,
+		); err != nil {
+			log.Error("failed to send task", "error", err)
+		}
+
+		fmt.Println(task.String())
+
+		if example.isTaskComplete(task) {
+			return
+		}
+	}
+}
+
+func (example *DeveloperExample) setTask(prompt string) {
+	v := viper.GetViper()
+
+	example.task = types.Task{
 		ID:        uuid.NewString(),
 		SessionID: uuid.NewString(),
 		History: []types.Message{
@@ -108,34 +172,34 @@ func (example *DeveloperExample) Run(interactive bool) error {
 			},
 		},
 	}
+}
 
-	return spinner.New().Action(func() {
-		for {
-			if err = client.Call(
-				context.Background(), "tasks/send", task, &task,
-			); err != nil {
-				log.Error("failed to send task", "error", err)
-			}
+func (example *DeveloperExample) isTaskComplete(task *types.Task) bool {
+	return example.checkHistory(task) || example.checkArtifacts(task)
+}
 
-			fmt.Println(task.String())
-
-			for _, message := range task.History {
-				if message.Role == "assistant" {
-					for _, part := range message.Parts {
-						if strings.Contains(strings.ToLower(part.Text), "task complete") {
-							return
-						}
-					}
-				}
-			}
-
-			for _, artifact := range task.Artifacts {
-				for _, part := range artifact.Parts {
-					if strings.Contains(strings.ToLower(part.Text), "task complete") {
-						return
-					}
+func (example *DeveloperExample) checkHistory(task *types.Task) bool {
+	for _, message := range task.History {
+		if message.Role == "assistant" {
+			for _, part := range message.Parts {
+				if strings.Contains(strings.ToLower(part.Text), "task complete") {
+					return true
 				}
 			}
 		}
-	}).Run()
+	}
+
+	return false
+}
+
+func (example *DeveloperExample) checkArtifacts(task *types.Task) bool {
+	for _, artifact := range task.Artifacts {
+		for _, part := range artifact.Parts {
+			if strings.Contains(strings.ToLower(part.Text), "task complete") {
+				return true
+			}
+		}
+	}
+
+	return false
 }

@@ -30,6 +30,8 @@ agent:
       You are able to develop code, and interact with other agents.
       Each time you receive a task, you will be placed in an iteration loop.
       To exit the loop, and mark you task as complete, just respond with "task complete".
+    skills:
+      - development
 
 mcp:
   embedded_agent: false
@@ -39,6 +41,9 @@ skills:
     id: "development"
     name: "development"
     description: "Development of code."
+    tags:
+      - "development"
+      - "code"
     examples:
       - "Write a program to analyze the provided data."
       - "Develop a web-service which interfaces with MongoDB."
@@ -50,6 +55,9 @@ skills:
     id: "penetration-testing"
     name: "penetration-testing"
     description: "Evaluate the security of code and services."
+    tags:
+      - "penetration-testing"
+      - "security"
     examples:
       - "Test the security of the provided server."
       - "Identify the vulnerabilities in the provided code."
