@@ -1,11 +1,5 @@
 package stores
 
-// A very small, concurrency‑safe in‑memory implementation of a TaskStore that
-// is good enough for demos and unit tests.  It intentionally keeps the surface
-// minimal – just what is required by the built‑in orchestration tool today.  A
-// production‑grade implementation would persist to an external database and
-// provide richer querying / filtering facilities.
-
 import (
 	"sync"
 	"time"

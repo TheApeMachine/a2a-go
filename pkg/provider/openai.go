@@ -4,62 +4,62 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/openai/openai-go"
+	"github.com/spf13/viper"
 	"github.com/theapemachine/a2a-go/pkg/types"
 	"github.com/theapemachine/a2a-go/pkg/utils"
 )
 
-// DefaultModel is used when the caller does not specify a model explicitly.
-const DefaultModel = openai.ChatModelGPT4oMini
-
-// ToolExecutor abstracts the execution of an MCP tool.  Users should implement
-// this to wire in their own business logic / data sources.
-type ToolExecutor func(
-	ctx context.Context, tool *types.MCPClient, args map[string]any,
-) (string, error)
-
-// ChatClient wraps an *openai.Client and provides convenience methods for
-// executing non‑streaming or streaming chat completions while automatically
-// converting between A2A objects, MCP tools, and the OpenAI function‑calling
-// interface.
-type ChatClient struct {
-	OpenAI  openai.Client
+/*
+OpenAIProvider is a provider for the OpenAI API.
+*/
+type OpenAIProvider struct {
+	api     openai.Client
 	Model   string
 	Execute ToolExecutor
 }
 
-// NewChatClient returns a new ChatClient with sensible defaults.
-func NewChatClient(executor ToolExecutor) *ChatClient {
-	return &ChatClient{
-		OpenAI:  openai.NewClient(),
-		Model:   DefaultModel,
+/*
+NewOpenAIProvider returns a new OpenAIProvider with sensible defaults.
+*/
+func NewOpenAIProvider(executor ToolExecutor) *OpenAIProvider {
+	v := viper.GetViper()
+
+	return &OpenAIProvider{
+		api:     openai.NewClient(),
+		Model:   v.GetString("provider.openai.model"),
 		Execute: executor,
 	}
 }
 
-// Complete runs a synchronous (non‑streaming) chat completion for the given A2A
-// message history.  If the assistant returns a tool call it is executed via the
-// provided ToolExecutor and the conversation auto‑continues until the final
-// assistant reply no longer contains tool calls.
-func (c *ChatClient) Complete(
-	ctx context.Context, task *types.Task, tools *map[string]*types.MCPClient,
+/*
+Complete runs a synchronous (non‑streaming) chat completion for the given A2A
+message history.  If the assistant returns a tool call it is executed via the
+provided ToolExecutor and the conversation auto‑continues until the final
+assistant reply no longer contains tool calls.
+*/
+func (prvdr *OpenAIProvider) Complete(
+	ctx context.Context,
+	task *types.Task,
+	tools *map[string]*types.MCPClient,
 ) (err error) {
 	var (
 		resp   *openai.ChatCompletion
 		params = openai.ChatCompletionNewParams{
-			Model:    openai.ChatModel(c.modelName()),
-			Messages: convertMessages(task.History),
-			Tools:    convertTools(tools),
+			Model:    openai.ChatModel(prvdr.Model),
+			Messages: prvdr.convertMessages(task.History),
+			Tools:    prvdr.convertTools(tools),
 		}
 	)
 
 	task.ToState(types.TaskStateWorking, "thinking...")
 
 	for task.Status.State == types.TaskStateWorking {
-		if resp, err = c.OpenAI.Chat.Completions.New(ctx, params); err != nil {
+		if resp, err = prvdr.api.Chat.Completions.New(ctx, params); err != nil {
 			task.ToState(types.TaskStateFailed, err.Error())
 			return err
 		}
@@ -71,12 +71,12 @@ func (c *ChatClient) Complete(
 				Parts:    []types.Part{{Type: types.PartTypeText, Text: msg.Content}},
 				Index:    0,
 				Append:   utils.Ptr(true),
-				Metadata: map[string]any{"role": "agent", "name": c.Model},
+				Metadata: map[string]any{"role": "agent", "name": prvdr.Model},
 			})
 		}
 
 		for _, tc := range msg.ToolCalls {
-			if err := c.handleToolCall(
+			if err := prvdr.handleToolCall(
 				ctx, &params, task, tools, msg, tc,
 			); err != nil {
 				return err
@@ -94,24 +94,24 @@ func (c *ChatClient) Complete(
 // returned.  Tool‑calling is handled after the first assistant message is fully
 // streamed (OpenAI currently does not stream function call arguments token by
 // token but sends them in a single delta once finished).
-func (c *ChatClient) Stream(
+func (prvdr *OpenAIProvider) Stream(
 	ctx context.Context,
 	messages []types.Message,
 	tools *map[string]*types.MCPClient,
 	onDelta func(string),
 ) (string, error) {
-	oaMsgs := convertMessages(messages)
-	oaTools := convertTools(tools)
+	oaMsgs := prvdr.convertMessages(messages)
+	oaTools := prvdr.convertTools(tools)
 
 	params := openai.ChatCompletionNewParams{
-		Model:    openai.ChatModel(c.modelName()),
+		Model:    openai.ChatModel(prvdr.Model),
 		Messages: oaMsgs,
 		Tools:    oaTools,
 	}
 
 	var finalContent string
 
-	stream := c.OpenAI.Chat.Completions.NewStreaming(ctx, params)
+	stream := prvdr.api.Chat.Completions.NewStreaming(ctx, params)
 
 	for stream.Next() {
 		evt := stream.Current()
@@ -135,7 +135,72 @@ func (c *ChatClient) Stream(
 	return finalContent, nil
 }
 
-func (client *ChatClient) handleToolCall(
+func (prvdr *OpenAIProvider) GenerateImage(
+	ctx context.Context, prompt string,
+) (string, error) {
+	image, err := prvdr.api.Images.Generate(ctx, openai.ImageGenerateParams{
+		Prompt:         prompt,
+		Model:          openai.ImageModelDallE3,
+		ResponseFormat: openai.ImageGenerateParamsResponseFormatB64JSON,
+		N:              openai.Int(1),
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	return image.Data[0].URL, nil
+}
+
+func (prvdr *OpenAIProvider) FineTune(
+	ctx context.Context,
+	fileID string,
+) {
+	fineTune, err := prvdr.api.FineTuning.Jobs.New(ctx, openai.FineTuningJobNewParams{
+		Model:        openai.FineTuningJobNewParamsModelGPT4oMini,
+		TrainingFile: fileID,
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	events := make(map[string]openai.FineTuningJobEvent)
+
+	for fineTune.Status == "running" || fineTune.Status == "queued" || fineTune.Status == "validating_files" {
+		fineTune, err = prvdr.api.FineTuning.Jobs.Get(ctx, fineTune.ID)
+
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println(fineTune.Status)
+
+		page, err := prvdr.api.FineTuning.Jobs.ListEvents(ctx, fineTune.ID, openai.FineTuningJobListEventsParams{
+			Limit: openai.Int(100),
+		})
+
+		if err != nil {
+			panic(err)
+		}
+
+		for i := len(page.Data) - 1; i >= 0; i-- {
+			event := page.Data[i]
+
+			if _, exists := events[event.ID]; exists {
+				continue
+			}
+
+			events[event.ID] = event
+			timestamp := time.Unix(int64(event.CreatedAt), 0)
+			fmt.Printf("- %s: %s\n", timestamp.Format(time.Kitchen), event.Message)
+		}
+
+		time.Sleep(5 * time.Second)
+	}
+}
+
+func (prvdr *OpenAIProvider) handleToolCall(
 	ctx context.Context,
 	params *openai.ChatCompletionNewParams,
 	task *types.Task,
@@ -171,7 +236,7 @@ func (client *ChatClient) handleToolCall(
 		},
 	}
 
-	result, err := client.Execute(ctx, tool, args)
+	result, err := prvdr.Execute(ctx, tool, args)
 
 	task.History = append(task.History, types.Message{
 		Role:     "agent",
@@ -190,15 +255,7 @@ func (client *ChatClient) handleToolCall(
 	return nil
 }
 
-func (c *ChatClient) modelName() string {
-	if c.Model == "" {
-		return DefaultModel
-	}
-
-	return c.Model
-}
-
-func convertMessages(
+func (prvdr *OpenAIProvider) convertMessages(
 	mm []types.Message,
 ) []openai.ChatCompletionMessageParamUnion {
 	out := make([]openai.ChatCompletionMessageParamUnion, 0, len(mm))
@@ -216,7 +273,7 @@ func convertMessages(
 		switch m.Role {
 		case "system":
 			out = append(out, openai.SystemMessage(text))
-		case "user":
+		case "user", "developer":
 			out = append(out, openai.UserMessage(text))
 		case "agent", "assistant":
 			out = append(out, openai.AssistantMessage(text))
@@ -226,7 +283,7 @@ func convertMessages(
 	return out
 }
 
-func convertTools(
+func (prvdr *OpenAIProvider) convertTools(
 	tools *map[string]*types.MCPClient,
 ) []openai.ChatCompletionToolParam {
 	out := make([]openai.ChatCompletionToolParam, 0, len(*tools))
@@ -249,4 +306,60 @@ func convertTools(
 	}
 
 	return out
+}
+
+type OpenAIEmbedder struct {
+	api   openai.Client
+	Model string
+}
+
+func NewOpenAIEmbedder() *OpenAIEmbedder {
+	v := viper.GetViper()
+
+	return &OpenAIEmbedder{
+		api:   openai.NewClient(),
+		Model: v.GetString("provider.openai.embed"),
+	}
+}
+
+func (prvdr *OpenAIEmbedder) Embed(
+	ctx context.Context, text string,
+) ([]float32, error) {
+	resp, err := prvdr.api.Embeddings.New(ctx, openai.EmbeddingNewParams{
+		Model: openai.EmbeddingModel(prvdr.Model),
+		Input: openai.EmbeddingNewParamsInputUnion{OfArrayOfStrings: []string{text}},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	src := resp.Data[0].Embedding
+	dst := make([]float32, len(src))
+	for i, v := range src {
+		dst[i] = float32(v)
+	}
+	return dst, nil
+}
+
+func (prvdr *OpenAIEmbedder) EmbedBatch(
+	ctx context.Context, texts []string,
+) ([][]float32, error) {
+	resp, err := prvdr.api.Embeddings.New(ctx, openai.EmbeddingNewParams{
+		Model: openai.EmbeddingModel(prvdr.Model),
+		Input: openai.EmbeddingNewParamsInputUnion{OfArrayOfStrings: texts},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([][]float32, len(resp.Data))
+	for i, d := range resp.Data {
+		src := d.Embedding
+		dst := make([]float32, len(src))
+		for j, v := range src {
+			dst[j] = float32(v)
+		}
+		out[i] = dst
+	}
+	return out, nil
 }

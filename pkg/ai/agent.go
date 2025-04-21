@@ -21,7 +21,7 @@ behaviour is easily customisable by swapping the underlying *http.Client* or
 adding an AuthHeader callback.
 */
 type Agent struct {
-	chatClient *provider.ChatClient
+	chatClient *provider.OpenAIProvider
 	card       *types.AgentCard
 	rpc        *jsonrpc.RPCClient
 	AuthHeader func(*http.Request)
@@ -38,7 +38,7 @@ func NewAgentFromCard(card *types.AgentCard) *Agent {
 		rpc:  jsonrpc.NewRPCClient(card.URL),
 	}
 
-	agent.chatClient = provider.NewChatClient(agent.execute)
+	agent.chatClient = provider.NewOpenAIProvider(agent.execute)
 	return agent
 }
 

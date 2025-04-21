@@ -13,3 +13,4 @@ TOOLS.txt
 .mod/cache/download/golang.org/toolchain/@v/v0.0.1-go1.24.2.darwin-arm64.lock
 a2a-go
 specs/MCPAddons.txt
+.vscode/settings.json

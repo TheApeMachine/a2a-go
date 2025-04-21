@@ -1,8 +1,3 @@
-// Package neo4j provides a *minimal* HTTP driver for Neo4j’s transactional
-// Cypher endpoint.  It avoids pulling the official bolt driver so the project
-// can be built without CGO and without internet access.  Only the 2‑3 calls
-// required by the memory façade are implemented.
-
 package neo4j
 
 import (
@@ -15,7 +10,7 @@ import (
 )
 
 type Client struct {
-	Endpoint   string // e.g. http://localhost:7474
+	Endpoint   string
 	Username   string
 	Password   string
 	httpClient *http.Client
@@ -32,31 +27,56 @@ func New(endpoint, user, pass string) *Client {
 
 // ExecCypher sends a single Cypher statement with optional parameters and
 // returns the raw Neo4j JSON response.
-func (c *Client) ExecCypher(ctx context.Context, cypher string, params map[string]any) (map[string]any, error) {
+func (client *Client) ExecCypher(
+	ctx context.Context, cypher string, params map[string]any,
+) (map[string]any, error) {
 	payload := map[string]any{
 		"statements": []map[string]any{{
 			"statement":  cypher,
 			"parameters": params,
 		}},
 	}
-	b, _ := json.Marshal(payload)
 
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.Endpoint+"/db/neo4j/tx/commit", bytes.NewReader(b))
-	req.Header.Set("Content-Type", "application/json")
-	if c.Username != "" {
-		req.SetBasicAuth(c.Username, c.Password)
-	}
+	b, err := json.Marshal(payload)
 
-	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		client.Endpoint+"/db/neo4j/tx/commit",
+		bytes.NewReader(b),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	if client.Username != "" {
+		req.SetBasicAuth(client.Username, client.Password)
+	}
+
+	resp, err := client.httpClient.Do(req)
+
+	if err != nil {
+		return nil, err
+	}
+
 	defer resp.Body.Close()
+
 	if resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("neo4j: status %s", resp.Status)
 	}
 
 	var out map[string]any
-	_ = json.NewDecoder(resp.Body).Decode(&out)
+
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+
 	return out, nil
 }

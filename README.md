@@ -16,7 +16,6 @@
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_a2a-go&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_a2a-go)
 [![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=TheApeMachine_a2a-go&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=TheApeMachine_a2a-go)
 
-
 ![A2A‑Go](a2a-go.png)
 
 **a2a‑go** is a reference Go implementation of the [**Agent‑to‑Agent (A2A)**

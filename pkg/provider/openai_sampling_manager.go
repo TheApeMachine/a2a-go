@@ -14,14 +14,14 @@ import (
 var _ sampling.Manager = (*OpenAISamplingManager)(nil)
 
 type OpenAISamplingManager struct {
-	chat *ChatClient
+	chat *OpenAIProvider
 }
 
 // NewOpenAISamplingManager returns a manager configured with the default
 // ChatClient.  OPENAI_API_KEY must be present in the environment (the official
 // openai‑go client reads it automatically) otherwise calls will error.
 func NewOpenAISamplingManager(exec ToolExecutor) *OpenAISamplingManager {
-	oc := NewChatClient(exec)
+	oc := NewOpenAIProvider(exec)
 	// optional: allow override via env var OPENAI_MODEL
 	if m := os.Getenv("OPENAI_MODEL"); m != "" {
 		oc.Model = m
