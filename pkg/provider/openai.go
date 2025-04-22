@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/theapemachine/a2a-go/pkg/types"
 	"github.com/theapemachine/a2a-go/pkg/utils"
+	"github.com/ebitengine/oto/v3"
 )
 
 /*
@@ -152,6 +154,64 @@ func (prvdr *OpenAIProvider) GenerateImage(
 	}
 
 	return image.Data[0].URL, nil
+}
+
+func (prvdr *OpenAIProvider) AudioTranscript(
+	ctx context.Context,
+	audio []byte,
+) (string, error) {
+	transcription, err := prvdr.api.Audio.Transcriptions.New(
+		ctx, openai.AudioTranscriptionNewParams{
+			Model: openai.AudioModelWhisper1,
+			File:  bytes.NewReader(audio),
+		},
+	)
+
+	if err != nil {
+		return "", err
+	}
+
+	return transcription.Text, nil
+}
+
+func (prvdr *OpenAIProvider) TTS(
+	ctx context.Context,
+	text string,
+) (err error) {
+	res, err := prvdr.api.Audio.Speech.New(ctx, openai.AudioSpeechNewParams{
+		Model:          openai.SpeechModelTTS1,
+		Input:          text,
+		ResponseFormat: openai.AudioSpeechNewParamsResponseFormatPCM,
+		Voice:          openai.AudioSpeechNewParamsVoiceAlloy,
+	})
+
+	defer res.Body.Close()
+
+	if err != nil {
+		panic(err)
+	}
+
+	op := &oto.NewContextOptions{}
+	op.SampleRate = 24000
+	op.ChannelCount = 1
+	op.Format = oto.FormatSignedInt16LE
+
+	otoCtx, readyChan, err := oto.NewContext(op)
+
+	if err != nil {
+		panic("oto.NewContext failed: " + err.Error())
+	}
+
+	<-readyChan
+
+	player := otoCtx.NewPlayer(res.Body)
+	player.Play()
+
+	for player.IsPlaying() {
+		time.Sleep(time.Millisecond)
+	}
+
+	return player.Close()
 }
 
 func (prvdr *OpenAIProvider) FineTune(

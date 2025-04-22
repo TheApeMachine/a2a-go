@@ -35,14 +35,25 @@ interoperability with the [**Model Context Protocol (MCP)**](https://modelcontex
   - [ ] _Stream Task_ to stream the task results 🔜
   - [ ] _Set Push Notification_ to configure push notifications for a task 🔜
   - [ ] _Get Push Notification_ to retrieve the push notification configuration for a task 🔜
+  - [x] _Structured Outputs_ to return structured data from an agent
+  - [x] _Fine‑tuning_ to fine‑tune an agent on a dataset
+  - [x] _Image Generation_ to generate images with an agent
+  - [x] _Audio Transcription_ to transcribe audio
+  - [x] _Text‑to‑Speech_ to convert text to speech
 
 - [ ] **Model Context Protocol (MCP)** interoperability
 
-  - [x] _Tool Calling_ to call tools and receive the results 🔜
+  - [x] _Tool Calling_ to call tools and receive the results
   - [ ] _List Prompts_ to retrieve a list of prompts from an agent 🔜
   - [ ] _Get Prompt_ to retrieve a prompt by ID 🔜
   - [ ] _Set Prompt_ to create or update a prompt 🔜
   - [ ] _Delete Prompt_ to delete a prompt by ID 🔜
+  - [ ] _List Resources_ to retrieve a list of resources from an agent 🔜
+  - [ ] _Get Resource_ to retrieve a resource by ID 🔜
+  - [ ] _Set Resource_ to create or update a resource 🔜
+  - [ ] _Delete Resource_ to delete a resource by ID 🔜
+  - [ ] _Sampling_ to sample a task from an agent 🔜
+  - [ ] _Roots_ to get the root task for a task 🔜
 
 - [ ] **Built‑in tools**
 
