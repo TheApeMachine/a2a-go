@@ -15,8 +15,8 @@ type ToolExecutor func(
 ) (string, error)
 
 type Interface interface {
-	Complete(ctx context.Context, task *types.Task, tools *map[string]*types.MCPClient) (err error)
-	Stream(ctx context.Context, messages []types.Message, tools *map[string]*types.MCPClient, onDelta func(string)) (string, error)
-	Embed(ctx context.Context, text string) ([]float32, error)
-	EmbedBatch(ctx context.Context, texts []string) ([][]float32, error)
+	Complete(context.Context, *types.Task, *map[string]*types.MCPClient) error
+	Stream(context.Context, *types.Task, *map[string]*types.MCPClient, func(string)) error
+	Embed(context.Context, string) ([]float32, error)
+	EmbedBatch(context.Context, []string) ([][]float32, error)
 }

@@ -1,10 +1,5 @@
 package sse
 
-// A minimal Server‑Sent Events (SSE) helper to stream TaskStatusUpdateEvent and
-// TaskArtifactUpdateEvent objects to connected HTTP clients.  This is **not** a
-// general‑purpose pub/sub implementation – just enough for the reference
-// server anticipated by the A2A spec.
-
 import (
 	"encoding/json"
 	"net/http"
@@ -12,10 +7,12 @@ import (
 	"time"
 )
 
-// SSEBroker maintains a list of subscribers and broadcasts JSON‑encoded events
-// to them.  Each event is sent as a single‑line SSE message of the form:
-//
-//	data: {json}\n\n
+/*
+SSEBroker maintains a list of subscribers and broadcasts JSON‑encoded events
+to them.  Each event is sent as a single‑line SSE message of the form:
+
+data: {json}\n\n
+*/
 type SSEBroker struct {
 	mu       sync.RWMutex
 	clients  map[chan []byte]struct{}
@@ -23,13 +20,18 @@ type SSEBroker struct {
 	testMode bool
 }
 
+/*
+NewSSEBroker creates a new SSEBroker.
+*/
 func NewSSEBroker() *SSEBroker {
 	return &SSEBroker{
 		clients: make(map[chan []byte]struct{}),
 	}
 }
 
-// NewTestSSEBroker creates a broker with a shorter ticker interval for testing
+/*
+NewTestSSEBroker creates a broker with a shorter ticker interval for testing
+*/
 func NewTestSSEBroker() *SSEBroker {
 	return &SSEBroker{
 		clients:  make(map[chan []byte]struct{}),
@@ -37,12 +39,15 @@ func NewTestSSEBroker() *SSEBroker {
 	}
 }
 
-// Subscribe upgrades the HTTP connection to an SSE stream and blocks until the
-// client disconnects.  Use from an HTTP handler:
-//
-//	broker.Subscribe(w, r)
-func (b *SSEBroker) Subscribe(w http.ResponseWriter, r *http.Request) {
+/*
+Subscribe upgrades the HTTP connection to an SSE stream and blocks until the
+client disconnects.  Use from an HTTP handler:
+
+broker.Subscribe(w, r)
+*/
+func (broker *SSEBroker) Subscribe(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
+
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
@@ -53,27 +58,31 @@ func (b *SSEBroker) Subscribe(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 
 	ch := make(chan []byte, 8)
-	b.mu.Lock()
-	if b.closed {
-		b.mu.Unlock()
+	broker.mu.Lock()
+
+	if broker.closed {
+		broker.mu.Unlock()
 		http.Error(w, "broker closed", http.StatusGone)
 		return
 	}
-	b.clients[ch] = struct{}{}
-	b.mu.Unlock()
+
+	broker.clients[ch] = struct{}{}
+	broker.mu.Unlock()
 
 	// heartbeat ticker to keep connection alive in the presence of proxies.
 	tickerInterval := 25 * time.Second
-	if b.testMode {
+
+	if broker.testMode {
 		tickerInterval = 100 * time.Millisecond
 	}
+
 	ticker := time.NewTicker(tickerInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-r.Context().Done():
-			b.remove(ch)
+			broker.remove(ch)
 			return
 		case msg := <-ch:
 			_, _ = w.Write([]byte("data: "))
@@ -88,48 +97,64 @@ func (b *SSEBroker) Subscribe(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Broadcast marshals v to JSON and sends it to all connected clients.
-func (b *SSEBroker) Broadcast(v any) error {
+/*
+Broadcast marshals v to JSON and sends it to all connected clients.
+*/
+func (broker *SSEBroker) Broadcast(v any) error {
 	msg, err := json.Marshal(v)
+
 	if err != nil {
 		return err
 	}
 
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-	if b.closed {
+	broker.mu.RLock()
+	defer broker.mu.RUnlock()
+
+	if broker.closed {
 		return nil
 	}
-	for ch := range b.clients {
+
+	for ch := range broker.clients {
 		select {
 		case ch <- msg:
 		default:
 			// slow client – drop message to avoid blocking.
 		}
 	}
+
 	return nil
 }
 
-// Close disconnects all clients and prevents further subscriptions.
-func (b *SSEBroker) Close() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.closed {
+/*
+Close disconnects all clients and prevents further subscriptions.
+*/
+func (broker *SSEBroker) Close() {
+	broker.mu.Lock()
+	defer broker.mu.Unlock()
+
+	if broker.closed {
 		return
 	}
-	b.closed = true
-	for ch := range b.clients {
+
+	broker.closed = true
+
+	for ch := range broker.clients {
 		close(ch)
 	}
-	// clear map
-	b.clients = map[chan []byte]struct{}{}
+
+	broker.clients = map[chan []byte]struct{}{}
 }
 
-func (b *SSEBroker) remove(ch chan []byte) {
-	b.mu.Lock()
-	if _, ok := b.clients[ch]; ok {
-		delete(b.clients, ch)
+/*
+remove removes a client from the broker.
+*/
+func (broker *SSEBroker) remove(ch chan []byte) {
+	broker.mu.Lock()
+
+	if _, ok := broker.clients[ch]; ok {
+		delete(broker.clients, ch)
 		close(ch)
 	}
-	b.mu.Unlock()
+
+	broker.mu.Unlock()
 }

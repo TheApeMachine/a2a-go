@@ -72,7 +72,7 @@ func NewA2AServer(agent types.IdentifiableTaskManager) *A2AServer {
 		mcp:             sse.NewMCPBroker(),
 	}
 
-	srv.agentRegistry.AddAgent(agent)
+	srv.agentRegistry.AddAgent(*agent.Card())
 	return srv
 }
 
@@ -96,13 +96,13 @@ func (srv *A2AServer) Start() error {
 
 	srv.app.Post("/agent/:id", func(ctx fiber.Ctx) error {
 		registry := catalog.NewRegistry()
-		agent := registry.GetAgent(ctx.Params("id"))
+		agentCard := registry.GetAgent(ctx.Params("id"))
 
-		if agent == nil {
+		if agentCard == nil {
 			return ctx.Status(fiber.StatusNotFound).SendString("Agent not found")
 		}
 
-		return ctx.Status(fiber.StatusOK).JSON(agent.Card())
+		return ctx.Status(fiber.StatusOK).JSON(agentCard)
 	})
 
 	srv.app.Post("/rpc", func(ctx fiber.Ctx) error {

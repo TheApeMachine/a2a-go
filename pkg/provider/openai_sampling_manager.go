@@ -81,10 +81,16 @@ func (o *OpenAISamplingManager) StreamMessage(
 ) (<-chan *sampling.SamplingResult, error) {
 	ch := make(chan *sampling.SamplingResult)
 
-	msgs := convertSamplingContext(opts.Context)
+	task := &types.Task{History: convertSamplingContext(opts.Context)}
 
 	if content != "" {
-		msgs = append([]types.Message{{Role: "user", Parts: []types.Part{{Type: types.PartTypeText, Text: content}}}}, msgs...)
+		task.History = append(task.History, types.Message{
+			Role: "user",
+			Parts: []types.Part{{
+				Type: types.PartTypeText,
+				Text: content,
+			}},
+		})
 	}
 
 	go func() {
@@ -92,9 +98,14 @@ func (o *OpenAISamplingManager) StreamMessage(
 
 		start := time.Now()
 
-		_, err := o.chat.Stream(ctx, msgs, nil, func(delta string) {
+		err := o.chat.Stream(ctx, task, nil, func(task *types.Task) {
 			sr := &sampling.SamplingResult{
-				Message:  sampling.Message{ID: uuid.NewString(), Role: "assistant", Content: delta, CreatedAt: time.Now()},
+				Message: sampling.Message{
+					ID:        uuid.NewString(),
+					Role:      "assistant",
+					Content:   task.History[len(task.History)-1].Parts[len(task.History[len(task.History)-1].Parts)-1].Text,
+					CreatedAt: time.Now(),
+				},
 				Duration: time.Since(start).Seconds(),
 			}
 			ch <- sr

@@ -19,7 +19,7 @@ type TaskManager interface {
 	SendTask(context.Context, Task) (Task, *errors.RpcError)
 	GetTask(context.Context, string, int) (Task, *errors.RpcError)
 	CancelTask(context.Context, string) (Task, *errors.RpcError)
-	StreamTask(context.Context, Task) (<-chan any, *errors.RpcError)
+	StreamTask(context.Context, Task) (Task, *errors.RpcError)
 	ResubscribeTask(context.Context, string, int) (<-chan any, *errors.RpcError)
 	SetPushNotification(context.Context, TaskPushNotificationConfig) (TaskPushNotificationConfig, *errors.RpcError)
 	GetPushNotification(context.Context, string) (TaskPushNotificationConfig, *errors.RpcError)

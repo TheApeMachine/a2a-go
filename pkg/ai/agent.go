@@ -1,16 +1,14 @@
 package ai
 
 import (
-	"bufio"
-	"context"
-	"encoding/json"
 	"net/http"
-	"strings"
 
+	"github.com/charmbracelet/log"
+	"github.com/gofiber/fiber/v3/client"
+	"github.com/spf13/viper"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
 	"github.com/theapemachine/a2a-go/pkg/provider"
 	"github.com/theapemachine/a2a-go/pkg/types"
-	"github.com/theapemachine/a2a-go/pkg/utils"
 )
 
 /*
@@ -26,6 +24,7 @@ type Agent struct {
 	rpc        *jsonrpc.RPCClient
 	AuthHeader func(*http.Request)
 	Logger     func(string, ...any)
+	notifier   func(*types.Task)
 }
 
 /*
@@ -33,65 +32,40 @@ NewAgentFromCard constructs an Agent from an already‑fetched AgentCard.
 No network requests are performed.
 */
 func NewAgentFromCard(card *types.AgentCard) *Agent {
+	v := viper.GetViper()
+
 	agent := &Agent{
 		card: card,
 		rpc:  jsonrpc.NewRPCClient(card.URL),
 	}
 
 	agent.chatClient = provider.NewOpenAIProvider(agent.execute)
+
+	resp, err := client.Post(
+		v.GetString("catalogServer.host"),
+		client.Config{
+			Header: map[string]string{
+				"Content-Type": "application/json",
+			},
+			Body: card,
+		},
+	)
+
+	if err != nil {
+		log.Warn("failed to register agent with catalog", "error", err)
+		return agent
+	}
+
+	if resp.StatusCode() != http.StatusCreated {
+		log.Warn("failed to register agent with catalog", "status", resp.StatusCode())
+		return agent
+	}
+
+	log.Info("registered agent with catalog")
+
 	return agent
 }
 
-/*
-SendStream sends tasks/sendSubscribe and dispatches streaming events to the
-provided callbacks.  If the agent reports final=true the function returns
-nil.  Note: this implementation performs a best‑effort SSE parse; for
-production‑grade robustness applications may want a more sophisticated
-parser with reconnection logic.
-*/
-func (agent *Agent) SendStream(
-	ctx context.Context,
-	params types.Task,
-	onStatus func(types.TaskStatusUpdateEvent),
-	onArtifact func(types.TaskArtifactUpdateEvent),
-) error {
-	agent.rpc.Call(ctx, "tasks/sendSubscribe", params, &params)
-	reader := bufio.NewReader(params.Reader())
-
-	for {
-		data, err := utils.ReadSSE(reader)
-
-		if err != nil {
-			return err
-		}
-
-		if data == "" {
-			continue
-		}
-
-		// Determine event type by probing presence of fields.
-		if strings.Contains(data, "\"artifact\"") {
-			var evt types.TaskArtifactUpdateEvent
-
-			if err := json.Unmarshal(
-				[]byte(data), &evt,
-			); err == nil && onArtifact != nil {
-				onArtifact(evt)
-			}
-
-			continue
-		}
-
-		var evt types.TaskStatusUpdateEvent
-
-		if err := json.Unmarshal(
-			[]byte(data), &evt,
-		); err == nil && onStatus != nil {
-			onStatus(evt)
-
-			if evt.Final {
-				return nil
-			}
-		}
-	}
+func (a *Agent) SetNotifier(notifier func(*types.Task)) {
+	a.notifier = notifier
 }

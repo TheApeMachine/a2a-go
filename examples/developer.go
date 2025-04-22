@@ -93,7 +93,6 @@ func (example *DeveloperExample) Run(interactive bool) error {
 	var (
 		v      = viper.GetViper()
 		prompt string
-		task   types.Task
 	)
 
 	example.Initialize(v)
@@ -120,26 +119,32 @@ func (example *DeveloperExample) Run(interactive bool) error {
 
 	example.setTask(prompt)
 
+	example.agent.SetNotifier(func(task *types.Task) {
+		fmt.Print(
+			task.History[len(task.History)-1].Parts[len(task.History[len(task.History)-1].Parts)-1].Text,
+		)
+	})
+
 	return spinner.New().Action(func() {
-		example.processTask(example.client, &task)
+		example.processTask(example.client)
 	}).Run()
 }
 
 func (example *DeveloperExample) processTask(
-	client *jsonrpc.RPCClient, task *types.Task,
+	client *jsonrpc.RPCClient,
 ) {
 	var err error
 
 	for {
 		if err = client.Call(
-			context.Background(), "tasks/send", *task, task,
+			context.Background(), "tasks/sendSubscribe", example.task, &example.task,
 		); err != nil {
 			log.Error("failed to send task", "error", err)
 		}
 
-		fmt.Println(task.String())
+		fmt.Println(example.task.String())
 
-		if example.isTaskComplete(task) {
+		if example.isTaskComplete(&example.task) {
 			return
 		}
 	}

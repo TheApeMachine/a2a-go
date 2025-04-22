@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/theapemachine/a2a-go/pkg/ai"
+	"github.com/theapemachine/a2a-go/pkg/service"
 	"github.com/theapemachine/a2a-go/pkg/tools"
 	"github.com/theapemachine/a2a-go/pkg/types"
 	"github.com/theapemachine/a2a-go/pkg/utils"
@@ -86,12 +87,22 @@ var (
 			return server.ServeStdio(s)
 		},
 	}
+
+	catalogCmd = &cobra.Command{
+		Use:   "catalog",
+		Short: "Serve the agent catalog",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			service.NewCatalogServer().Run()
+			return nil
+		},
+	}
 )
 
 func init() {
 	rootCmd.AddCommand(serveCmd)
 	serveCmd.AddCommand(agentCmd)
 	serveCmd.AddCommand(mcpCmd)
+	serveCmd.AddCommand(catalogCmd)
 
 	serveCmd.PersistentFlags().StringVarP(&configFlag, "config", "c", "", "Configuration to use")
 	serveCmd.PersistentFlags().IntVarP(&portFlag, "port", "p", 3210, "Port to serve on")
@@ -110,4 +121,7 @@ Examples:
 
   # Serve an MCP server on port 3000.
   a2a-go serve mcp --port 3000
+
+  # Serve the agent catalog on port 3210.
+  a2a-go serve catalog
 `

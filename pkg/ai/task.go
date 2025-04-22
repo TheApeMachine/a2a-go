@@ -38,8 +38,14 @@ func (agent *Agent) CancelTask(
 func (agent *Agent) StreamTask(
 	ctx context.Context,
 	params types.Task,
-) (<-chan any, *errors.RpcError) {
-	return nil, nil
+) (types.Task, *errors.RpcError) {
+	tools := agent.card.Tools()
+
+	agent.chatClient.Stream(
+		ctx, &params, &tools, agent.notifier,
+	)
+
+	return params, nil
 }
 
 func (agent *Agent) ResubscribeTask(

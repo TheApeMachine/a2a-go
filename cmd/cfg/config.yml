@@ -9,6 +9,8 @@ server:
   defaultRPCPath: "/rpc"
   defaultSSEPath: "/events"
   defaultCatalogPath: "/.well-known/catalog.json"
+  catalogServer:
+    host: "http://catalog:3210"
 
 agent:
   manager:

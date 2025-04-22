@@ -14,3 +14,4 @@ TOOLS.txt
 a2a-go
 specs/MCPAddons.txt
 .vscode/settings.json
+.env

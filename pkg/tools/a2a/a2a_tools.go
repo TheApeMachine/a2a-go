@@ -159,5 +159,5 @@ func getAgentCard(req mcp.CallToolRequest) (*types.AgentCard, error) {
 		return nil, err
 	}
 
-	return agent.Card(), nil
+	return agent, nil
 }

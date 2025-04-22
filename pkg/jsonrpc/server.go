@@ -160,7 +160,7 @@ func (srv *RPCServer) handle(ctx context.Context, req *RPCRequest) RPCResponse {
 			Result:  task,
 		}
 
-	case "tasks/stream":
+	case "tasks/sendSubscribe":
 		var params types.Task
 
 		if err := json.Unmarshal(req.Params, &params); err != nil {
