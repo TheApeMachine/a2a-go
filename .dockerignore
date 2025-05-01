@@ -1,0 +1,13 @@
+.git
+.gitignore
+.cursor
+.github
+.gocache
+.tmp
+.vscode
+a2a-go
+docker-compose.yml
+Dockerfile
+LICENSE
+Makefile
+README.md

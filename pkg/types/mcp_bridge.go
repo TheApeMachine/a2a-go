@@ -1,14 +1,8 @@
 package types
 
-// This file contains helper utilities for inter‑operability between the A2A
-// protocol and Model Context Protocol (MCP).  The guiding principle (see
-// MCP.txt) is to expose *agents* as MCP *resources* so that existing MCP
-// tooling and ecosystems can discover and reason about an A2A‑speaking agent
-// through a familiar interface.
-
 import (
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/a2a-go/pkg/tools"
+	"github.com/theapemachine/a2a-go/pkg/registry"
 )
 
 // ToMCPResource converts an AgentCard into an MCP Resource descriptor.  The
@@ -43,15 +37,15 @@ func ToMCPResource(card *AgentCard) mcp.Resource {
 	return res
 }
 
-// ToMCPTool converts an AgentSkill to an MCP Tool.  The mapping is necessarily
-// lossy because the semantics differ, but providing a skeleton definition
-// allows MCP‑based LLM frameworks to catalogue the agent's skills and invoke
-// them via the higher‑level A2A /tasks interface.
-//
-// The generated tool takes a single required string argument "task" which
-// represents the textual instruction to forward to the agent.  The tool call
-// simply proxies to tasks/send under the hood (the caller must implement the
-// proxy logic – this helper only defines the schema).
+// GetToolDefinition is a wrapper for registry.GetToolDefinition
+// which is used to avoid circular dependencies between packages
+func GetToolDefinition(skillID string) (registry.ToolDefinition, bool) {
+	return registry.GetToolDefinition(skillID)
+}
+
+/*
+ToMCPTool converts an AgentSkill to an MCP Tool.
+*/
 func ToMCPTool(skill AgentSkill) *MCPClient {
 	name, description, tool := getTool(skill.ID)
 
@@ -71,11 +65,39 @@ type MCPClient struct {
 	Toolcall    *mcp.CallToolRequest
 }
 
+// ToToolDescriptor converts an MCPClient to a registry.ToolDescriptor
+func (m *MCPClient) ToToolDescriptor() *registry.ToolDescriptor {
+	return &registry.ToolDescriptor{
+		ToolName:    m.Name,
+		Description: m.Description,
+		Schema:      *m.Schema,
+	}
+}
+
 func getTool(id string) (string, string, mcp.Tool) {
 	switch id {
 	case "development":
-		return "terminal", "A fully featured Debian Linux terminal, useful for development tasks or anything that may require access to a computer.", tools.NewDockerTools()
+		return "terminal", "A fully featured Debian Linux terminal, useful for development tasks or anything that may require access to a computer.", getDockerTool()
 	}
 
 	return "", "", mcp.Tool{}
+}
+
+// getDockerTool returns a docker tool
+func getDockerTool() mcp.Tool {
+	// Create a placeholder implementation since the tools package reference is broken
+	// We'll need to implement this properly after fixing the circular dependency
+	var tool mcp.Tool
+	tool.InputSchema.Type = "object"
+
+	// Add the command property
+	tool.InputSchema.Properties = map[string]interface{}{
+		"command": map[string]interface{}{
+			"type":        "string",
+			"description": "The command to execute in the terminal",
+		},
+	}
+	tool.InputSchema.Required = []string{"command"}
+
+	return tool
 }

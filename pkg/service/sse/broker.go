@@ -14,10 +14,11 @@ to them.  Each event is sent as a single‑line SSE message of the form:
 data: {json}\n\n
 */
 type SSEBroker struct {
-	mu       sync.RWMutex
-	clients  map[chan []byte]struct{}
-	closed   bool
-	testMode bool
+	mu          sync.RWMutex
+	clients     map[chan []byte]struct{}
+	taskBrokers map[string]*SSEBroker // Map of task-specific brokers
+	closed      bool
+	testMode    bool
 }
 
 /*
@@ -25,7 +26,8 @@ NewSSEBroker creates a new SSEBroker.
 */
 func NewSSEBroker() *SSEBroker {
 	return &SSEBroker{
-		clients: make(map[chan []byte]struct{}),
+		clients:     make(map[chan []byte]struct{}),
+		taskBrokers: make(map[string]*SSEBroker),
 	}
 }
 
@@ -34,8 +36,62 @@ NewTestSSEBroker creates a broker with a shorter ticker interval for testing
 */
 func NewTestSSEBroker() *SSEBroker {
 	return &SSEBroker{
+		clients:     make(map[chan []byte]struct{}),
+		taskBrokers: make(map[string]*SSEBroker),
+		testMode:    true,
+	}
+}
+
+/*
+GetOrCreateTaskBroker returns a task-specific broker, creating one if it doesn't exist.
+This allows for targeted event delivery to clients interested in specific tasks.
+*/
+func (broker *SSEBroker) GetOrCreateTaskBroker(taskID string) interface{} {
+	broker.mu.Lock()
+	defer broker.mu.Unlock()
+
+	if broker.closed {
+		return nil
+	}
+
+	if taskBroker, exists := broker.taskBrokers[taskID]; exists {
+		return taskBroker
+	}
+
+	// Create a new broker for this task
+	taskBroker := &SSEBroker{
 		clients:  make(map[chan []byte]struct{}),
-		testMode: true,
+		testMode: broker.testMode,
+	}
+	broker.taskBrokers[taskID] = taskBroker
+	return taskBroker
+}
+
+/*
+BroadcastToTask sends a message to all clients subscribed to a specific task.
+*/
+func (broker *SSEBroker) BroadcastToTask(taskID string, v any) error {
+	broker.mu.RLock()
+	taskBroker, exists := broker.taskBrokers[taskID]
+	broker.mu.RUnlock()
+
+	if !exists || broker.closed {
+		return nil // Silently ignore if task broker doesn't exist or is closed
+	}
+
+	return taskBroker.Broadcast(v)
+}
+
+/*
+CloseTaskBroker closes a specific task broker and removes it from the registry.
+*/
+func (broker *SSEBroker) CloseTaskBroker(taskID string) {
+	broker.mu.Lock()
+	defer broker.mu.Unlock()
+
+	if taskBroker, exists := broker.taskBrokers[taskID]; exists {
+		taskBroker.Close()
+		delete(broker.taskBrokers, taskID)
 	}
 }
 

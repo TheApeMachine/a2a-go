@@ -161,3 +161,18 @@ type TaskPushNotificationConfig struct {
 	ID                     string                 `json:"id"`
 	PushNotificationConfig PushNotificationConfig `json:"pushNotificationConfig"`
 }
+
+// SSEPublisher defines an interface for broadcasting SSE messages to clients
+type SSEPublisher interface {
+	// Broadcast sends a message to all connected clients
+	Broadcast(v any) error
+
+	// BroadcastToTask sends a message to clients subscribed to a specific task
+	BroadcastToTask(taskID string, v any) error
+
+	// CloseTaskBroker closes a specific task broker
+	CloseTaskBroker(taskID string)
+
+	// GetOrCreateTaskBroker creates or retrieves a task-specific broker
+	GetOrCreateTaskBroker(taskID string) interface{}
+}

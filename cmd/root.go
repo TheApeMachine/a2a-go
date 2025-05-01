@@ -78,11 +78,17 @@ func initConfig() {
 
 	viper.SetConfigName("config")
 	viper.SetConfigType("yml")
-	viper.AddConfigPath("$HOME/." + projectName)
+	// Add user config directory (~/.a2a-go)
+	home, _ := os.UserHomeDir()
+	viper.AddConfigPath(home + "/." + projectName)
 
 	if err = viper.ReadInConfig(); err != nil {
 		log.Fatal(err)
 		return
+	}
+	// If OpenAI API key provided via flag, set environment variable for provider
+	if openaiAPIKey != "" {
+		_ = os.Setenv("OPENAI_API_KEY", openaiAPIKey)
 	}
 }
 

@@ -48,7 +48,7 @@ func RegisterA2ATools(srv *server.MCPServer) {
 			mcp.Description("The messages to attach to the task."),
 			mcp.Required(),
 		),
-	), handleA2AAgentCard)
+	), handleA2ASendTask)
 }
 
 func handleA2ADiscover(

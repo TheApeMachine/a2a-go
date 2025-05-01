@@ -48,14 +48,37 @@ var (
 				skills = append(skills, types.NewSkillFromConfig(skill))
 			}
 
+			// Determine the host and port for this agent's URL
+			host := hostFlag
+			if host == "" {
+				host = v.GetString("server.host")
+			}
+
+			port := portFlag
+			if port == 0 {
+				port = v.GetInt("server.port")
+			}
+
+			// Get agent name from flag or config or use the configFlag
+			agentName := agentNameFlag
+			if agentName == "" {
+				agentName = v.GetString(fmt.Sprintf("agent.%s.name", configFlag))
+				if agentName == "" {
+					agentName = configFlag
+				}
+			}
+
+			// Create the agent URL - use a proper HTTP URL
+			agentURL := fmt.Sprintf("http://%s:%d", host, port)
+
 			ai.NewAgentFromCard(
 				&types.AgentCard{
-					Name:    "developer",
+					Name:    agentName,
 					Version: "0.0.1",
 					Description: utils.Ptr(
 						"A tool that can execute commands in a Docker container.",
 					),
-					URL: "http://localhost:3210/agents/" + configFlag,
+					URL: agentURL,
 					Provider: &types.AgentProvider{
 						Organization: "theapemachine",
 						URL:          utils.Ptr("https://github.com/theapemachine"),

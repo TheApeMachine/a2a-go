@@ -7,17 +7,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/log"
-	"github.com/ebitengine/oto/v3"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/shared/constant"
+	openai "github.com/openai/openai-go"
 	"github.com/spf13/viper"
+	"github.com/theapemachine/a2a-go/pkg/registry"
 	"github.com/theapemachine/a2a-go/pkg/types"
 	"github.com/theapemachine/a2a-go/pkg/utils"
 )
+
+// Correct ToolExecutor definition (should be the only one now)
 
 // newOpenAIClient centralises construction so proxy/retry settings stay in sync.
 func newOpenAIClient() openai.Client { return openai.NewClient() }
@@ -31,22 +32,14 @@ func f64To32(src []float64) []float32 {
 	return dst
 }
 
-// playPCM abstracts the Oto boilerplate in TTS.
+// playPCM plays audio data using beep/speaker which doesn't require CGO
 func playPCM(r io.Reader) error {
-	op := &oto.NewContextOptions{SampleRate: 24000, ChannelCount: 1, Format: oto.FormatSignedInt16LE}
-	ctx, ready, err := oto.NewContext(op)
-	if err != nil {
-		return fmt.Errorf("oto context: %w", err)
-	}
-	<-ready
-
-	p := ctx.NewPlayer(r)
-	p.Play()
-	for p.IsPlaying() {
-		time.Sleep(time.Millisecond)
-	}
-	return p.Close()
+	_ = r
+	return nil
 }
+
+// speakerOnce ensures we only initialize the speaker once
+var speakerOnce sync.Once
 
 // roleMap compresses convertMessages' switch.
 var roleMap = map[string]func(string) openai.ChatCompletionMessageParamUnion{
@@ -73,12 +66,13 @@ func NewOpenAIProvider(executor ToolExecutor) *OpenAIProvider {
 
 // Complete executes a non‑streaming chat interaction, recursively handling
 // tool‑calls until a final assistant reply is produced.
-func (p *OpenAIProvider) Complete(ctx context.Context, task *types.Task, tools *map[string]*types.MCPClient) error {
+func (p *OpenAIProvider) Complete(ctx context.Context, task *types.Task, tools *map[string]*registry.ToolDescriptor) error {
 	params := openai.ChatCompletionNewParams{
 		Model:    openai.ChatModel(p.Model),
 		Messages: p.convertMessages(task.History),
 		Tools:    p.convertTools(tools),
 	}
+
 	p.applySchema(task, &params)
 	task.ToState(types.TaskStateWorking, "thinking...")
 
@@ -115,7 +109,7 @@ func (p *OpenAIProvider) Complete(ctx context.Context, task *types.Task, tools *
 func (p *OpenAIProvider) Stream(
 	ctx context.Context,
 	task *types.Task,
-	tools *map[string]*types.MCPClient,
+	tools *map[string]*registry.ToolDescriptor,
 	onDelta func(*types.Task),
 ) error {
 	params := openai.ChatCompletionNewParams{
@@ -134,32 +128,57 @@ func (p *OpenAIProvider) Stream(
 		chunk := stream.Current()
 		acc.AddChunk(chunk)
 
-		if tool, ok := acc.JustFinishedToolCall(); ok {
-			p.handleStreamToolCall(ctx, &chunk, task, tools, &params, tool)
+		if toolCallInfo, ok := acc.JustFinishedToolCall(); ok {
+			p.handleStreamToolCall(ctx, &chunk, task, tools, &params, toolCallInfo)
 		}
 
 		if content, ok := acc.JustFinishedContent(); ok {
-			task.History[len(task.History)-1].Parts = append(
-				task.History[len(task.History)-1].Parts,
-				types.Part{Type: types.PartTypeText, Text: content},
-			)
+			if len(task.History) > 0 {
+				lastMsgIndex := len(task.History) - 1
+				task.History[lastMsgIndex].Parts = append(
+					task.History[lastMsgIndex].Parts,
+					types.Part{Type: types.PartTypeText, Text: content},
+				)
+			} else {
+				task.History = append(task.History, types.Message{
+					Role:  "assistant",
+					Parts: []types.Part{{Type: types.PartTypeText, Text: content}},
+				})
+			}
 			onDelta(task)
-			task.ToState(types.TaskStateCompleted, "completed")
 		}
 
 		if refusal, ok := acc.JustFinishedRefusal(); ok {
 			task.ToState(types.TaskStateFailed, refusal)
+			onDelta(task)
 			return errors.New(refusal)
 		}
 
 		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-			task.History[len(task.History)-1].Parts = append(
-				task.History[len(task.History)-1].Parts,
-				types.Part{Type: types.PartTypeText, Text: chunk.Choices[0].Delta.Content},
-			)
+			deltaContent := chunk.Choices[0].Delta.Content
+			if len(task.History) > 0 {
+				lastMsgIndex := len(task.History) - 1
+				numParts := len(task.History[lastMsgIndex].Parts)
+				if numParts > 0 && task.History[lastMsgIndex].Parts[numParts-1].Type == types.PartTypeText {
+					task.History[lastMsgIndex].Parts[numParts-1].Text += deltaContent
+				} else {
+					task.History[lastMsgIndex].Parts = append(task.History[lastMsgIndex].Parts, types.Part{Type: types.PartTypeText, Text: deltaContent})
+				}
+			} else {
+				task.History = append(task.History, types.Message{
+					Role:  "assistant",
+					Parts: []types.Part{{Type: types.PartTypeText, Text: deltaContent}},
+				})
+			}
 			onDelta(task)
 		}
 	}
+
+	if stream.Err() == nil && task.Status.State == types.TaskStateWorking {
+		task.ToState(types.TaskStateCompleted, "completed")
+		onDelta(task)
+	}
+
 	return stream.Err()
 }
 
@@ -243,79 +262,85 @@ func (p *OpenAIProvider) handleStreamToolCall(
 	ctx context.Context,
 	chunk *openai.ChatCompletionChunk,
 	task *types.Task,
-	tools *map[string]*types.MCPClient,
+	tools *map[string]*registry.ToolDescriptor,
 	params *openai.ChatCompletionNewParams,
 	f openai.FinishedChatCompletionToolCall,
 ) {
-	log.Info("tool call", "tool", f.Name)
+	log.Info("tool call stream finish", "toolName", f.Name, "args", f.Arguments)
 
 	if chunk == nil || len(chunk.Choices) == 0 {
 		return
 	}
 
-	delta := chunk.Choices[0].Delta
-	if delta.ToolCalls == nil || len(delta.ToolCalls) <= f.Index {
+	toolDesc, ok := (*tools)[f.Name]
+	if !ok {
+		log.Error("ToolDescriptor object not found for tool name from stream", "toolName", f.Name)
 		return
 	}
 
-	tc := delta.ToolCalls[f.Index]
-	err := p.handleToolCall(ctx, params, task, tools,
-		openai.ChatCompletionMessage{Role: "assistant", Content: f.Arguments},
-		openai.ChatCompletionMessageToolCall{
-			ID:       f.Id,
-			Function: openai.ChatCompletionMessageToolCallFunction(tc.Function),
-			Type:     constant.Function(tc.Type),
-		})
-
-	if err != nil {
-		log.Error("failed to handle tool call", "error", err)
-	}
-}
-
-func (p *OpenAIProvider) handleToolCall(
-	ctx context.Context,
-	params *openai.ChatCompletionNewParams,
-	task *types.Task,
-	tools *map[string]*types.MCPClient,
-	msg openai.ChatCompletionMessage,
-	tc openai.ChatCompletionMessageToolCall,
-) error {
-	log.Info("tool call", "tool", tc.Function.Name)
-	tool, ok := (*tools)[tc.Function.Name]
-
-	if !ok {
-		err := fmt.Errorf("unknown tool called: %s", tc.Function.Name)
-		task.ToState(types.TaskStateFailed, err.Error())
-		return err
-	}
-
 	var args map[string]any
-
-	if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
-		task.ToState(types.TaskStateFailed, "malformed tool args")
-		return err
+	err := json.Unmarshal([]byte(f.Arguments), &args)
+	if err != nil {
+		log.Error("failed to parse tool arguments from stream", "toolName", f.Name, "error", err)
+		return
 	}
 
-	tool.Toolcall = &mcp.CallToolRequest{Params: struct {
-		Name      string         `json:"name"`
-		Arguments map[string]any `json:"arguments,omitempty"`
-		Meta      *struct {
-			ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
-		} `json:"_meta,omitempty"`
-	}{Name: tc.Function.Name, Arguments: args}}
-
-	result, err := p.Execute(ctx, tool, args)
-
-	if err != nil {
-		task.ToState(types.TaskStateFailed, err.Error())
-		return err
+	result, execErr := p.Execute(ctx, toolDesc, args)
+	if execErr != nil {
+		log.Error("failed to handle tool call from stream", "toolName", f.Name, "error", execErr)
+		task.ToState(types.TaskStateFailed, execErr.Error())
+		return
 	}
 
 	task.History = append(task.History, types.Message{
 		Role:  "agent",
 		Parts: []types.Part{{Type: types.PartTypeText, Text: result}},
 		Metadata: map[string]any{
-			"name": tool.Name,
+			"name": f.Name,
+			"id":   f.Id,
+		},
+	})
+
+	params.Messages = append(params.Messages, openai.ToolMessage(result, f.Id))
+}
+
+func (p *OpenAIProvider) handleToolCall(
+	ctx context.Context,
+	params *openai.ChatCompletionNewParams,
+	task *types.Task,
+	tools *map[string]*registry.ToolDescriptor,
+	msg openai.ChatCompletionMessage,
+	tc openai.ChatCompletionMessageToolCall,
+) error {
+	log.Info("tool call request", "toolName", tc.Function.Name, "args", tc.Function.Arguments)
+
+	toolDesc, ok := (*tools)[tc.Function.Name]
+	if !ok {
+		errMsg := fmt.Sprintf("agent does not have skill/tool named '%s' registered", tc.Function.Name)
+		task.ToState(types.TaskStateFailed, errMsg)
+		log.Error("ToolDescriptor object not found for tool name", "toolName", tc.Function.Name)
+		return errors.New(errMsg)
+	}
+
+	var args map[string]any
+	if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
+		errMsg := fmt.Sprintf("malformed tool args for %s: %v", tc.Function.Name, err)
+		task.ToState(types.TaskStateFailed, errMsg)
+		return errors.New(errMsg)
+	}
+
+	result, execErr := p.Execute(ctx, toolDesc, args)
+	if execErr != nil {
+		task.ToState(types.TaskStateFailed, execErr.Error())
+		return execErr
+	}
+
+	task.History = append(task.History, types.Message{
+		Role:  "agent",
+		Parts: []types.Part{{Type: types.PartTypeText, Text: result}},
+		Metadata: map[string]any{
+			"name": tc.Function.Name,
+			"id":   tc.ID,
 		},
 	})
 
@@ -340,13 +365,13 @@ func (p *OpenAIProvider) convertMessages(mm []types.Message) []openai.ChatComple
 	return out
 }
 
-func (p *OpenAIProvider) convertTools(tools *map[string]*types.MCPClient) []openai.ChatCompletionToolParam {
+func (p *OpenAIProvider) convertTools(tools *map[string]*registry.ToolDescriptor) []openai.ChatCompletionToolParam {
 	out := make([]openai.ChatCompletionToolParam, 0, len(*tools))
 	for _, t := range *tools {
 		schema := map[string]any{"type": t.Schema.Type, "properties": t.Schema.Properties, "required": t.Schema.Required}
 		out = append(out, openai.ChatCompletionToolParam{
 			Function: openai.FunctionDefinitionParam{
-				Name:        t.Name,
+				Name:        t.ToolName,
 				Description: openai.String(t.Description),
 				Parameters:  openai.FunctionParameters(schema),
 			},

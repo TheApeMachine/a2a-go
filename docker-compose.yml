@@ -1,22 +1,96 @@
-version: "3.8"
-
 services:
+
+  # Central catalog service that all agents register with
   catalog:
     image: theapemachine/a2a-go:latest
     command: ["serve", "catalog"]
     ports:
       - "3210:3210"
-
-  developer:
-    image: theapemachine/a2a-go:latest
-    command: ["serve", "-c", "developer"]
-    ports:
-      - "3210:3210"
+    networks:
+      - a2a-network
+    volumes:
+      - ./configs:/app/configs
     environment:
-      - NEO4J_URI=bolt://neo4j:7687
-      - NEO4J_USER=neo4j
-      - NEO4J_PASSWORD=password
+      - PORT=3210
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3210/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
+  # Planner agent service - specialized in planning tasks
+  planner-agent:
+    image: theapemachine/a2a-go:latest
+    command: ["serve", "agent", "-c", "planner"]
+    env_file:
+      - .env
+    ports:
+      - "3211:3210"
+    networks:
+      - a2a-network
+    volumes:
+      - ./configs:/app/configs
+    environment:
+      - PORT=3210
+      - CATALOG_URL=http://catalog:3210
+    depends_on:
+      catalog:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      neo4j:
+        condition: service_started
+
+  # Developer agent service - specialized in implementing solutions
+  developer-agent:
+    image: theapemachine/a2a-go:latest
+    command: ["serve", "agent", "-c", "developer"]
+    env_file:
+      - .env
+    ports:
+      - "3212:3210"
+    networks:
+      - a2a-network
+    volumes:
+      - ./configs:/app/configs
+      - /var/run/docker.sock:/var/run/docker.sock # For Docker-in-Docker capabilities
+    environment:
+      - PORT=3210
+      - CATALOG_URL=http://catalog:3210
+    depends_on:
+      catalog:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      neo4j:
+        condition: service_started
+
+  # Client demo - a standalone client that discovers and interacts with agents
+  # This is for demonstration purposes of the A2A Protocol in action
+  client-demo:
+    image: theapemachine/a2a-go:latest
+    command: ["client", "demo"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+    environment:
+      - CATALOG_URL=http://catalog:3210
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      catalog:
+        condition: service_healthy
+      planner-agent:
+        condition: service_started
+      developer-agent:
+        condition: service_started
+
+  # Persistence and storage services
   minio:
     image: minio/minio
     container_name: minio
@@ -25,6 +99,8 @@ services:
     ports:
       - "9000:9000"
       - "9001:9001"
+    networks:
+      - a2a-network
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -39,6 +115,8 @@ services:
     ports:
       - "6333:6333" # REST API
       - "6334:6334" # gRPC API
+    networks:
+      - a2a-network
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
@@ -53,6 +131,8 @@ services:
     ports:
       - "7474:7474" # Browser
       - "7687:7687" # Bolt
+    networks:
+      - a2a-network
     environment:
       - NEO4J_AUTH=neo4j/password
       - NEO4J_apoc_export_file_enabled=true
@@ -71,8 +151,13 @@ services:
       retries: 5
       start_period: 30s
 
+networks:
+  a2a-network:
+    driver: bridge
+
 volumes:
   qdrant_data:
   neo4j_data:
   neo4j_logs:
   neo4j_conf:
+  minio_data:

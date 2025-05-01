@@ -1,0 +1,25 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# GOAL
+
+1. Implement the A2A Protocol according to the specs.
+2. Implement and integrate MCP according to the specs.
+3. Set up a demo, using Docker Compose, spinning up a small team of agents that can use tools, and communicate/collaborate to perform development tasks.
+
+## Good Quality Code
+
+1. Split things into custom types with one single, clear responsibility, and use composition to make more complex types.
+2. When implementing methods on types, do not use single letter variables.3. 
+3. All top-level methods and types should have a useful Godoc style comment above them, using the /**/ style syntax. All other commenting should generally be avoided if possible, instead prefer to use good method naming to communicate the intent of the code.4. 
+Split things up into small, digestible blocks of code, avoid excessive nesting, or long structures/files.
+4. Apply the "Boyscout Principle" and clean up any code you believe could be better, which in our case generally means more compact. Use clever techniques to continuously reduce the amount of code needed to achieve something, but do not just blindly break functionality.5. 
+5.Always consider the existing code, and the direction that it is taking, before blindly implementing a solution that goes against the established patterns.
+6. Generally, we want as much as possible to just have types that implement io.ReadWriteCloser, as this means they will all be arbitrarily compatible with each other, as well as with most communication layers in Go. Sometimes this requires some creativity to make that work, but it is certainly possible. Remember that we always need to make sure everything is compatible with streaming!
+7. NO TODOs, Temporary Implementations, or Simplifications! This is a serious, production-grade framework, requiring serious solutions only!
+
+And finally: Ultimately the A2A spec, and MCP spec, should determine the implementations needed in this project, and you will find those the `specs` sub-directory, as well as some examples from other frameworks.
+
+THE ULTIMATE GOAL IS TO HAVE AN ADVANCED AGENT FRAMEWORK, WITH A PUBLIC API THAT IS SUPER SIMPLE AND COMFORTABLE TO USE, WITHOUT ANY BOILERPLATE, OR COMPLEXITY. THE USER SHOULD BE ABLE TO FOCUS ON SETTING UP MULTI-AGENT SYSTEMS, AND MCP TOOLS, IN ALL SORTS OF EXPERIMENTAL MANNERS, NOT DEAL WITH THE FRAMEWORK ITSELF!

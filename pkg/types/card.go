@@ -5,6 +5,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/spf13/viper"
+	"github.com/theapemachine/a2a-go/pkg/registry"
 	"github.com/theapemachine/a2a-go/pkg/utils"
 )
 
@@ -26,15 +27,15 @@ type AgentCard struct {
 	Skills             []AgentSkill         `json:"skills"`
 }
 
-func (card *AgentCard) Tools() map[string]*MCPClient {
-	skillTools := map[string]*MCPClient{}
+func (card *AgentCard) Tools() map[string]*registry.ToolDescriptor {
+	skillTools := map[string]*registry.ToolDescriptor{}
 
 	for _, skill := range card.Skills {
 		switch skill.ID {
 		case "development":
 			log.Info("skill assigned", "agent", card.Name, "skill", skill.Name)
 			tool := ToMCPTool(skill)
-			skillTools[tool.Name] = tool
+			skillTools[tool.Name] = tool.ToToolDescriptor()
 		}
 	}
 

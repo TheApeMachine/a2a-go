@@ -25,6 +25,8 @@ var (
 			switch args[0] {
 			case "developer":
 				return examples.NewDeveloperExample().Run(interactive)
+			case "collaboration":
+				return examples.NewCollaborationExample().Run(interactive)
 			}
 
 			log.Error("unknown example", "example", args[0])
