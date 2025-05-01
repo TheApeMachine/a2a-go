@@ -69,7 +69,6 @@ func NewA2AServer(agent types.IdentifiableTaskManager) *A2AServer {
 		mcp:             sse.NewMCPBroker(),
 	}
 
-	// Connect the SSE broker to the agent if it supports it
 	if agentWithSSE, ok := agent.(interface{ SetSSEPublisher(types.SSEPublisher) }); ok {
 		agentWithSSE.SetSSEPublisher(srv.broker)
 	}
@@ -89,29 +88,9 @@ func (srv *A2AServer) Start() error {
 		return ctx.Status(fiber.StatusOK).JSON(srv.Agent.Card())
 	})
 
-	srv.app.Get("/.well-known/catalog.json", func(ctx fiber.Ctx) error {
-		registry := catalog.NewRegistry()
-		agents := registry.GetAgents()
-
-		return ctx.Status(fiber.StatusOK).JSON(agents)
-	})
-
-	srv.app.Post("/agent/:id", func(ctx fiber.Ctx) error {
-		registry := catalog.NewRegistry()
-		agentCard := registry.GetAgent(ctx.Params("id"))
-
-		if agentCard == nil {
-			return ctx.Status(fiber.StatusNotFound).SendString("Agent not found")
-		}
-
-		return ctx.Status(fiber.StatusOK).JSON(agentCard)
-	})
-
 	srv.app.Post("/rpc", func(ctx fiber.Ctx) error {
-		// Create a response writer adapter
 		w := &responseWriter{ctx: ctx}
 
-		// Create a request adapter
 		r := &http.Request{
 			Method: ctx.Method(),
 			URL:    &url.URL{Path: ctx.Path()},
@@ -119,7 +98,6 @@ func (srv *A2AServer) Start() error {
 			Body:   io.NopCloser(bytes.NewReader(ctx.Body())),
 		}
 
-		// Copy headers from Fiber to http.Request
 		ctx.Request().Header.VisitAll(func(key, value []byte) {
 			r.Header.Add(string(key), string(value))
 		})
@@ -135,66 +113,34 @@ func (srv *A2AServer) Start() error {
 			return ctx.Status(fiber.StatusBadRequest).SendString("Task ID is required")
 		}
 
-		// Create a response writer adapter
 		w := &responseWriter{ctx: ctx}
 
-		// Create a request adapter
 		r := &http.Request{
 			Method: ctx.Method(),
 			URL:    &url.URL{Path: ctx.Path()},
 			Header: make(http.Header),
 		}
 
-		// Copy headers from Fiber to http.Request
 		ctx.Request().Header.VisitAll(func(key, value []byte) {
 			r.Header.Add(string(key), string(value))
 		})
 
-		// Register a task-specific broker if it doesn't exist
 		taskBroker := srv.broker.GetOrCreateTaskBroker(taskID)
 
-		// Type assert back to *SSEBroker to access the Subscribe method
 		if sseTaskBroker, ok := taskBroker.(*sse.SSEBroker); ok {
-			// Subscribe the client to the task-specific broker
 			sseTaskBroker.Subscribe(w, r)
 		} else {
 			return ctx.Status(fiber.StatusInternalServerError).SendString("Failed to create or access task broker")
 		}
+
 		return nil
 	})
 
-	// Add an endpoint for the MCP broker
-	srv.app.Get("/mcp", func(ctx fiber.Ctx) error {
-		// Create a response writer adapter
-		w := &responseWriter{ctx: ctx}
-
-		// Create a request adapter
-		r := &http.Request{
-			Method: ctx.Method(),
-			URL:    &url.URL{Path: ctx.Path()},
-			Header: make(http.Header),
-		}
-
-		// Copy headers from Fiber to http.Request
-		ctx.Request().Header.VisitAll(func(key, value []byte) {
-			r.Header.Add(string(key), string(value))
-		})
-
-		srv.mcp.Server().ServeHTTP(w, r)
-		return nil
-	})
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "3210"
-	}
-
-	return srv.app.Listen(":"+port, fiber.ListenConfig{
+	return srv.app.Listen(":3210", fiber.ListenConfig{
 		DisableStartupMessage: true,
 	})
 }
 
-// responseWriter adapts fiber.Ctx to http.ResponseWriter
 type responseWriter struct {
 	ctx fiber.Ctx
 }

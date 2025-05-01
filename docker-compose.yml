@@ -1,17 +1,12 @@
 services:
-
   # Central catalog service that all agents register with
   catalog:
     image: theapemachine/a2a-go:latest
-    command: ["serve", "catalog"]
-    ports:
-      - "3210:3210"
+    command: ["catalog"]
     networks:
       - a2a-network
     volumes:
       - ./configs:/app/configs
-    environment:
-      - PORT=3210
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3210/"]
       interval: 10s
@@ -19,20 +14,23 @@ services:
       retries: 5
       start_period: 10s
 
-  # Planner agent service - specialized in planning tasks
-  planner-agent:
+  dockertool:
     image: theapemachine/a2a-go:latest
-    command: ["serve", "agent", "-c", "planner"]
+    command: ["mcp", "-c", "docker"]
     env_file:
       - .env
-    ports:
-      - "3211:3210"
+
+  # Planner agent service - specialized in planning tasks
+  planner:
+    image: theapemachine/a2a-go:latest
+    command: ["agent", "-c", "planner", "-n", "A2A Planner Agent"]
+    env_file:
+      - .env
     networks:
       - a2a-network
     volumes:
       - ./configs:/app/configs
     environment:
-      - PORT=3210
       - CATALOG_URL=http://catalog:3210
     depends_on:
       catalog:
@@ -45,20 +43,17 @@ services:
         condition: service_started
 
   # Developer agent service - specialized in implementing solutions
-  developer-agent:
+  developer:
     image: theapemachine/a2a-go:latest
-    command: ["serve", "agent", "-c", "developer"]
+    command: ["agent", "-c", "developer", "-n", "A2A Developer Agent"]
     env_file:
       - .env
-    ports:
-      - "3212:3210"
     networks:
       - a2a-network
     volumes:
       - ./configs:/app/configs
       - /var/run/docker.sock:/var/run/docker.sock # For Docker-in-Docker capabilities
     environment:
-      - PORT=3210
       - CATALOG_URL=http://catalog:3210
     depends_on:
       catalog:
@@ -72,22 +67,24 @@ services:
 
   # Client demo - a standalone client that discovers and interacts with agents
   # This is for demonstration purposes of the A2A Protocol in action
-  client-demo:
+  demo:
     image: theapemachine/a2a-go:latest
-    command: ["client", "demo"]
+    command: ["demo"]
     env_file:
       - .env
     networks:
       - a2a-network
+    volumes:
+      - ./configs:/app/configs
     environment:
       - CATALOG_URL=http://catalog:3210
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       catalog:
         condition: service_healthy
-      planner-agent:
+      planner:
         condition: service_started
-      developer-agent:
+      developer:
         condition: service_started
 
   # Persistence and storage services

@@ -1,0 +1,68 @@
+provider:
+  openai:
+    model: "gpt-4o-mini"
+    embed: "text-embedding-3-large"
+
+server:
+  host: "0.0.0.0"
+  port: 3210
+  defaultRPCPath: "/rpc"
+  defaultSSEPath: "/events"
+  defaultCatalogPath: "/.well-known/catalog.json"
+  catalogServer:
+    host: "${CATALOG_URL:http://catalog:3210}"
+
+agent:
+  planner:
+    name: "A2A Planner Agent"
+    version: "0.1.0"
+    capabilities:
+      streaming: true
+      pushNotifications: true
+      stateTransitionHistory: true
+    system: |
+      You are an advanced AI agent, performing in the role of planner.
+      You are able to plan development tasks and create detailed step-by-step instructions.
+    skills:
+      - planning
+  developer:
+    name: "A2A Developer Agent"
+    version: "0.1.0"
+    capabilities:
+      streaming: true
+      pushNotifications: true
+      stateTransitionHistory: true
+    system: |
+      You are an advanced AI agent, performing in the role of developer.
+      You are able to develop code based on plans and specifications.
+    skills:
+      - development
+
+skills:
+  planning:
+    id: "planning"
+    name: "planning"
+    description: "Planning of tasks."
+    tags:
+      - "planning"
+      - "task"
+    examples:
+      - "Plan the tasks for the day."
+      - "Develop a plan for the project."
+    input_modes:
+      - "text/plain"
+    output_modes:
+      - "text/plain"
+  development:
+    id: "development"
+    name: "development"
+    description: "Development of code."
+    tags:
+      - "development"
+      - "code"
+    examples:
+      - "Develop a web-service which interfaces with MongoDB."
+    input_modes:
+      - "text/plain"
+    output_modes:
+      - "text/plain"

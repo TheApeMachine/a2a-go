@@ -27,6 +27,31 @@ type AgentCard struct {
 	Skills             []AgentSkill         `json:"skills"`
 }
 
+func NewAgentCardFromConfig(key string) *AgentCard {
+	v := viper.GetViper()
+
+	return &AgentCard{
+		Name: v.GetString(fmt.Sprintf("agent.%s.name", key)),
+		URL:  v.GetString(fmt.Sprintf("agent.%s.url", key)),
+		Provider: &AgentProvider{
+			Organization: v.GetString(fmt.Sprintf("agent.%s.provider.organization", key)),
+			URL:          utils.Ptr(v.GetString(fmt.Sprintf("agent.%s.provider.url", key))),
+		},
+		Version:          v.GetString(fmt.Sprintf("agent.%s.version", key)),
+		DocumentationURL: utils.Ptr(v.GetString(fmt.Sprintf("agent.%s.documentation_url", key))),
+		Capabilities: AgentCapabilities{
+			Streaming:              v.GetBool(fmt.Sprintf("agent.%s.capabilities.streaming", key)),
+			PushNotifications:      v.GetBool(fmt.Sprintf("agent.%s.capabilities.push_notifications", key)),
+			StateTransitionHistory: v.GetBool(fmt.Sprintf("agent.%s.capabilities.state_transition_history", key)),
+		},
+		Authentication: &AgentAuthentication{
+			Schemes:     v.GetStringSlice(fmt.Sprintf("agent.%s.authentication.schemes", key)),
+			Credentials: utils.Ptr(v.GetString(fmt.Sprintf("agent.%s.authentication.credentials", key))),
+		},
+		Skills: []AgentSkill{NewSkillFromConfig(key)},
+	}
+}
+
 func (card *AgentCard) Tools() map[string]*registry.ToolDescriptor {
 	skillTools := map[string]*registry.ToolDescriptor{}
 

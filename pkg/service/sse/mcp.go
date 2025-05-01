@@ -34,6 +34,10 @@ func NewMCPBroker() *MCPBroker {
 	}
 }
 
+func (b *MCPBroker) Start() error {
+	return b.sse.Start("0.0.0.0:3210")
+}
+
 func (b *MCPBroker) Server() http.Handler {
 	return b.sse
 }

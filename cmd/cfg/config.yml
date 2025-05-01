@@ -10,13 +10,13 @@ server:
   defaultSSEPath: "/events"
   defaultCatalogPath: "/.well-known/catalog.json"
   catalogServer:
-    host: "${CATALOG_URL:http://catalog:3210}"
+    host: "http://catalog"
 
 agent:
   manager:
     name: "Manager Agent"
     version: "0.1.0"
-    url: "http://localhost:4321"
+    url: "http://manager:3210"
     capabilities:
       streaming: true
       pushNotifications: true
@@ -26,11 +26,25 @@ agent:
       - You are able to delegate tasks to other agents, and track their progress.
       - You are able to review the work of other agents, and provide feedback.
     skills:
+      - management
+  planner:
+    name: "Planner Agent"
+    version: "0.1.0"
+    url: "http://planner:3210"
+    capabilities:
+      streaming: true
+      pushNotifications: true
+      stateTransitionHistory: true
+    system:
+      - You are an advanced AI agent, performing in the role of planner.
+      - You are able to plan tasks, or compositions of tasks.
+      - You are able to track the progress of tasks, and provide feedback.
+    skills:
       - planning
   developer:
     name: "Developer Agent"
     version: "0.1.0"
-    url: "http://localhost:4322"
+    url: "http://developer:3210"
     capabilities:
       streaming: true
       pushNotifications: true
