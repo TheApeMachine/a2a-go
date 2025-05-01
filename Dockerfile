@@ -38,6 +38,9 @@ RUN go mod download
 COPY . .
 RUN go build -o a2a-go
 
+# Create tasks directory and ensure agent user has permission
+RUN mkdir -p /app/tasks && chown -R ${USER}:${USER} /app/tasks
+
 USER ${USER}
 ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 

@@ -53,19 +53,11 @@ func (client *AgentClient) SendTaskRequest(prompt string) (string, error) {
 		},
 	}
 
-	// Use the TaskSendParams to send the request according to A2A protocol
-	sessionID := task.SessionID
-	params := types.TaskSendParams{
-		ID:        task.ID,
-		SessionID: &sessionID,
-		Message:   task.History[0],
-	}
-
 	log.Debug("Sending task to agent", "agentName", client.Card.Name, "taskID", task.ID)
 
-	// Execute the RPC call
+	// Execute the RPC call with the complete task object
 	var result types.Task
-	if err := client.rpcClient.Call(ctx, "tasks/send", params, &result); err != nil {
+	if err := client.rpcClient.Call(ctx, "tasks/send", task, &result); err != nil {
 		return "", fmt.Errorf("RPC call failed: %w", err)
 	}
 
