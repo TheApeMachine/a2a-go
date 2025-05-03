@@ -9,5 +9,5 @@ import (
 ToMCPResource proxies to the existing helper on AgentCard.
 */
 func (a *Agent) ToMCPResource() mcp.Resource {
-	return types.ToMCPResource(a.card)
+	return types.ToMCPResource(&a.card)
 }

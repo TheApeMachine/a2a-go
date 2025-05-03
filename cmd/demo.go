@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"fmt"
+	"errors"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -22,7 +22,6 @@ var (
 			log.SetLevel(log.DebugLevel)
 
 			catalogURL := "http://catalog:3210"
-
 			catalogClient := catalog.NewCatalogClient(catalogURL)
 
 			var agents []catalog.AgentCard
@@ -32,7 +31,12 @@ var (
 
 			for retry := range maxRetries {
 				if retry > 0 {
-					log.Info("Retrying catalog connection...", "attempt", retry+1, "maxRetries", maxRetries)
+					log.Info(
+						"Retrying catalog connection...",
+						"attempt", retry+1,
+						"maxRetries", maxRetries,
+					)
+
 					time.Sleep(retryDelay)
 				}
 
@@ -43,45 +47,42 @@ var (
 				}
 
 				if err != nil {
-					log.Warn("Failed to get agents from catalog, will retry", "error", err, "attempt", retry+1)
+					log.Warn(
+						"failed to retrieve agents from catalog",
+						"error", err,
+						"attempt", retry+1,
+					)
 				} else if len(agents) == 0 {
-					log.Warn("No agents found in catalog, will retry", "attempt", retry+1)
+					log.Warn(
+						"no agents found in catalog",
+						"attempt", retry+1,
+					)
 				}
 			}
 
 			if err != nil {
-				log.Error("Failed to get agents from catalog after multiple attempts", "error", err)
+				log.Error("failed to retrieve agents from catalog", "error", err)
 				return err
 			}
 
-			fmt.Printf("📋 Discovered %d agents in the catalog:\n\n", len(agents))
+			promptInput := `
+			Create a simple Go web server that serves Hello World on port 8080.
+			Make sure to use the correct port and handle all the usual Go web server boilerplate.
+			You must run the server at least once and confirm it's working before finishing.
+			`
 
-			if len(agents) == 0 {
-				fmt.Println("❌ No agents found in the catalog. Please ensure the agents are running and registered.")
-				return fmt.Errorf("no agents found in catalog")
-			}
-
-			promptInput := "Create a simple Go web server that serves Hello World on port 8080"
-			fmt.Printf("🤖 Automated demo using task: \"%s\"\n\n", promptInput)
-
-			// Find a planner agent and developer agent
 			var plannerAgent *client.AgentClient
 
 			for _, agent := range agents {
 				if agent.Name == "Planner Agent" {
-					fmt.Printf("✅ Found planner agent: %s\n", agent.Name)
-
-					// Make sure the URL is properly formatted
-					if agent.URL != "" {
-						plannerAgent = client.NewAgentClient(agent)
-					} else {
-						log.Warn("Planner agent has no URL configured", "agent", agent.Name)
-					}
+					log.Info("found planner agent", "agent", agent.Name)
+					plannerAgent = client.NewAgentClient(agent)
 				}
 			}
 
 			if plannerAgent == nil {
-				return fmt.Errorf("no planner agent found in catalog")
+				log.Error("no planner agent found in catalog")
+				return errors.New("no planner agent found in catalog")
 			}
 
 			// Since we are the "user", all we need to do is send the task to the planner
@@ -90,13 +91,11 @@ var (
 			// updates on the task, or streaming updates as they are produced.
 			response, err := plannerAgent.SendTaskRequest(promptInput)
 			if err != nil {
-				log.Error("Failed to get plan from planner agent", "error", err)
+				log.Error("failed to get response from planner agent", "error", err)
 				return err
 			}
 
-			fmt.Println("🤖 Planner response:")
-			fmt.Println(response)
-
+			log.Info("planner response", "response", response)
 			return nil
 		},
 	}

@@ -12,6 +12,7 @@ require (
 	github.com/docker/docker v28.1.1+incompatible
 	github.com/go-rod/rod v0.116.2
 	github.com/gofiber/fiber/v3 v3.0.0-beta.4
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/uuid v1.6.0
 	github.com/mark3labs/mcp-go v0.22.0
 	github.com/openai/openai-go v0.1.0-beta.10

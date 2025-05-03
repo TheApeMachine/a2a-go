@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"time"
 
@@ -16,12 +17,17 @@ import (
 	"github.com/theapemachine/a2a-go/pkg/registry"
 	"github.com/theapemachine/a2a-go/pkg/types"
 	"github.com/theapemachine/a2a-go/pkg/utils"
+	"github.com/openai/openai-go/option"
 )
 
 // Correct ToolExecutor definition (should be the only one now)
 
 // newOpenAIClient centralises construction so proxy/retry settings stay in sync.
-func newOpenAIClient() openai.Client { return openai.NewClient() }
+func newOpenAIClient() openai.Client {
+	return openai.NewClient(
+		option.WithAPIKey(os.Getenv("OPENAI_API_KEY")),
+	)
+}
 
 // f64To32 converts an OpenAI float64 embedding to float32 – avoids dup loops.
 func f64To32(src []float64) []float32 {

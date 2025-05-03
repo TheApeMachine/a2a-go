@@ -129,8 +129,8 @@ func handleA2ASendTask(
 	}
 
 	client := jsonrpc.RPCClient{
-		Endpoint: card.URL,
-		HTTP:     &http.Client{},
+		URL:    card.URL,
+		Client: &http.Client{},
 	}
 
 	result := &jsonrpc.RPCResponse{}

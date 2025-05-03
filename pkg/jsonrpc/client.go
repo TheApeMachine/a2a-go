@@ -5,18 +5,22 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+
+	"github.com/theapemachine/a2a-go/pkg/auth"
 )
 
 type RPCClient struct {
-	Endpoint string
-	HTTP     *http.Client
+	URL         string
+	Client      *http.Client
+	AuthService *auth.Service
 }
 
-func NewRPCClient(endpoint string) *RPCClient {
+func NewRPCClient(url string) *RPCClient {
 	return &RPCClient{
-		Endpoint: endpoint,
-		HTTP:     http.DefaultClient,
+		URL:    url,
+		Client: &http.Client{},
 	}
 }
 
@@ -26,8 +30,8 @@ func (c *RPCClient) Call(
 	params any,
 	result any,
 ) error {
-	if c.HTTP == nil {
-		c.HTTP = http.DefaultClient
+	if c.Client == nil {
+		c.Client = http.DefaultClient
 	}
 
 	reqID := 1 // for simplicity – caller may wrap RPCClient to customise
@@ -52,7 +56,7 @@ func (c *RPCClient) Call(
 		return err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Endpoint, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, bytes.NewReader(body))
 
 	if err != nil {
 		return err
@@ -60,13 +64,28 @@ func (c *RPCClient) Call(
 
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.HTTP.Do(httpReq)
+	// Add authentication if service is available
+	if c.AuthService != nil {
+		if err := c.AuthService.AuthenticateRequest(httpReq); err != nil {
+			return fmt.Errorf("authentication failed: %w", err)
+		}
+	}
+
+	resp, err := c.Client.Do(httpReq)
 
 	if err != nil {
 		return err
 	}
 
 	defer resp.Body.Close()
+
+	// Handle authentication errors
+	if resp.StatusCode == http.StatusUnauthorized {
+		return fmt.Errorf("unauthorized: invalid or expired token")
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("forbidden: insufficient permissions")
+	}
 
 	var rpcResp RPCResponse
 

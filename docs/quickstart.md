@@ -4,7 +4,7 @@
 
 ---
 
-## 1  Hello Echo
+## 1 Hello Echo
 
 Start the built‑in echo agent:
 
@@ -26,7 +26,7 @@ curl -s -X POST localhost:8080/rpc \
 
 ---
 
-## 2  Listing Prompts
+## 2 Listing Prompts
 
 ```bash
 curl -s -X POST localhost:3210/rpc -d '{"jsonrpc":"2.0","id":2,"method":"prompts/list"}' | jq .prompts
@@ -40,7 +40,7 @@ curl -s -X POST localhost:3210/rpc -d '{"jsonrpc":"2.0","id":3,"method":"prompts
 
 ---
 
-## 3  Streaming with SSE
+## 3 Streaming with SSE
 
 The SSE endpoint lives at `/events`.
 
@@ -60,7 +60,7 @@ Tokens will appear live in the SSE stream.
 
 ---
 
-## 4  Task Streaming & Resubscription
+## 4 Task Streaming & Resubscription
 
 ### Streaming Tasks with tasks/sendSubscribe
 
@@ -111,7 +111,7 @@ curl -s -X POST localhost:8080/rpc \
 
 ---
 
-## 5  Push Notifications & History
+## 5 Push Notifications & History
 
 ### Configuring Push Notifications
 
@@ -174,16 +174,18 @@ curl -s -X POST localhost:8080/rpc \
 
 ---
 
-## 6  Unified Memory System
+## 6 Unified Memory System
 
 A2A-Go provides a unified long-term memory system that combines vector and graph stores for AI agents.
 
 In-memory implementation (no external databases needed):
+
 ```bash
 go run ./examples/memory-store
 ```
 
 External databases implementation (uses Qdrant and Neo4j):
+
 ```bash
 # Start the databases with Docker Compose
 docker-compose -f docker-compose.memory.yml up -d
@@ -204,11 +206,13 @@ For production use, you'll want to use real vector and graph databases instead o
 #### Qdrant Setup (Vector Store)
 
 1. Run Qdrant using Docker:
+
    ```bash
    docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
    ```
 
 2. Connect to Qdrant in your code:
+
    ```go
    embeddingService := memory.NewOpenAIEmbeddingService(os.Getenv("OPENAI_API_KEY"))
    vectorStore := memory.NewQdrantVectorStore("http://localhost:6333", "memories", embeddingService)
@@ -217,11 +221,13 @@ For production use, you'll want to use real vector and graph databases instead o
 #### Neo4j Setup (Graph Store)
 
 1. Run Neo4j using Docker:
+
    ```bash
    docker run -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/password neo4j:latest
    ```
 
 2. Connect to Neo4j in your code:
+
    ```go
    graphStore := memory.NewNeo4jGraphStore("http://localhost:7474", "neo4j", "password")
    ```
@@ -236,11 +242,11 @@ graphStore := memory.NewNeo4jGraphStore("http://localhost:7474", "neo4j", "passw
 unifiedStore := memory.NewUnifiedStore(embeddingService, vectorStore, graphStore)
 
 // Store a memory
-id, err := unifiedStore.StoreMemory(ctx, "Important information to remember", 
+id, err := unifiedStore.StoreMemory(ctx, "Important information to remember",
     map[string]any{"topic": "knowledge", "importance": 8}, "knowledge")
 
 // Create relationships between memories
-err = unifiedStore.CreateRelation(ctx, sourceID, targetID, "related_to", 
+err = unifiedStore.CreateRelation(ctx, sourceID, targetID, "related_to",
     map[string]any{"strength": 0.7})
 
 // Retrieve a memory by ID
@@ -261,13 +267,13 @@ related, err := unifiedStore.FindRelated(ctx, id, []string{"related_to"}, 10)
 
 ---
 
-## 7  Next Steps
+## 7 Next Steps
 
-* Expose a file via the Resource manager (`resources/list`).
-* Export `OPENAI_API_KEY` to enable real LLM completions.
-* Continue with the deep‑dives:
-  * [Prompt Kitchen](prompts.md)
-  * [Resource Pantry](resources.md)
-  * [Sampling Lab](sampling.md)
+- Expose a file via the Resource manager (`resources/list`).
+- Export `OPENAI_API_KEY` to enable real LLM completions.
+- Continue with the deep‑dives:
+  - [Prompt Kitchen](prompts.md)
+  - [Resource Pantry](resources.md)
+  - [Sampling Lab](sampling.md)
 
 Happy experiments! 🎈

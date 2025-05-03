@@ -13,9 +13,11 @@ import (
 	"github.com/gofiber/fiber/v3/client"
 	"github.com/google/uuid"
 	"github.com/spf13/viper"
+	"github.com/theapemachine/a2a-go/pkg/auth"
 	"github.com/theapemachine/a2a-go/pkg/errors"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
 	"github.com/theapemachine/a2a-go/pkg/provider"
+	"github.com/theapemachine/a2a-go/pkg/push"
 	"github.com/theapemachine/a2a-go/pkg/registry"
 	"github.com/theapemachine/a2a-go/pkg/stores/s3"
 	"github.com/theapemachine/a2a-go/pkg/tools/docker"
@@ -30,15 +32,17 @@ behaviour is easily customisable by swapping the underlying *http.Client* or
 adding an AuthHeader callback.
 */
 type Agent struct {
-	chatClient    *provider.OpenAIProvider
-	card          *types.AgentCard
+	card          types.AgentCard
 	rpc           *jsonrpc.RPCClient
+	chatClient    *provider.OpenAIProvider
+	toolExecutors map[string]registry.ToolExecutorFunc
+	ssePublisher  types.SSEPublisher
+	pushService   *push.Service
+	authService   *auth.Service
+	notifier      func(*types.Task)
 	AuthHeader    func(*http.Request)
 	Logger        func(string, ...any)
-	notifier      func(*types.Task)
 	taskStore     *s3.Conn
-	toolExecutors map[string]registry.ToolExecutorFunc // Use registry.ToolExecutorFunc
-	ssePublisher  types.SSEPublisher
 }
 
 /*
@@ -49,17 +53,16 @@ func NewAgentFromCard(card *types.AgentCard) *Agent {
 	v := viper.GetViper()
 
 	agent := &Agent{
-		card:          card,
+		card:          *card,
 		rpc:           jsonrpc.NewRPCClient(card.URL),
 		taskStore:     s3.NewConn(),                               // Initialize taskStore
 		toolExecutors: make(map[string]registry.ToolExecutorFunc), // Initialize tool registry
+		pushService:   push.NewService(),                          // Initialize pushService
+		authService:   auth.NewService(),                          // Initialize authService
 	}
 
-	// Pass agent.execute as the ToolExecutor function (adjust signature later)
-	// We need to adjust the signature expected by OpenAIProvider first.
-	// For now, set it to nil or a placeholder.
-	// agent.chatClient = provider.NewOpenAIProvider(agent.execute)
-	agent.chatClient = provider.NewOpenAIProvider(agent.executeTool) // Pass the new executeTool method
+	// Initialize chatClient after agent is created
+	agent.chatClient = provider.NewOpenAIProvider(agent.executeTool)
 
 	// Register known tool executors based on skills in the card
 	agent.registerToolExecutors()
@@ -115,17 +118,11 @@ func (a *Agent) SetNotifier(notifier func(*types.Task)) {
 
 // Card returns the agent's card.
 func (a *Agent) Card() *types.AgentCard {
-	return a.card
+	return &a.card
 }
 
 // ID returns the agent's ID from its card.
 func (a *Agent) ID() string {
-	if a.card == nil {
-		return ""
-	}
-	// Assuming AgentCard has an ID field, or generate/retrieve appropriately.
-	// For now, let's use the Name as a proxy if available.
-	// A proper ID should be assigned or retrieved.
 	if a.card.Name != "" {
 		return a.card.Name // Placeholder: Use Name if ID field doesn't exist
 	}
