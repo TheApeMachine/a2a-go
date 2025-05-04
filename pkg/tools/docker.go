@@ -10,27 +10,10 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/theapemachine/a2a-go/pkg/registry"
 	dkr "github.com/theapemachine/a2a-go/pkg/tools/docker"
 )
 
-// init registers the Docker/terminal tool with the central registry.
-func init() {
-	dockerTool := NewDockerTools()
-
-	toolDef := registry.ToolDefinition{
-		SkillID:     "development",
-		ToolName:    dockerTool.Name,
-		Description: dockerTool.Description,
-		Schema:      dockerTool.InputSchema,
-		Executor:    executeDockerTool,
-	}
-
-	registry.RegisterTool(toolDef)
-	log.Info("Registered built-in tool", "skillID", toolDef.SkillID, "toolName", toolDef.ToolName)
-}
-
-func NewDockerTools() mcp.Tool {
+func NewDockerTools() *mcp.Tool {
 	tool := mcp.NewTool(
 		"terminal",
 		mcp.WithDescription("A fully featured Debian terminal, useful for when you require access to a computer."),
@@ -40,7 +23,7 @@ func NewDockerTools() mcp.Tool {
 		),
 	)
 
-	return tool
+	return &tool
 }
 
 func RegisterDockerTools(srv *server.MCPServer) {

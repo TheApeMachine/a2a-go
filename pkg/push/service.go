@@ -121,7 +121,7 @@ func (s *Service) SendNotification(taskID string, event interface{}) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusBadRequest {
 		// Queue for retry
 		s.retryQueue <- &notificationRequest{
 			taskID:    taskID,

@@ -1,10 +1,10 @@
 package jsonrpc
 
-import "encoding/json"
-
-type RPCRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id,omitempty"` // accepts string | number | null
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
+// JSONRPCRequest represents a JSON-RPC request object base structure
+type Request struct {
+	Message
+	// Method is the name of the method to be invoked
+	Method string `json:"method"`
+	// Params are the parameters for the method
+	Params interface{} `json:"params,omitempty"`
 }

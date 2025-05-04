@@ -1,14 +1,16 @@
 package cmd
 
 import (
-	"bufio"
+	"encoding/json"
 	"fmt"
-	"os"
-	"strings"
+	"time"
 
+	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/log"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
-	"github.com/theapemachine/a2a-go/pkg/client"
-	"github.com/theapemachine/a2a-go/pkg/types"
+	"github.com/theapemachine/a2a-go/pkg/a2a"
+	"github.com/theapemachine/a2a-go/pkg/catalog"
 )
 
 var (
@@ -17,44 +19,87 @@ var (
 		Short: "Run an A2A UI",
 		Long:  longUI,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Create UI agent client
-			uiCard := types.AgentCard{
-				Name:    "User Interface Agent",
-				Version: "0.1.0",
-				URL:     "http://ui:3210",
-			}
-			agentClient := client.NewAgentClient(uiCard)
+			catalogClient := catalog.NewCatalogClient("http://catalog:3210")
 
-			// Main input loop
-			for {
-				fmt.Print("\nEnter a message: ")
-				in := bufio.NewReader(os.Stdin)
-				message, err := in.ReadString('\n')
-				if err != nil {
-					return err
+			var (
+				agentCards []a2a.AgentCard
+				err        error
+				attempts   = 1
+			)
+
+			for len(agentCards) == 0 {
+				if agentCards, err = catalogClient.GetAgents(); err != nil {
+					log.Error("failed to get agents", "error", err)
 				}
 
-				message = strings.TrimSpace(message)
-				if message == "exit" {
+				time.Sleep(time.Duration(attempts) * time.Second)
+				attempts += 1
+			}
+
+			options := make([]huh.Option[string], 0)
+
+			for _, card := range agentCards {
+				options = append(options, huh.NewOption(card.Name, card.Name))
+			}
+
+			var (
+				agent    string
+				prompt   string
+				selected *a2a.AgentCard
+			)
+
+			form := huh.NewForm(
+				huh.NewGroup(
+					huh.NewSelect[string]().
+						Title("Choose your agent").
+						Options(options...).
+						Value(&agent),
+				),
+
+				// Gather some final details about the order.
+				huh.NewGroup(
+					huh.NewInput().
+						Title("Prompt").
+						Value(&prompt),
+				),
+			)
+
+			if err := form.Run(); err != nil {
+				return err
+			}
+
+			for _, card := range agentCards {
+				if card.Name == agent {
+					selected = &card
 					break
 				}
+			}
 
-				// Send message and stream updates
-				err = agentClient.StreamTask(message, func(task types.Task) {
-					// Print any new artifacts
-					for _, artifact := range task.Artifacts {
-						for _, part := range artifact.Parts {
-							if part.Type == types.PartTypeText {
-								fmt.Printf("\nAgent: %s\n", part.Text)
-							}
-						}
-					}
-				})
+			agentClient := a2a.NewClient(selected.URL)
 
-				if err != nil {
-					fmt.Printf("Error: %v\n", err)
-					continue
-				}
+			response, err := agentClient.SendTask(a2a.TaskSendParams{
+				ID:        uuid.New().String(),
+				SessionID: uuid.New().String(),
+				Message: a2a.Message{
+					Parts: []a2a.Part{
+						{Text: prompt},
+					},
+				},
+			})
+
+			if err != nil {
+				return err
+			}
+
+			// Convert the response result to a Task
+			task := &a2a.Task{}
+			if err := json.Unmarshal(response.Result.([]byte), task); err != nil {
+				return fmt.Errorf("failed to unmarshal task response: %w", err)
+			}
+
+			// Print the task history
+			for _, message := range task.History {
+				fmt.Println(message.String())
 			}
 
 			return nil

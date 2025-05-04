@@ -19,6 +19,7 @@ Split things up into small, digestible blocks of code, avoid excessive nesting, 
 5.Always consider the existing code, and the direction that it is taking, before blindly implementing a solution that goes against the established patterns.
 6. Generally, we want as much as possible to just have types that implement io.ReadWriteCloser, as this means they will all be arbitrarily compatible with each other, as well as with most communication layers in Go. Sometimes this requires some creativity to make that work, but it is certainly possible. Remember that we always need to make sure everything is compatible with streaming!
 7. NO TODOs, Temporary Implementations, or Simplifications! This is a serious, production-grade framework, requiring serious solutions only!
+8. If statements should always have a new line above and below then, do not pack things super tight, as humans also need to be able to read the code.
 
 And finally: Ultimately the A2A spec, and MCP spec, should determine the implementations needed in this project, and you will find those the `specs` sub-directory, as well as some examples from other frameworks.
 

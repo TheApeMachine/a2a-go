@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -124,14 +125,30 @@ func (c *Client) connect(ctx context.Context, lastEventID string) error {
 	}
 
 	// Make the request
-	client := &http.Client{}
+	client := &http.Client{
+		// Add timeout to client for better error handling
+		Timeout: 30 * time.Second,
+		// Handle redirects gracefully
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("too many redirects")
+			}
+			return nil
+		},
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
+		if os.IsTimeout(err) || strings.Contains(err.Error(), "connection reset by peer") {
+			// Handle connection resets and timeouts specifically
+			c.Metrics.RecordConnection(false, time.Since(startTime))
+			return fmt.Errorf("failed to connect (network error): %w", err)
+		}
 		c.Metrics.RecordConnection(false, time.Since(startTime))
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusBadRequest {
 		respBodyBytes, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		c.Metrics.RecordConnection(false, time.Since(startTime))

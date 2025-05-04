@@ -18,12 +18,29 @@ import (
 //   - Optionally audience annotations can indicate the card is meant for
 //     assistants as well as users.
 func ToMCPResource(card *AgentCard) mcp.Resource {
-	res := mcp.NewResource(
+	var res mcp.Resource
+
+	// Check if card is nil
+	if card == nil {
+		return res
+	}
+
+	// Basic resource with required fields
+	res = mcp.NewResource(
 		card.URL,
 		card.Name,
-		mcp.WithResourceDescription(*card.Description),
 		mcp.WithMIMEType("application/json"),
 	)
+
+	// Add description if available
+	if card.Description != nil {
+		res = mcp.NewResource(
+			card.URL,
+			card.Name,
+			mcp.WithResourceDescription(*card.Description),
+			mcp.WithMIMEType("application/json"),
+		)
+	}
 
 	// Provide simple annotation hint – both user and assistant.
 	res.Annotations = &struct {

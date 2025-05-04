@@ -3,164 +3,188 @@ package s3
 import (
 	"bytes"
 	"context"
-	"errors"
+	"encoding/json"
 	"io"
-	"io/fs"
-	"log"
-	"os"
-	"path/filepath"
+	"sync"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/charmbracelet/log"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/notification"
+	"github.com/theapemachine/a2a-go/pkg/a2a"
 )
 
+type Subscriber struct {
+	listeners []chan a2a.Task
+}
+
+/*
+Conn provides a connection to an S3-compatible storage service.
+It uses MinIO client for better compatibility with MinIO server.
+*/
 type Conn struct {
-	Client     *s3.Client
-	Uploader   *manager.Uploader
-	Downloader *manager.Downloader
+	client      *minio.Client
+	subscribers sync.Map
 }
 
-// NewConn creates a new S3 connection with default settings.
-// For a real implementation, this would configure AWS credentials and region.
-func NewConn() *Conn {
-	// For the example, we'll create a minimal implementation
-	// that doesn't actually connect to S3 but provides the interface
-	return &Conn{}
+type ConnOption func(*Conn)
+
+/*
+NewConn creates a new S3 connection with default settings.
+For a real implementation, this would configure MinIO credentials and endpoint.
+*/
+func NewConn(opts ...ConnOption) *Conn {
+	conn := &Conn{}
+
+	for _, opt := range opts {
+		opt(conn)
+	}
+
+	return conn
 }
 
+/*
+List retrieves a list of objects from S3 storage.
+*/
 func (conn *Conn) List(
 	ctx context.Context, bucketName string,
-) ([]types.Object, error) {
-   // If no S3 client, fallback to local filesystem storage
-   if conn.Client == nil {
-       var objects []types.Object
-       root := bucketName
+) ([]minio.ObjectInfo, error) {
+	objects := make([]minio.ObjectInfo, 0)
 
-       // Walk through local directory structure under bucketName
-       _ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-           if err != nil {
-               return err
-           }
-           if !d.IsDir() {
-               rel, err := filepath.Rel(root, path)
-               if err != nil {
-                   return err
-               }
-               objects = append(objects, types.Object{Key: aws.String(rel)})
-           }
-           return nil
-       })
-       return objects, nil
-   }
-   var (
-		err     error
-		output  *s3.ListObjectsV2Output
-		objects []types.Object
-	)
-
-	input := &s3.ListObjectsV2Input{
-		Bucket: aws.String(bucketName),
-	}
-
-	objectPaginator := s3.NewListObjectsV2Paginator(conn.Client, input)
-
-	for objectPaginator.HasMorePages() {
-		output, err = objectPaginator.NextPage(ctx)
-
-		if err != nil {
-			var noBucket *types.NoSuchBucket
-
-			if errors.As(err, &noBucket) {
-				log.Printf("Bucket %s does not exist.\n", bucketName)
-				err = noBucket
-			}
-
-			break
+	for object := range conn.client.ListObjects(
+		ctx, bucketName, minio.ListObjectsOptions{},
+	) {
+		if object.Err != nil {
+			log.Error("failed to list objects", "error", object.Err)
+			return nil, object.Err
 		}
 
-		objects = append(objects, output.Contents...)
+		objects = append(objects, object)
 	}
 
-	return objects, err
+	return objects, nil
 }
 
+/*
+Get retrieves an object from S3 storage.
+*/
 func (conn *Conn) Get(
 	ctx context.Context,
 	bucketName string,
 	objectKey string,
 ) (*bytes.Buffer, error) {
-   // If no S3 client, fallback to local filesystem storage
-   if conn.Client == nil {
-       path := filepath.Join(bucketName, objectKey)
-       data, err := os.ReadFile(path)
-       if err != nil {
-           return nil, err
-       }
-       return bytes.NewBuffer(data), nil
-   }
-
-	var (
-		err    error
-		output *s3.GetObjectOutput
+	object, err := conn.client.GetObject(
+		ctx, bucketName, objectKey, minio.GetObjectOptions{},
 	)
 
-	input := &s3.GetObjectInput{
-		Bucket: aws.String(bucketName),
-		Key:    aws.String(objectKey),
-	}
-
-	output, err = conn.Client.GetObject(ctx, input)
-
 	if err != nil {
+		log.Error("failed to get object", "error", err)
 		return nil, err
 	}
 
-	defer output.Body.Close()
+	defer object.Close()
 
 	buf := &bytes.Buffer{}
 
-	if _, err = io.Copy(buf, output.Body); err != nil {
+	if _, err := io.Copy(buf, object); err != nil {
+		log.Error("failed to copy object", "error", err)
 		return nil, err
 	}
 
 	return buf, nil
 }
 
+/*
+Put stores an object in S3 storage.
+*/
 func (conn *Conn) Put(
 	ctx context.Context,
 	bucketName string,
 	objectKey string,
 	body io.Reader,
 ) error {
-   // If no S3 client, fallback to local filesystem storage
-   if conn.Client == nil {
-       // Ensure directory exists
-       fsPath := filepath.Join(bucketName, objectKey)
-       if err := os.MkdirAll(filepath.Dir(fsPath), os.ModePerm); err != nil {
-           return err
-       }
-       f, err := os.Create(fsPath)
-       if err != nil {
-           return err
-       }
-       defer f.Close()
-       if _, err := io.Copy(f, body); err != nil {
-           return err
-       }
-       return nil
-   }
-
-	var err error
-
-	input := &s3.PutObjectInput{
-		Bucket: aws.String(bucketName),
-		Key:    aws.String(objectKey),
-		Body:   body,
-	}
-
-	_, err = conn.Client.PutObject(ctx, input)
+	_, err := conn.client.PutObject(
+		ctx, bucketName, objectKey, body, -1, minio.PutObjectOptions{},
+	)
 
 	return err
+}
+
+/*
+ListenForObjectChanges starts listening for changes to a specific object in a bucket.
+It returns a channel that will receive notifications for the object.
+*/
+func (conn *Conn) ListenForObjectChanges(
+	ctx context.Context,
+	bucketName string,
+) error {
+	events := []string{
+		string(notification.ObjectCreatedPut),
+		string(notification.ObjectCreatedCompleteMultipartUpload),
+		string(notification.ObjectRemovedDelete),
+		string(notification.ObjectCreatedPutTagging),
+	}
+
+	listener := conn.client.ListenBucketNotification(
+		ctx,
+		bucketName,
+		"",
+		"",
+		events,
+	)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case notificationInfo, ok := <-listener:
+				if !ok {
+					return
+				}
+
+				if notificationInfo.Err != nil {
+					log.Error(
+						"error receiving notification for bucket %s: %v",
+						bucketName,
+						notificationInfo.Err,
+					)
+					continue
+				}
+
+				for _, obj := range notificationInfo.Records {
+					subscribers, ok := conn.subscribers.Load(obj.S3.Object.Key)
+
+					if !ok {
+						continue
+					}
+
+					buf, err := conn.Get(ctx, bucketName, obj.S3.Object.Key)
+
+					if err != nil {
+						log.Error("error getting object %s: %v", obj.S3.Object.Key, err)
+						continue
+					}
+
+					task := a2a.Task{}
+
+					if err := json.Unmarshal(buf.Bytes(), &task); err != nil {
+						log.Error("error unmarshalling object %s: %v", obj.S3.Object.Key, err)
+						continue
+					}
+
+					for _, subscriber := range subscribers.([]chan a2a.Task) {
+						subscriber <- task
+					}
+				}
+			}
+		}
+	}()
+
+	return nil
+}
+
+func WithClient(client *minio.Client) ConnOption {
+	return func(conn *Conn) {
+		conn.client = client
+	}
 }

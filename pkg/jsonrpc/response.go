@@ -1,12 +1,11 @@
 package jsonrpc
 
-import (
-	"github.com/theapemachine/a2a-go/pkg/errors"
-)
-
-type RPCResponse struct {
-	JSONRPC string           `json:"jsonrpc"`
-	ID      interface{}      `json:"id,omitempty"`
-	Result  any              `json:"result,omitempty"`
-	Error   *errors.RpcError `json:"error,omitempty"`
+type Response struct {
+	Message
+	// Result is the result of the method invocation. Required on success.
+	// Should be null or omitted if an error occurred.
+	Result interface{} `json:"result,omitempty"`
+	// Error is an error object if an error occurred during the request.
+	// Required on failure. Should be null or omitted if the request was successful.
+	Error *Error `json:"error,omitempty"`
 }

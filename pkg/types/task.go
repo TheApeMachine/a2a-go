@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
+	"github.com/theapemachine/a2a-go/pkg/transport"
 	"github.com/theapemachine/a2a-go/pkg/utils"
 )
 
@@ -55,6 +56,7 @@ type TaskArtifactUpdateEvent struct {
 }
 
 type Task struct {
+	*transport.Stream[Task]
 	ID        string         `json:"id"`
 	SessionID string         `json:"sessionId,omitempty"`
 	Status    TaskStatus     `json:"status"`

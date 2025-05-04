@@ -110,10 +110,19 @@ func (broker *SSEBroker) Subscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
+	// Set SSE headers if not already set
+	header := w.Header()
+	if header.Get("Content-Type") == "" {
+		header.Set("Content-Type", "text/event-stream")
+	}
+	if header.Get("Cache-Control") == "" {
+		header.Set("Cache-Control", "no-cache")
+	}
+	if header.Get("Connection") == "" {
+		header.Set("Connection", "keep-alive")
+	}
 
+	// Create channel for this client
 	ch := make(chan []byte, 8)
 	broker.mu.Lock()
 
@@ -125,6 +134,13 @@ func (broker *SSEBroker) Subscribe(w http.ResponseWriter, r *http.Request) {
 
 	broker.clients[ch] = struct{}{}
 	broker.mu.Unlock()
+
+	// Ensure channel is always cleaned up
+	defer broker.remove(ch)
+
+	// Write initial comment to establish SSE connection
+	_, _ = w.Write([]byte(": SSE connection established\n\n"))
+	flusher.Flush()
 
 	// heartbeat ticker to keep connection alive in the presence of proxies.
 	tickerInterval := 25 * time.Second
@@ -139,9 +155,13 @@ func (broker *SSEBroker) Subscribe(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-r.Context().Done():
-			broker.remove(ch)
 			return
-		case msg := <-ch:
+		case msg, ok := <-ch:
+			if !ok {
+				// Channel was closed
+				return
+			}
+
 			// Handle messages that already have event prefixes
 			if bytes.HasPrefix(msg, []byte("event:")) {
 				// This is a message with event type already set
@@ -166,6 +186,8 @@ func (broker *SSEBroker) Subscribe(w http.ResponseWriter, r *http.Request) {
 				_, _ = w.Write(msg)
 				_, _ = w.Write([]byte("\n\n"))
 			}
+
+			// Flush after every message
 			flusher.Flush()
 		case <-ticker.C:
 			// comment heartbeat

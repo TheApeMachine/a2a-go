@@ -5,14 +5,15 @@ services:
     command: ["catalog"]
     networks:
       - a2a-network
-    volumes:
-      - ./configs:/app/configs
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3210/"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+    ports:
+      - "3210:3210"
+    depends_on:
+      minio:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      neo4j:
+        condition: service_started
 
   dockertool:
     image: theapemachine/a2a-go:latest
@@ -28,13 +29,11 @@ services:
       - .env
     environment:
       - CATALOG_URL=http://catalog:3210
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     networks:
       - a2a-network
-    ports:
-      - "3210:3210"
     depends_on:
-      catalog:
-        condition: service_healthy
       minio:
         condition: service_started
       qdrant:
@@ -52,9 +51,9 @@ services:
       - a2a-network
     environment:
       - CATALOG_URL=http://catalog:3210
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     depends_on:
-      catalog:
-        condition: service_healthy
       minio:
         condition: service_started
       qdrant:
@@ -72,9 +71,9 @@ services:
       - a2a-network
     environment:
       - CATALOG_URL=http://catalog:3210
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     depends_on:
-      catalog:
-        condition: service_healthy
       minio:
         condition: service_started
       qdrant:
@@ -90,9 +89,11 @@ services:
       - .env
     networks:
       - a2a-network
+    environment:
+      - CATALOG_URL=http://catalog:3210
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     depends_on:
-      catalog:
-        condition: service_healthy
       minio:
         condition: service_started
       qdrant:
@@ -103,7 +104,7 @@ services:
   # Developer agent service - specialized in implementing solutions
   developer:
     image: theapemachine/a2a-go:latest
-    command: ["agent", "-c", "developer", "-n", "A2A Developer Agent"]
+    command: ["agent", "-c", "developer"]
     env_file:
       - .env
     networks:
@@ -112,9 +113,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock # For Docker-in-Docker capabilities.
     environment:
       - CATALOG_URL=http://catalog:3210
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     depends_on:
-      catalog:
-        condition: service_healthy
       minio:
         condition: service_started
       qdrant:

@@ -56,11 +56,17 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().StringVar(
-		&cfgFile, "config", "config.yml", "config file (default is $HOME/."+projectName+"/config.yml)",
+		&cfgFile,
+		"config",
+		"config.yml",
+		"config file (default is $HOME/."+projectName+"/config.yml)",
 	)
 
 	rootCmd.PersistentFlags().StringVar(
-		&openaiAPIKey, "openai-api-key", "", "API key for the OpenAI provider",
+		&openaiAPIKey,
+		"openai-api-key",
+		os.Getenv("OPENAI_API_KEY"),
+		"API key for the OpenAI provider",
 	)
 }
 
@@ -102,7 +108,7 @@ func writeConfig() (err error) {
 		buf     bytes.Buffer
 	)
 
-	for idx, file := range []string{cfgFile, "Dockerfile"} {
+	for idx, file := range []string{cfgFile} {
 		fullPath := home + "/.a2a-go/" + file
 
 		if CheckFileExists(fullPath) {

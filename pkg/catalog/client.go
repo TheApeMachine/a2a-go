@@ -1,92 +1,104 @@
 package catalog
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"time"
 
 	"github.com/charmbracelet/log"
-	"github.com/theapemachine/a2a-go/pkg/types"
+	fiberClient "github.com/gofiber/fiber/v3/client"
+	"github.com/theapemachine/a2a-go/pkg/a2a"
 )
 
-// AgentCard is an alias to types.AgentCard for simplicity in our API.
-type AgentCard = types.AgentCard
-
-// CatalogClient provides functionality to interact with the agent catalog service.
+/*
+CatalogClient connects to the A2A Agent Catalog service, so it can retrieve all
+the available agents.
+*/
 type CatalogClient struct {
-	baseURL  string
-	httpClient *http.Client
+	baseURL string
+	conn    *fiberClient.Client
 }
 
-// NewCatalogClient creates a new catalog client with the given base URL.
-func NewCatalogClient(baseURL string) *CatalogClient {
-	return &CatalogClient{
+type CatalogClientOption func(*CatalogClient)
+
+/*
+NewCatalogClient creates a new catalog client with the given base URL.
+*/
+func NewCatalogClient(baseURL string, opts ...CatalogClientOption) *CatalogClient {
+	client := &CatalogClient{
 		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		conn:    fiberClient.New().SetBaseURL(baseURL),
 	}
+
+	for _, opt := range opts {
+		opt(client)
+	}
+
+	return client
+}
+
+func (client *CatalogClient) Register(card *a2a.AgentCard) error {
+	var (
+		resp *fiberClient.Response
+		err  error
+	)
+
+	if resp, err = client.conn.Post("/agent", fiberClient.Config{
+		Header: map[string]string{
+			"Content-Type": "application/json",
+		},
+		Body: card,
+	}); err != nil {
+		log.Error("failed to register agent", "error", err)
+		return err
+	}
+
+	if resp.StatusCode() < http.StatusOK || resp.StatusCode() >= http.StatusBadRequest {
+		log.Error("failed to register agent", "error", resp.Status())
+		return errors.New("failed to register agent")
+	}
+
+	return nil
 }
 
 // GetAgents retrieves all agent cards from the catalog.
-func (c *CatalogClient) GetAgents() ([]AgentCard, error) {
-	// Request the catalog agents endpoint
-	url := fmt.Sprintf("%s/.well-known/catalog.json", c.baseURL)
-	
-	log.Debug("Fetching agents from catalog", "url", url)
-	
-	resp, err := c.httpClient.Get(url)
+func (client *CatalogClient) GetAgents() ([]a2a.AgentCard, error) {
+	resp, err := client.conn.Get("/.well-known/catalog.json")
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to catalog: %w", err)
 	}
-	defer resp.Body.Close()
-	
-	// Check for non-200 responses
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("catalog returned non-OK status: %d, body: %s", resp.StatusCode, string(body))
+
+	if resp.StatusCode() < http.StatusOK || resp.StatusCode() >= http.StatusBadRequest {
+		return nil, fmt.Errorf("catalog returned non-OK status: %d", resp.StatusCode())
 	}
-	
-	// Parse the response
-	var agents []AgentCard
-	if err := json.NewDecoder(resp.Body).Decode(&agents); err != nil {
+
+	var agents []a2a.AgentCard
+
+	if err = resp.JSON(&agents); err != nil {
 		return nil, fmt.Errorf("failed to decode catalog response: %w", err)
 	}
-	
-	log.Debug("Retrieved agents from catalog", "count", len(agents))
+
 	return agents, nil
 }
 
 // GetAgent retrieves a specific agent card by ID from the catalog.
-func (c *CatalogClient) GetAgent(id string) (*AgentCard, error) {
-	// Request the specific agent
-	url := fmt.Sprintf("%s/agent/%s", c.baseURL, id)
-	
-	log.Debug("Fetching agent from catalog", "agentID", id, "url", url)
-	
-	// Using POST as specified in the A2A spec
-	resp, err := c.httpClient.Post(url, "application/json", nil)
+func (client *CatalogClient) GetAgent(id string) (*a2a.AgentCard, error) {
+	resp, err := client.conn.Get(fmt.Sprintf("%s/agent/%s", client.baseURL, id))
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to catalog: %w", err)
 	}
-	defer resp.Body.Close()
-	
-	// Check for non-200 responses
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusNotFound {
-			return nil, fmt.Errorf("agent not found: %s", id)
-		}
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("catalog returned non-OK status: %d, body: %s", resp.StatusCode, string(body))
+
+	if resp.StatusCode() < http.StatusOK || resp.StatusCode() >= http.StatusBadRequest {
+		return nil, fmt.Errorf("catalog returned non-OK status: %d", resp.StatusCode())
 	}
-	
-	// Parse the response
-	var agent AgentCard
-	if err := json.NewDecoder(resp.Body).Decode(&agent); err != nil {
-		return nil, fmt.Errorf("failed to decode agent response: %w", err)
+
+	var agent a2a.AgentCard
+
+	if err = resp.JSON(&agent); err != nil {
+		return nil, fmt.Errorf("failed to decode catalog response: %w", err)
 	}
-	
+
 	return &agent, nil
-} 
+}
