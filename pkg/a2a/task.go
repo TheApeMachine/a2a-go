@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -51,6 +52,31 @@ func NewTaskFromRequest(body []byte) (*Task, error) {
 		return nil, err
 	}
 	return &task, nil
+}
+
+/*
+Prefix returns a deterministic S3 compatible storage key for a task.
+It consists out of the following segments, which have been selected for
+the following reasons:
+
+  - State: at the front so no matter how much time has passed, we can always easily
+    get all tasks for a given state.
+  - SessionID: naturally groups all tasks for a given session, so we can easily retrieve
+    all tasks for a given session.
+  - ID: the main unique segment needed to make sure all tasks have their own
+    space on storage, and no overwriting occurs.
+  - Timestamp: makes it easy to get the latest version of a task, since updates do not overwrite,
+    but instead follow an append only strategy.
+*/
+func (task *Task) Prefix() string {
+	builder := []string{
+		string(task.Status.State),
+		task.SessionID,
+		task.ID,
+		strconv.FormatInt(time.Now().UnixNano(), 10),
+	}
+
+	return strings.Join(builder, "/")
 }
 
 func (task *Task) ToStatus(status TaskState, message *Message) {
@@ -109,50 +135,36 @@ type TaskHistory struct {
 
 // TaskSendParams represents the parameters for sending a task message
 type TaskSendParams struct {
-	// ID is the unique identifier for the task being initiated or continued
-	ID string `json:"id"`
-	// SessionID is an optional identifier for the session this task belongs to
-	SessionID string `json:"sessionId,omitempty"`
-	// Message is the message content to send to the agent for processing
-	Message Message `json:"message"`
-	// PushNotification is optional push notification information for receiving notifications
+	ID               string                  `json:"id"`
+	SessionID        string                  `json:"sessionId,omitempty"`
+	Message          Message                 `json:"message"`
 	PushNotification *PushNotificationConfig `json:"pushNotification,omitempty"`
-	// HistoryLength is an optional parameter to specify how much message history to include
-	HistoryLength *int `json:"historyLength,omitempty"`
-	// Metadata is optional metadata associated with sending this message
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	HistoryLength    *int                    `json:"historyLength,omitempty"`
+	Metadata         map[string]interface{}  `json:"metadata,omitempty"`
 }
 
 // TaskIDParams represents the base parameters for task ID-based operations
 type TaskIDParams struct {
-	// ID is the unique identifier of the task
-	ID string `json:"id"`
-	// Metadata is optional metadata to include with the operation
+	ID       string                 `json:"id"`
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // TaskQueryParams represents the parameters for querying task information
 type TaskQueryParams struct {
 	TaskIDParams
-	// HistoryLength is an optional parameter to specify how much history to retrieve
 	HistoryLength *int `json:"historyLength,omitempty"`
 }
 
 // PushNotificationConfig represents the configuration for push notifications
 type PushNotificationConfig struct {
-	// URL is the endpoint where the agent should send notifications
-	URL string `json:"url"`
-	// Token is a token to be included in push notification requests for verification
-	Token *string `json:"token,omitempty"`
-	// Authentication is optional authentication details needed by the agent
+	URL            string               `json:"url"`
+	Token          *string              `json:"token,omitempty"`
 	Authentication *AgentAuthentication `json:"authentication,omitempty"`
 }
 
 // TaskPushNotificationConfig represents the configuration for task-specific push notifications
 type TaskPushNotificationConfig struct {
-	// ID is the ID of the task the notification config is associated with
-	ID string `json:"id"`
-	// PushNotificationConfig is the push notification configuration details
+	ID                     string                 `json:"id"`
 	PushNotificationConfig PushNotificationConfig `json:"pushNotificationConfig"`
 }
 

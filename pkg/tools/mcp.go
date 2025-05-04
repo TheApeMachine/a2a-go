@@ -15,9 +15,7 @@ func Aquire(id string) (*mcp.Tool, error) {
 
 	switch id {
 	case "development":
-		tool := NewDockerTools()
-		log.Info("tool", "name", tool.Name, "description", tool.Description, "inputSchema", tool.InputSchema)
-		return tool, nil
+		return NewDockerTools(), nil
 	}
 
 	return nil, errors.New("tool not found")
@@ -30,15 +28,18 @@ func NewOpenAIExecutor(
 		"http://" + name + ":3210",
 	)
 
+	initializeRequest := mcp.InitializeRequest{}
+	initializeRequest.Params.ProtocolVersion = "2025-03-27"
+
+	_, err = client.Initialize(ctx, initializeRequest)
+
 	if err != nil {
 		return "", err
 	}
 
 	arguments := map[string]any{}
 
-	err = json.Unmarshal([]byte(args), &arguments)
-
-	if err != nil {
+	if json.Unmarshal([]byte(args), &arguments) != nil {
 		return "", err
 	}
 

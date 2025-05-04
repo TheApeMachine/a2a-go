@@ -33,9 +33,9 @@ func NewStore(conn *Conn) *Store {
 Get retrieves a task by its ID from S3 storage.
 */
 func (store *Store) Get(
-	ctx context.Context, id string, historyLength int,
+	ctx context.Context, prefix string, historyLength int,
 ) (*a2a.Task, *errors.RpcError) {
-	buf, err := store.conn.Get(ctx, "tasks", id)
+	buf, err := store.conn.Get(ctx, "tasks", prefix)
 
 	if err != nil {
 		log.Error("failed to get task", "error", err)
@@ -43,6 +43,7 @@ func (store *Store) Get(
 	}
 
 	var task a2a.Task
+
 	if err := json.Unmarshal(buf.Bytes(), &task); err != nil {
 		log.Error("failed to unmarshal task", "error", err)
 		return nil, errors.ErrInternal.WithMessagef("failed to unmarshal task: %v", err)
@@ -55,14 +56,14 @@ func (store *Store) Get(
 Subscribe sets up a channel to receive task updates from S3.
 */
 func (store *Store) Subscribe(
-	ctx context.Context, id string, ch chan a2a.Task,
+	ctx context.Context, prefix string, ch chan a2a.Task,
 ) *errors.RpcError {
-	actual, loaded := store.subscriptions.LoadOrStore(id, []chan a2a.Task{ch})
+	actual, loaded := store.subscriptions.LoadOrStore(prefix, []chan a2a.Task{ch})
 
 	if loaded {
 		subscribers := actual.([]chan a2a.Task)
 		subscribers = append(subscribers, ch)
-		store.subscriptions.Store(id, subscribers)
+		store.subscriptions.Store(prefix, subscribers)
 	}
 
 	return nil
@@ -73,12 +74,13 @@ Create stores a new task in S3.
 */
 func (store *Store) Create(ctx context.Context, task *a2a.Task) *errors.RpcError {
 	data, err := json.Marshal(task)
+
 	if err != nil {
 		log.Error("failed to marshal task", "error", err)
 		return errors.ErrInternal.WithMessagef("failed to marshal task: %v", err)
 	}
 
-	if err := store.conn.Put(ctx, "tasks", task.ID, bytes.NewReader(data)); err != nil {
+	if err := store.conn.Put(ctx, "tasks", task.Prefix(), bytes.NewReader(data)); err != nil {
 		log.Error("failed to store task", "error", err, "task", task)
 		return errors.ErrInternal.WithMessagef("failed to store task: %v", err)
 	}
@@ -96,7 +98,7 @@ func (store *Store) Update(ctx context.Context, task *a2a.Task) *errors.RpcError
 		return errors.ErrInternal.WithMessagef("failed to marshal task: %v", err)
 	}
 
-	if err := store.conn.Put(ctx, "tasks", task.ID, bytes.NewReader(data)); err != nil {
+	if err := store.conn.Put(ctx, "tasks", task.Prefix(), bytes.NewReader(data)); err != nil {
 		log.Error("failed to update task", "error", err)
 		return errors.ErrInternal.WithMessagef("failed to update task: %v", err)
 	}
@@ -105,28 +107,30 @@ func (store *Store) Update(ctx context.Context, task *a2a.Task) *errors.RpcError
 }
 
 /*
-Delete removes a task from S3 storage.
+Delete does not actually delete any data from the store, rather marks the object
+as being deleted, after which is should be ignored by the surrounding system.
+In the interest of traceability, and event consistency, hard-deletion are not
+a good idea.
 */
-func (store *Store) Delete(ctx context.Context, id string) *errors.RpcError {
-	if err := store.conn.client.RemoveObject(
-		ctx,
-		"tasks",
-		id,
-		minio.RemoveObjectOptions{},
-	); err != nil {
+func (store *Store) Delete(ctx context.Context, prefix string) *errors.RpcError {
+	obj, err := store.conn.client.GetObject(
+		ctx, "tasks", prefix, minio.GetObjectOptions{},
+	)
+
+	if err != nil {
 		log.Error("failed to delete task", "error", err)
 		return errors.ErrInternal.WithMessagef("failed to delete task: %v", err)
 	}
 
-	store.subscriptions.Delete(id)
+	_ = obj
 	return nil
 }
 
 /*
 Cancel marks a task as cancelled in S3 storage.
 */
-func (store *Store) Cancel(ctx context.Context, id string) *errors.RpcError {
-	task, rpcErr := store.Get(ctx, id, 0)
+func (store *Store) Cancel(ctx context.Context, prefix string) *errors.RpcError {
+	task, rpcErr := store.Get(ctx, prefix, 0)
 
 	if rpcErr != nil {
 		log.Error("failed to get task", "error", rpcErr)

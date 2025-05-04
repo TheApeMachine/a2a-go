@@ -202,6 +202,12 @@ func (prvdr *OpenAIProvider) handleToolCall(
 
 	if err != nil {
 		log.Error("error executing tool", "error", err)
+
+		prvdr.params.Messages = append(
+			prvdr.params.Messages,
+			openai.ToolMessage(err.Error(), toolCall.ID),
+		)
+
 		return err
 	}
 
@@ -378,12 +384,14 @@ func (prvdr *OpenAIProvider) convertTools(
 			continue
 		}
 
-		log.Info("tool", "name", tool.Name, "description", tool.Description, "inputSchema", tool.InputSchema)
 		out = append(out, openai.ChatCompletionToolParam{
 			Function: openai.FunctionDefinitionParam{
 				Name:        tool.Name,
 				Description: openai.String(tool.Description),
-				Parameters:  openai.FunctionParameters(tool.InputSchema.Properties),
+				Parameters: openai.FunctionParameters(map[string]any{
+					"type":       tool.InputSchema.Type,
+					"properties": tool.InputSchema.Properties,
+				}),
 			},
 		})
 	}

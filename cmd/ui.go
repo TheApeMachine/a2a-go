@@ -84,13 +84,15 @@ var (
 			})
 
 			if err != nil {
+				log.Error("failed to send task", "error", err)
 				return err
 			}
 
 			// Convert the response result to a Task
 			task := &a2a.Task{}
 			if err := json.Unmarshal(response.Result.([]byte), task); err != nil {
-				return fmt.Errorf("failed to unmarshal task response: %w", err)
+				log.Error("failed to unmarshal task response", "error", err)
+				return err
 			}
 
 			// Print the task history
