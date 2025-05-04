@@ -132,14 +132,15 @@ func (c *Client) connect(ctx context.Context, lastEventID string) error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		respBodyBytes, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		c.Metrics.RecordConnection(false, time.Since(startTime))
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(respBodyBytes))
 	}
 
 	c.mu.Lock()
 	c.conn = resp
-	c.reader = bufio.NewReader(resp.Body)
+	c.reader = bufio.NewReader(resp.Body) // Use the body normally now
 	c.mu.Unlock()
 
 	c.Metrics.RecordConnection(true, time.Since(startTime))
@@ -182,26 +183,46 @@ func (c *Client) readEvent() (*Event, error) {
 	}
 
 	event := &Event{}
+	var eventData strings.Builder
+	inEvent := false
+
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			return nil, err
 		}
 
-		line = strings.TrimSpace(line)
+		line = strings.TrimRight(line, "\n\r")
+
+		// Empty line marks the end of an event
 		if line == "" {
-			if event.Data != nil {
+			if inEvent {
+				// Event is complete, return it
+				event.Data = []byte(eventData.String())
 				return event, nil
 			}
+			// Empty line but not in event, continue reading
 			continue
 		}
 
+		// We're now in an event
+		inEvent = true
+
+		// Parse the line
 		if strings.HasPrefix(line, "id:") {
 			event.ID = strings.TrimSpace(line[3:])
 		} else if strings.HasPrefix(line, "event:") {
 			event.Event = strings.TrimSpace(line[6:])
 		} else if strings.HasPrefix(line, "data:") {
-			event.Data = []byte(strings.TrimSpace(line[5:]))
+			// For data, we may need to append multiple lines
+			dataLine := strings.TrimPrefix(line, "data:")
+			if eventData.Len() > 0 {
+				eventData.WriteString("\n")
+			}
+			eventData.WriteString(strings.TrimPrefix(dataLine, " "))
+		} else if strings.HasPrefix(line, ":") {
+			// Comment line, ignore
+			continue
 		}
 	}
 }

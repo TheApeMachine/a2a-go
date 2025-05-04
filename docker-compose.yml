@@ -20,18 +20,76 @@ services:
     env_file:
       - .env
 
-  # Planner agent service - specialized in planning tasks
-  planner:
+  # UI agent service - specialized in relaying messages between the user and the agents.
+  ui:
     image: theapemachine/a2a-go:latest
-    command: ["agent", "-c", "planner", "-n", "A2A Planner Agent"]
+    command: ["agent", "-c", "ui"]
+    env_file:
+      - .env
+    environment:
+      - CATALOG_URL=http://catalog:3210
+    networks:
+      - a2a-network
+    ports:
+      - "3210:3210"
+    depends_on:
+      catalog:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      neo4j:
+        condition: service_started
+
+  # Manager agent service - specialized in managing tasks and agents.
+  manager:
+    image: theapemachine/a2a-go:latest
+    command: ["agent", "-c", "manager"]
     env_file:
       - .env
     networks:
       - a2a-network
-    volumes:
-      - ./configs:/app/configs
     environment:
       - CATALOG_URL=http://catalog:3210
+    depends_on:
+      catalog:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      neo4j:
+        condition: service_started
+
+  # Planner agent service - specialized in planning tasks.
+  planner:
+    image: theapemachine/a2a-go:latest
+    command: ["agent", "-c", "planner"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+    environment:
+      - CATALOG_URL=http://catalog:3210
+    depends_on:
+      catalog:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      neo4j:
+        condition: service_started
+
+  # Researcher agent service - specialized in researching information.
+  researcher:
+    image: theapemachine/a2a-go:latest
+    command: ["agent", "-c", "researcher"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
     depends_on:
       catalog:
         condition: service_healthy
@@ -51,8 +109,7 @@ services:
     networks:
       - a2a-network
     volumes:
-      - ./configs:/app/configs
-      - /var/run/docker.sock:/var/run/docker.sock # For Docker-in-Docker capabilities
+      - /var/run/docker.sock:/var/run/docker.sock # For Docker-in-Docker capabilities.
     environment:
       - CATALOG_URL=http://catalog:3210
     depends_on:
@@ -63,28 +120,6 @@ services:
       qdrant:
         condition: service_started
       neo4j:
-        condition: service_started
-
-  # Client demo - a standalone client that discovers and interacts with agents
-  # This is for demonstration purposes of the A2A Protocol in action
-  demo:
-    image: theapemachine/a2a-go:latest
-    command: ["demo"]
-    env_file:
-      - .env
-    networks:
-      - a2a-network
-    volumes:
-      - ./configs:/app/configs
-    environment:
-      - CATALOG_URL=http://catalog:3210
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    depends_on:
-      catalog:
-        condition: service_healthy
-      planner:
-        condition: service_started
-      developer:
         condition: service_started
 
   # Persistence and storage services

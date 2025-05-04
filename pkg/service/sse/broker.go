@@ -1,6 +1,7 @@
 package sse
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"sync"
@@ -141,9 +142,30 @@ func (broker *SSEBroker) Subscribe(w http.ResponseWriter, r *http.Request) {
 			broker.remove(ch)
 			return
 		case msg := <-ch:
-			_, _ = w.Write([]byte("data: "))
-			_, _ = w.Write(msg)
-			_, _ = w.Write([]byte("\n\n"))
+			// Handle messages that already have event prefixes
+			if bytes.HasPrefix(msg, []byte("event:")) {
+				// This is a message with event type already set
+				parts := bytes.SplitN(msg, []byte("\n"), 2)
+				if len(parts) == 2 {
+					// Write the event line
+					_, _ = w.Write(parts[0])
+					_, _ = w.Write([]byte("\n"))
+					// Write the data line with "data: " prefix
+					_, _ = w.Write([]byte("data: "))
+					_, _ = w.Write(parts[1])
+					_, _ = w.Write([]byte("\n\n"))
+				} else {
+					// Malformed message, just write it with data: prefix
+					_, _ = w.Write([]byte("data: "))
+					_, _ = w.Write(msg)
+					_, _ = w.Write([]byte("\n\n"))
+				}
+			} else {
+				// Standard message with just data
+				_, _ = w.Write([]byte("data: "))
+				_, _ = w.Write(msg)
+				_, _ = w.Write([]byte("\n\n"))
+			}
 			flusher.Flush()
 		case <-ticker.C:
 			// comment heartbeat
@@ -157,8 +179,25 @@ func (broker *SSEBroker) Subscribe(w http.ResponseWriter, r *http.Request) {
 Broadcast marshals v to JSON and sends it to all connected clients.
 */
 func (broker *SSEBroker) Broadcast(v any) error {
-	msg, err := json.Marshal(v)
+	// Determine event type based on the value type
+	eventType := "message"
+	switch data := v.(type) {
+	case struct{ Event string }:
+		eventType = data.Event
+	case map[string]interface{}:
+		if evt, ok := data["event"].(string); ok {
+			eventType = evt
+		}
+	}
 
+	// If this is a specific event type, format properly
+	if typeMap, ok := v.(map[string]interface{}); ok && typeMap["type"] != nil {
+		if eventType == "message" && typeMap["type"] != nil {
+			eventType = typeMap["type"].(string)
+		}
+	}
+
+	msg, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
@@ -172,7 +211,32 @@ func (broker *SSEBroker) Broadcast(v any) error {
 
 	for ch := range broker.clients {
 		select {
-		case ch <- msg:
+		case ch <- append([]byte("event: "+eventType+"\n"), msg...):
+		default:
+			// slow client – drop message to avoid blocking.
+		}
+	}
+
+	return nil
+}
+
+// BroadcastWithEventType marshals v to JSON and sends it to all connected clients with the specified event type.
+func (broker *SSEBroker) BroadcastWithEventType(eventType string, v any) error {
+	msg, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	broker.mu.RLock()
+	defer broker.mu.RUnlock()
+
+	if broker.closed {
+		return nil
+	}
+
+	for ch := range broker.clients {
+		select {
+		case ch <- append([]byte("event: "+eventType+"\n"), msg...):
 		default:
 			// slow client – drop message to avoid blocking.
 		}

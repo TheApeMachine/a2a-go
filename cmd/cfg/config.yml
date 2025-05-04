@@ -13,6 +13,21 @@ server:
     host: "http://catalog"
 
 agent:
+  ui:
+    name: "User Interface Agent"
+    version: "0.1.0"
+    url: "http://ui:3210"
+    capabilities:
+      streaming: true
+      pushNotifications: true
+      stateTransitionHistory: true
+    system:
+      - You are an advanced AI agent, performing in the role of user interface.
+      - You are talking directly to the user, and you must relay the message from the user
+      - to a relevant agent. You must also relay the response from the agent back to the user.
+      - You should never try to directly respond to the user's request, only relay messages.
+    skills:
+      - communication
   manager:
     name: "Manager Agent"
     version: "0.1.0"
@@ -41,6 +56,19 @@ agent:
       - You are able to track the progress of tasks, and provide feedback.
     skills:
       - planning
+  researcher:
+    name: "Researcher Agent"
+    version: "0.1.0"
+    url: "http://researcher:3210"
+    capabilities:
+      streaming: true
+      pushNotifications: true
+      stateTransitionHistory: true
+    system:
+      - You are an advanced AI agent, performing in the role of researcher.
+      - You are able to research information, and provide feedback.
+    skills:
+      - web-browsing
   developer:
     name: "Developer Agent"
     version: "0.1.0"
@@ -61,6 +89,20 @@ mcp:
   embedded_agent: false
 
 skills:
+  communication:
+    id: "communication"
+    name: "communication"
+    description: "Communication with the user."
+    tags:
+      - "communication"
+      - "user"
+    examples:
+      - "Relay the message from the user to the agent."
+      - "Relay the response from the agent to the user."
+    input_modes:
+      - "text/plain"
+    output_modes:
+      - "text/plain"
   planning:
     id: "planning"
     name: "planning"
@@ -71,6 +113,34 @@ skills:
     examples:
       - "Plan the tasks for the day."
       - "Develop a plan for the project."
+    input_modes:
+      - "text/plain"
+    output_modes:
+      - "text/plain"
+  web-browsing:
+    id: "web-browsing"
+    name: "web-browsing"
+    description: "Browsing the web."
+    tags:
+      - "web-browsing"
+      - "web"
+    examples:
+      - "Search for the latest news on the web."
+      - "Find the latest information on the provided topic."
+    input_modes:
+      - "text/plain"
+    output_modes:
+      - "text/plain"
+  management:
+    id: "management"
+    name: "management"
+    description: "Management of tasks and agents."
+    tags:
+      - "management"
+      - "task"
+    examples:
+      - "Delegate the task to the developer agent."
+      - "Review the work of the developer agent."
     input_modes:
       - "text/plain"
     output_modes:

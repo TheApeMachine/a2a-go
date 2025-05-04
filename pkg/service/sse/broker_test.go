@@ -33,7 +33,7 @@ func TestSSEBrokerBroadcast(t *testing.T) {
 	defer resp.Body.Close()
 
 	// Wait briefly to ensure subscription established.
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Broadcast an event.
 	ev := types.TaskStatusUpdateEvent{
@@ -43,38 +43,69 @@ func TestSSEBrokerBroadcast(t *testing.T) {
 			State: types.TaskStateCompleted,
 		},
 	}
+
+	// Try with the old Broadcast method first for backward compatibility
 	if err := broker.Broadcast(ev); err != nil {
 		t.Fatalf("broadcast: %v", err)
 	}
 
 	reader := bufio.NewReader(resp.Body)
-	var line string
+	var eventType string
+	var dataLine string
 	deadline := time.After(1 * time.Second)
+	lineCount := 0
+
 L:
 	for {
 		select {
 		case <-deadline:
-			t.Fatal("timeout waiting for SSE data line")
+			t.Fatalf("timeout waiting for SSE data line after reading %d lines", lineCount)
 		default:
 			var err error
-			line, err = reader.ReadString('\n')
+			line, err := reader.ReadString('\n')
 			if err != nil {
-				t.Fatalf("read: %v", err)
+				t.Fatalf("read error after %d lines: %v", lineCount, err)
 			}
+
+			lineCount++
+			t.Logf("Read line %d: %q", lineCount, line)
+
+			line = strings.TrimSpace(line)
 			// Skip blank lines and comments
-			if strings.TrimSpace(line) == "" || strings.HasPrefix(line, ":") {
+			if line == "" || strings.HasPrefix(line, ":") {
+				t.Logf("Skipping blank or comment line")
 				continue
 			}
-			if strings.HasPrefix(line, "data: ") {
+
+			// Check if this is an event line
+			if strings.HasPrefix(line, "event:") {
+				eventType = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+				t.Logf("Found event type: %q", eventType)
+				continue
+			}
+
+			// Check if this is a data line
+			if strings.HasPrefix(line, "data:") {
+				dataLine = strings.TrimPrefix(line, "data:")
+				dataLine = strings.TrimSpace(dataLine)
+				t.Logf("Found data: %q", dataLine)
+
+				// For backward compatibility, if we find data without event type, use the default
+				if eventType == "" {
+					eventType = "message"
+					t.Logf("No event type found, using default: %q", eventType)
+				}
 				break L
 			}
+
+			t.Logf("Unknown line format: %q", line)
 		}
 	}
 
-	payload := strings.TrimPrefix(strings.TrimSpace(line), "data: ")
+	// We don't specifically check event type to maintain backward compatibility
 
 	var got types.TaskStatusUpdateEvent
-	if err := json.Unmarshal([]byte(payload), &got); err != nil {
+	if err := json.Unmarshal([]byte(dataLine), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 

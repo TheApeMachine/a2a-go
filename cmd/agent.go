@@ -38,11 +38,16 @@ var (
 				skills = append(skills, types.NewSkillFromConfig(skill))
 			}
 
-			service.NewA2AServer(ai.NewAgentFromCard(
+			// Create agent from config
+			agent := ai.NewAgentFromCard(
 				types.NewAgentCardFromConfig(configFlag),
-			)).Start()
+			)
 
-			return nil
+			// Create server with agent
+			server := service.NewA2AServer(agent)
+
+			// Start server
+			return server.Start()
 		},
 	}
 )
