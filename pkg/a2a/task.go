@@ -9,6 +9,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
+	"github.com/google/uuid"
+	"github.com/spf13/viper"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
 	"github.com/theapemachine/a2a-go/pkg/transport"
 )
@@ -21,6 +23,26 @@ type Task struct {
 	History   []Message      `json:"history,omitempty"`
 	Artifacts []Artifact     `json:"artifacts,omitempty"`
 	Metadata  map[string]any `json:"metadata,omitempty"`
+}
+
+func NewTask(agentName string) *Task {
+	task := &Task{
+		ID:        uuid.New().String(),
+		SessionID: uuid.New().String(),
+		Status: TaskStatus{
+			State:   TaskStateSubmitted,
+			Message: NewTextMessage("system", "Task created"),
+		},
+		History:   make([]Message, 0),
+		Artifacts: make([]Artifact, 0),
+		Metadata:  make(map[string]any),
+	}
+
+	task.History = append(task.History, *NewTextMessage("system",
+		viper.GetViper().GetString(fmt.Sprintf("agent.%s.system", agentName)),
+	))
+
+	return task
 }
 
 func NewTaskFromRequest(body []byte) (*Task, error) {

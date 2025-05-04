@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 
+	"github.com/charmbracelet/log"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/a2a-go/pkg/a2a"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
@@ -55,6 +56,8 @@ func NewProviderParams(
 		option(params)
 	}
 
+	log.Info("new provider params", "params", params)
+
 	return params
 }
 
@@ -66,6 +69,7 @@ func WithModel(model string) ProviderParamsOption {
 
 func WithTools(tools ...*mcp.Tool) ProviderParamsOption {
 	return func(params *ProviderParams) {
+		log.Info("with tools", "tools", tools)
 		params.Tools = tools
 	}
 }

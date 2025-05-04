@@ -5,14 +5,19 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/charmbracelet/log"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func Aquire(id string) (*mcp.Tool, error) {
+	log.Info("aquiring tool", "id", id)
+
 	switch id {
 	case "development":
-		return NewDockerTools(), nil
+		tool := NewDockerTools()
+		log.Info("tool", "name", tool.Name, "description", tool.Description, "inputSchema", tool.InputSchema)
+		return tool, nil
 	}
 
 	return nil, errors.New("tool not found")

@@ -68,22 +68,20 @@ func (manager *TaskManager) selectTask(
 ) (*a2a.Task, *errors.RpcError) {
 	existing, err := manager.taskStore.Get(ctx, params.ID, 0)
 
-	if err != nil {
-		log.Error("failed to get existing task", "error", err)
+	if err != nil && err.Error() != "The specified key does not exist." {
+		log.Error("something went wrong when selecting task", "error", err)
 	}
 
 	if existing != nil {
 		return existing, nil
 	}
 
-	task := &a2a.Task{
-		ID:        params.ID,
-		SessionID: params.SessionID,
-		History:   []a2a.Message{params.Message},
-		Status: a2a.TaskStatus{
-			State:   a2a.TaskStateSubmitted,
-			Message: a2a.NewTextMessage(manager.agent.Name, "task submitted"),
-		},
+	task := a2a.NewTask(manager.agent.Name)
+	task.History = append(task.History, params.Message)
+
+	task.Status = a2a.TaskStatus{
+		State:   a2a.TaskStateSubmitted,
+		Message: a2a.NewTextMessage(manager.agent.Name, "task submitted"),
 	}
 
 	if err := manager.taskStore.Create(ctx, task); err != nil {
@@ -111,10 +109,14 @@ func (manager *TaskManager) SendTask(
 		),
 	)
 
+	prvdrParams := provider.NewProviderParams(
+		task, provider.WithTools(manager.agent.Tools()...),
+	)
+
+	prvdrParams.Stream = false
+
 	for chunk := range manager.provider.Generate(
-		ctx, provider.NewProviderParams(
-			task, provider.WithTools(manager.agent.Tools()...),
-		),
+		ctx, prvdrParams,
 	) {
 		if err := manager.handleUpdate(task, chunk); err != nil {
 			log.Error("failed to handle update", "error", err)

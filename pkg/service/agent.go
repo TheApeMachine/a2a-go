@@ -1,8 +1,10 @@
 package service
 
 import (
+	"encoding/base64"
 	"encoding/json"
 
+	"github.com/charmbracelet/log"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/healthcheck"
 	"github.com/gofiber/fiber/v3/middleware/logger"
@@ -50,6 +52,33 @@ func (srv *A2AServer) handleAgentCard(ctx fiber.Ctx) error {
 	return ctx.JSON(srv.agent.Card())
 }
 
+func (srv *A2AServer) parseParamsWithDecoding(params interface{}) ([]byte, error) {
+	var paramsBytes []byte
+	var err error
+
+	switch v := params.(type) {
+	case string:
+		decoded, decodeErr := base64.StdEncoding.DecodeString(v)
+		if decodeErr == nil {
+			paramsBytes = decoded
+			break
+		}
+
+		paramsBytes = []byte(v)
+	case []byte:
+		paramsBytes = v
+	default:
+		paramsBytes, err = json.Marshal(params)
+
+		if err != nil {
+			log.Error("failed to marshal params", "error", err)
+			return nil, err
+		}
+	}
+
+	return paramsBytes, nil
+}
+
 /*
 handleRPC acts as the central routing for all a2a RPC methods.
 */
@@ -69,7 +98,13 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 		return srv.handleTaskOperation(ctx, func() (any, error) {
 			var params a2a.TaskSendParams
 
-			if err := json.Unmarshal(request.Params.([]byte), &params); err != nil {
+			paramsBytes, err := srv.parseParamsWithDecoding(request.Params)
+			if err != nil {
+				return nil, err
+			}
+
+			if err := json.Unmarshal(paramsBytes, &params); err != nil {
+				log.Error("failed to unmarshal params", "error", err, "params", string(paramsBytes))
 				return nil, err
 			}
 
@@ -78,11 +113,33 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 	case "tasks/get":
 		return srv.handleTaskOperation(ctx, func() (any, error) {
 			var params a2a.TaskQueryParams
+
+			paramsBytes, err := srv.parseParamsWithDecoding(request.Params)
+			if err != nil {
+				return nil, err
+			}
+
+			if err := json.Unmarshal(paramsBytes, &params); err != nil {
+				log.Error("failed to unmarshal params", "error", err, "params", string(paramsBytes))
+				return nil, err
+			}
+
 			return srv.agent.GetTask(ctx.Context(), params.ID, *params.HistoryLength)
 		})
 	case "tasks/cancel":
 		return srv.handleTaskOperation(ctx, func() (any, error) {
 			var params a2a.TaskIDParams
+
+			paramsBytes, err := srv.parseParamsWithDecoding(request.Params)
+			if err != nil {
+				return nil, err
+			}
+
+			if err := json.Unmarshal(paramsBytes, &params); err != nil {
+				log.Error("failed to unmarshal params", "error", err, "params", string(paramsBytes))
+				return nil, err
+			}
+
 			return nil, srv.agent.CancelTask(ctx.Context(), params.ID)
 		})
 	default:
@@ -102,14 +159,4 @@ func (srv *A2AServer) handleTaskOperation(ctx fiber.Ctx, op func() (interface{},
 	}
 
 	return ctx.JSON(result)
-}
-
-func (srv *A2AServer) parseParams(request *jsonrpc.Request, params interface{}) error {
-	paramsBytes, ok := request.Params.([]byte)
-
-	if !ok {
-		return fiber.NewError(fiber.StatusBadRequest, "Invalid request parameters")
-	}
-
-	return json.Unmarshal(paramsBytes, params)
 }

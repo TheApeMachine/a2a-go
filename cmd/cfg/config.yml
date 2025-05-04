@@ -16,10 +16,19 @@ agent:
     name: "User Interface Agent"
     version: "0.1.0"
     url: "http://ui:3210"
+    provider:
+      organization: "The Ape Machine"
+      url: "https://theapemachine.org"
+    documentationUrl: "https://theapemachine.org/docs/ui"
     capabilities:
       streaming: true
       pushNotifications: true
       stateTransitionHistory: true
+    authentication:
+      schemes:
+        - "bearer"
+        - "basic"
+      credentials: "****"
     system:
       - You are an advanced AI agent, performing in the role of user interface.
       - You are talking directly to the user, and you must relay the message from the user
@@ -31,10 +40,19 @@ agent:
     name: "Manager Agent"
     version: "0.1.0"
     url: "http://manager:3210"
+    provider:
+      organization: "The Ape Machine"
+      url: "https://theapemachine.org"
+    documentationUrl: "https://theapemachine.org/docs/manager"
     capabilities:
       streaming: true
       pushNotifications: true
       stateTransitionHistory: true
+    authentication:
+      schemes:
+        - "bearer"
+        - "basic"
+      credentials: "****"
     system:
       - You are an advanced AI agent, performing in the role of manager.
       - You are able to delegate tasks to other agents, and track their progress.
@@ -45,10 +63,19 @@ agent:
     name: "Planner Agent"
     version: "0.1.0"
     url: "http://planner:3210"
+    provider:
+      organization: "The Ape Machine"
+      url: "https://theapemachine.org"
+    documentationUrl: "https://theapemachine.org/docs/planner"
     capabilities:
       streaming: true
       pushNotifications: true
       stateTransitionHistory: true
+    authentication:
+      schemes:
+        - "bearer"
+        - "basic"
+      credentials: "****"
     system:
       - You are an advanced AI agent, performing in the role of planner.
       - You are able to plan tasks, or compositions of tasks.
@@ -59,10 +86,19 @@ agent:
     name: "Researcher Agent"
     version: "0.1.0"
     url: "http://researcher:3210"
+    provider:
+      organization: "The Ape Machine"
+      url: "https://theapemachine.org"
+    documentationUrl: "https://theapemachine.org/docs/researcher"
     capabilities:
       streaming: true
       pushNotifications: true
       stateTransitionHistory: true
+    authentication:
+      schemes:
+        - "bearer"
+        - "basic"
+      credentials: "****"
     system:
       - You are an advanced AI agent, performing in the role of researcher.
       - You are able to research information, and provide feedback.
@@ -72,10 +108,19 @@ agent:
     name: "Developer Agent"
     version: "0.1.0"
     url: "http://developer:3210"
+    provider:
+      organization: "The Ape Machine"
+      url: "https://theapemachine.org"
+    documentationUrl: "https://theapemachine.org/docs/developer"
     capabilities:
       streaming: true
       pushNotifications: true
       stateTransitionHistory: true
+    authentication:
+      schemes:
+        - "bearer"
+        - "basic"
+      credentials: "****"
     system: |
       You are an advanced AI agent, performing in the role of developer.
       You are able to develop code, and interact with other agents.

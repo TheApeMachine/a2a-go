@@ -65,7 +65,7 @@ func (prvdr *OpenAIProvider) Generate(
 		defer close(ch)
 
 		prvdr.params = &openai.ChatCompletionNewParams{
-			Model:             openai.ChatModel(prvdr.params.Model),
+			Model:             openai.ChatModel(params.Model),
 			Messages:          prvdr.convertMessages(params.Task),
 			Tools:             prvdr.convertTools(params.Tools),
 			ParallelToolCalls: openai.Bool(params.ParallelToolCalls),
@@ -374,6 +374,11 @@ func (prvdr *OpenAIProvider) convertTools(
 	out := make([]openai.ChatCompletionToolParam, 0, len(tools))
 
 	for _, tool := range tools {
+		if tool == nil {
+			continue
+		}
+
+		log.Info("tool", "name", tool.Name, "description", tool.Description, "inputSchema", tool.InputSchema)
 		out = append(out, openai.ChatCompletionToolParam{
 			Function: openai.FunctionDefinitionParam{
 				Name:        tool.Name,

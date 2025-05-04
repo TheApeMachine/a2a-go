@@ -103,41 +103,50 @@ func (card *AgentCard) Tools() []*mcp.Tool {
 }
 
 func NewAgentCardFromConfig(key string) *AgentCard {
+	log.Info("new agent card from config", "key", key)
+
 	v := viper.GetViper()
+	skillArray := v.GetStringSlice(fmt.Sprintf("agent.%s.skills", key))
+
+	skills := make([]AgentSkill, len(skillArray))
+
+	for i, skill := range skillArray {
+		skills[i] = NewSkillFromConfig(skill)
+	}
 
 	return &AgentCard{
-		Name: v.GetString(fmt.Sprintf("agent.%s.name", key)),
-		URL:  v.GetString(fmt.Sprintf("agent.%s.url", key)),
+		Name:    v.GetString(fmt.Sprintf("agent.%s.name", key)),
+		Version: v.GetString(fmt.Sprintf("agent.%s.version", key)),
+		URL:     v.GetString(fmt.Sprintf("agent.%s.url", key)),
 		Provider: &AgentProvider{
 			Organization: v.GetString(fmt.Sprintf("agent.%s.provider.organization", key)),
 			URL:          utils.Ptr(v.GetString(fmt.Sprintf("agent.%s.provider.url", key))),
 		},
-		Version:          v.GetString(fmt.Sprintf("agent.%s.version", key)),
-		DocumentationURL: utils.Ptr(v.GetString(fmt.Sprintf("agent.%s.documentation_url", key))),
+		DocumentationURL: utils.Ptr(v.GetString(fmt.Sprintf("agent.%s.documentationUrl", key))),
 		Capabilities: AgentCapabilities{
 			Streaming:              v.GetBool(fmt.Sprintf("agent.%s.capabilities.streaming", key)),
-			PushNotifications:      v.GetBool(fmt.Sprintf("agent.%s.capabilities.push_notifications", key)),
-			StateTransitionHistory: v.GetBool(fmt.Sprintf("agent.%s.capabilities.state_transition_history", key)),
+			PushNotifications:      v.GetBool(fmt.Sprintf("agent.%s.capabilities.pushNotifications", key)),
+			StateTransitionHistory: v.GetBool(fmt.Sprintf("agent.%s.capabilities.stateTransitionHistory", key)),
 		},
 		Authentication: &AgentAuthentication{
 			Schemes:     v.GetStringSlice(fmt.Sprintf("agent.%s.authentication.schemes", key)),
 			Credentials: utils.Ptr(v.GetString(fmt.Sprintf("agent.%s.authentication.credentials", key))),
 		},
-		Skills: []AgentSkill{NewSkillFromConfig(key)},
+		Skills: skills,
 	}
 }
 
-func NewSkillFromConfig(key string) AgentSkill {
+func NewSkillFromConfig(skill string) AgentSkill {
 	v := viper.GetViper()
 
 	return AgentSkill{
-		ID:          v.GetString(fmt.Sprintf("skills.%s.id", key)),
-		Name:        v.GetString(fmt.Sprintf("skills.%s.name", key)),
-		Description: utils.Ptr(v.GetString(fmt.Sprintf("skills.%s.description", key))),
-		Tags:        v.GetStringSlice(fmt.Sprintf("skills.%s.tags", key)),
-		Examples:    v.GetStringSlice(fmt.Sprintf("skills.%s.examples", key)),
-		InputModes:  v.GetStringSlice(fmt.Sprintf("skills.%s.input_modes", key)),
-		OutputModes: v.GetStringSlice(fmt.Sprintf("skills.%s.output_modes", key)),
+		ID:          v.GetString(fmt.Sprintf("skills.%s.id", skill)),
+		Name:        v.GetString(fmt.Sprintf("skills.%s.name", skill)),
+		Description: utils.Ptr(v.GetString(fmt.Sprintf("skills.%s.description", skill))),
+		Tags:        v.GetStringSlice(fmt.Sprintf("skills.%s.tags", skill)),
+		Examples:    v.GetStringSlice(fmt.Sprintf("skills.%s.examples", skill)),
+		InputModes:  v.GetStringSlice(fmt.Sprintf("skills.%s.input_modes", skill)),
+		OutputModes: v.GetStringSlice(fmt.Sprintf("skills.%s.output_modes", skill)),
 	}
 }
 

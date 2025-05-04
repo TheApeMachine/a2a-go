@@ -80,11 +80,7 @@ var (
 			response, err := agentClient.SendTask(a2a.TaskSendParams{
 				ID:        uuid.New().String(),
 				SessionID: uuid.New().String(),
-				Message: a2a.Message{
-					Parts: []a2a.Part{
-						{Text: prompt},
-					},
-				},
+				Message:   *a2a.NewTextMessage("user", prompt),
 			})
 
 			if err != nil {
