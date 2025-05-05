@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/log"
@@ -13,7 +12,11 @@ import (
 	dkr "github.com/theapemachine/a2a-go/pkg/tools/docker"
 )
 
-func NewDockerTools() *mcp.Tool {
+type DockerTool struct {
+	tool *mcp.Tool
+}
+
+func NewDockerTool() *mcp.Tool {
 	tool := mcp.NewTool(
 		"terminal",
 		mcp.WithDescription("A fully featured Debian terminal, useful for when you require access to a computer."),
@@ -26,20 +29,11 @@ func NewDockerTools() *mcp.Tool {
 	return &tool
 }
 
-func RegisterDockerTools(srv *server.MCPServer) {
-	tool := mcp.NewTool(
-		"terminal",
-		mcp.WithDescription("A fully featured Debian terminal, useful for when you require access to a computer."),
-		mcp.WithString("cmd",
-			mcp.Description("Shell command to execute inside the container"),
-			mcp.Required(),
-		),
-	)
-
-	srv.AddTool(tool, handleDockerExec)
+func (dt *DockerTool) RegisterDockerTools(srv *server.MCPServer) {
+	srv.AddTool(*dt.tool, dt.handle)
 }
 
-func handleDockerExec(
+func (dt *DockerTool) handle(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	log.Info("terminal executing")
@@ -78,39 +72,4 @@ func handleDockerExec(
 			res.Stderr.String(),
 		}, "\n")),
 	), nil
-}
-
-// executeDockerTool implements the registry.ToolExecutorFunc signature
-// for the Docker terminal tool.
-func executeDockerTool(ctx context.Context, args map[string]any) (string, error) {
-	log.Info("Executing docker tool (terminal)", "args", args)
-	cmdStr, ok := args["cmd"].(string)
-	if !ok || strings.TrimSpace(cmdStr) == "" {
-		return "", errors.New("invalid or missing 'cmd' argument")
-	}
-
-	// TODO: Make container name configurable
-	containerName := "a2a-go-dev-env"
-
-	env, err := dkr.NewEnvironment()
-	if err != nil {
-		log.Error("Failed to create docker environment", "error", err)
-		return fmt.Sprintf("Failed to create tool environment: %v", err), nil
-	}
-
-	res, err := env.Exec(ctx, cmdStr, containerName)
-	if err != nil {
-		log.Error("Docker exec failed", "command", cmdStr, "error", err)
-		output := res.Stdout.String() + "\n" + res.Stderr.String()
-		return fmt.Sprintf("Execution failed: %v\nOutput:\n%s", err, output), nil
-	}
-
-	output := strings.TrimSpace(res.Stdout.String())
-	stderr := strings.TrimSpace(res.Stderr.String())
-	if stderr != "" {
-		output += "\nstderr:\n" + stderr
-	}
-
-	log.Info("Docker tool execution successful")
-	return output, nil
 }

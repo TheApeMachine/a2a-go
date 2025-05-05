@@ -132,6 +132,31 @@ agent:
 mcp:
   embedded_agent: false
 
+tools:
+  builder:
+    name: "editor"
+    description: |
+      A tool which is specialized towards editing source code.
+    params:
+      - name: "filename"
+        description: "The filename to edit."
+        required: false
+      - name: "find"
+        description: "A sub-string to search for within the source code."
+        required: false
+      - name: "replace"
+        description: "The string to replace the find string with."
+        required: false
+      - name: "from"
+        description: "The line number to start editing from."
+        required: false
+      - name: "to"
+        description: "The line number to stop editing at."
+        required: false
+      - name: "content"
+        description: "The content to insert between the from and to line numbers."
+        required: false
+
 skills:
   communication:
     id: "communication"

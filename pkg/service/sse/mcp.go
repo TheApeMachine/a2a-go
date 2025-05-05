@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/theapemachine/a2a-go/pkg/tools"
 )
 
 type MCPBroker struct {
@@ -21,8 +20,6 @@ func NewMCPBroker() *MCPBroker {
 		server.WithPromptCapabilities(true),
 		server.WithToolCapabilities(true),
 	)
-
-	tools.RegisterDockerTools(mcpSrv)
 
 	sseSrv := server.NewSSEServer(
 		mcpSrv,

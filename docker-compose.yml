@@ -20,6 +20,16 @@ services:
     command: ["mcp", "-c", "docker"]
     env_file:
       - .env
+    networks:
+      - a2a-network
+
+  browsertool:
+    image: theapemachine/a2a-go:latest
+    command: ["mcp", "-c", "browser"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
 
   # UI agent service - specialized in relaying messages between the user and the agents.
   ui:

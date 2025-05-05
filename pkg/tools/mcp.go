@@ -15,7 +15,9 @@ func Aquire(id string) (*mcp.Tool, error) {
 
 	switch id {
 	case "development":
-		return NewDockerTools(), nil
+		return NewDockerTool(), nil
+	case "research":
+		return NewBrowserTool(), nil
 	}
 
 	return nil, errors.New("tool not found")
