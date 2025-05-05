@@ -5,9 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -21,16 +19,9 @@ import (
 	"github.com/theapemachine/a2a-go/pkg/utils"
 )
 
-// playPCM plays audio data using beep/speaker which doesn't require CGO
-func playPCM(r io.Reader) error {
-	_ = r
-	return nil
-}
-
-// speakerOnce ensures we only initialize the speaker once
-var speakerOnce sync.Once
-
-// roleMap compresses convertMessages' switch.
+/*
+roleMap compresses convertMessages' switch.
+*/
 var roleMap = map[string]func(string) openai.ChatCompletionMessageParamUnion{
 	"system":    openai.SystemMessage[string],
 	"user":      openai.UserMessage[string],
@@ -39,6 +30,9 @@ var roleMap = map[string]func(string) openai.ChatCompletionMessageParamUnion{
 	"assistant": openai.AssistantMessage[string],
 }
 
+/*
+OpenAIProvider is a provider for the OpenAI API.
+*/
 type OpenAIProvider struct {
 	client *openai.Client
 	params *openai.ChatCompletionNewParams
@@ -134,7 +128,7 @@ func (prvdr *OpenAIProvider) Generate(
 							acc.ChatCompletion.Choices[0].Message.ToParam(),
 						)
 
-						tools.NewOpenAIExecutor(ctx, tool.Name, tool.Arguments)
+						tools.NewExecutor(ctx, tool.Name, tool.Arguments)
 					}
 
 					if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
@@ -196,7 +190,7 @@ func (prvdr *OpenAIProvider) handleToolCall(
 	out chan jsonrpc.Response,
 	task *a2a.Task,
 ) error {
-	results, err := tools.NewOpenAIExecutor(
+	results, err := tools.NewExecutor(
 		ctx, toolCall.Function.Name, toolCall.Function.Arguments,
 	)
 
@@ -301,7 +295,7 @@ func (prvdr *OpenAIProvider) TTS(ctx context.Context, text string) error {
 	}
 
 	defer res.Body.Close()
-	return playPCM(res.Body)
+	return utils.PlayPCM(res.Body)
 }
 
 func (prvdr *OpenAIProvider) FineTune(ctx context.Context, fileID string) error {
@@ -319,11 +313,11 @@ func (prvdr *OpenAIProvider) FineTune(ctx context.Context, fileID string) error 
 
 	for job.Status == "running" || job.Status == "queued" || job.Status == "validating_files" {
 		job, err = prvdr.client.FineTuning.Jobs.Get(ctx, job.ID)
+
 		if err != nil {
 			log.Error("failed to get fine‑tune job", "error", err)
 			return err
 		}
-		log.Info("fine‑tune status", "status", job.Status)
 
 		page, err := prvdr.client.FineTuning.Jobs.ListEvents(
 			ctx, job.ID, openai.FineTuningJobListEventsParams{Limit: openai.Int(100)},

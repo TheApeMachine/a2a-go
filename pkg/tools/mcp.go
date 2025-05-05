@@ -21,7 +21,7 @@ func Aquire(id string) (*mcp.Tool, error) {
 	return nil, errors.New("tool not found")
 }
 
-func NewOpenAIExecutor(
+func NewExecutor(
 	ctx context.Context, name, args string,
 ) (string, error) {
 	client, err := client.NewStreamableHttpClient(

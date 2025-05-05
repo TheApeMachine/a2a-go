@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
+	"github.com/cohesivestack/valgo"
 	"github.com/google/uuid"
 	"github.com/spf13/viper"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
@@ -24,6 +25,15 @@ type Task struct {
 	History   []Message      `json:"history,omitempty"`
 	Artifacts []Artifact     `json:"artifacts,omitempty"`
 	Metadata  map[string]any `json:"metadata,omitempty"`
+}
+
+func (task *Task) Validate() bool {
+	return valgo.Is(
+		valgo.String(task.ID).Not().Blank(),
+		valgo.String(task.SessionID).Not().Blank(),
+		valgo.String(task.Status.State).Not().Blank(),
+		valgo.String(task.Status.Message.Parts[0].Text).Not().Blank(),
+	).Valid()
 }
 
 func NewTask(agentName string) *Task {
