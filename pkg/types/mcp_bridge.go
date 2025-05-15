@@ -5,55 +5,6 @@ import (
 	"github.com/theapemachine/a2a-go/pkg/registry"
 )
 
-// ToMCPResource converts an AgentCard into an MCP Resource descriptor.  The
-// resulting resource can be advertised by an MCP server so that LLM frameworks
-// using MCP can discover the agent, fetch its agent‑card (via the URI) and
-// subsequently communicate with it via the A2A protocol.
-//
-// Mapping rules:
-//   - Resource.URI        → card.URL (expected to resolve to the .well-known/agent.json)
-//   - Resource.Name       → card.Name
-//   - Resource.Description→ card.Description (if any)
-//   - Resource.MIMEType   → "application/json" (agent‑card mime‑type)
-//   - Optionally audience annotations can indicate the card is meant for
-//     assistants as well as users.
-func ToMCPResource(card *AgentCard) mcp.Resource {
-	var res mcp.Resource
-
-	// Check if card is nil
-	if card == nil {
-		return res
-	}
-
-	// Basic resource with required fields
-	res = mcp.NewResource(
-		card.URL,
-		card.Name,
-		mcp.WithMIMEType("application/json"),
-	)
-
-	// Add description if available
-	if card.Description != nil {
-		res = mcp.NewResource(
-			card.URL,
-			card.Name,
-			mcp.WithResourceDescription(*card.Description),
-			mcp.WithMIMEType("application/json"),
-		)
-	}
-
-	// Provide simple annotation hint – both user and assistant.
-	res.Annotations = &struct {
-		Audience []mcp.Role `json:"audience,omitempty"`
-		Priority float64    `json:"priority,omitempty"`
-	}{
-		Audience: []mcp.Role{mcp.RoleUser, mcp.RoleAssistant},
-		Priority: 0.5,
-	}
-
-	return res
-}
-
 // GetToolDefinition is a wrapper for registry.GetToolDefinition
 // which is used to avoid circular dependencies between packages
 func GetToolDefinition(skillID string) (registry.ToolDefinition, bool) {

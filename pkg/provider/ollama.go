@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -14,7 +13,6 @@ import (
 	"github.com/theapemachine/a2a-go/pkg/a2a"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
 	"github.com/theapemachine/a2a-go/pkg/tools"
-	"github.com/theapemachine/a2a-go/pkg/utils"
 )
 
 /*
@@ -558,8 +556,11 @@ Respond with only the base64-encoded PCM audio data, no other text.`, text)
 		return fmt.Errorf("error decoding audio data: %w", err)
 	}
 
-	// Play the audio
-	return utils.PlayPCM(bytes.NewReader(audioBytes))
+	_ = audioBytes
+
+	// // Play the audio
+	// return utils.PlayPCM(bytes.NewReader(audioBytes))
+	return nil
 }
 
 /*

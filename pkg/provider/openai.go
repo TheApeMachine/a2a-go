@@ -282,21 +282,21 @@ func (prvdr *OpenAIProvider) AudioTranscript(ctx context.Context, audio []byte) 
 	return tr.Text, nil
 }
 
-func (prvdr *OpenAIProvider) TTS(ctx context.Context, text string) error {
-	res, err := prvdr.client.Audio.Speech.New(ctx, openai.AudioSpeechNewParams{
-		Model:          openai.SpeechModelTTS1,
-		Input:          text,
-		ResponseFormat: openai.AudioSpeechNewParamsResponseFormatPCM,
-		Voice:          openai.AudioSpeechNewParamsVoiceAlloy,
-	})
+// func (prvdr *OpenAIProvider) TTS(ctx context.Context, text string) error {
+// 	res, err := prvdr.client.Audio.Speech.New(ctx, openai.AudioSpeechNewParams{
+// 		Model:          openai.SpeechModelTTS1,
+// 		Input:          text,
+// 		ResponseFormat: openai.AudioSpeechNewParamsResponseFormatPCM,
+// 		Voice:          openai.AudioSpeechNewParamsVoiceAlloy,
+// 	})
 
-	if err != nil {
-		return err
-	}
+// 	if err != nil {
+// 		return err
+// 	}
 
-	defer res.Body.Close()
-	return utils.PlayPCM(res.Body)
-}
+// 	defer res.Body.Close()
+// 	return utils.PlayPCM(res.Body)
+// }
 
 func (prvdr *OpenAIProvider) FineTune(ctx context.Context, fileID string) error {
 	job, err := prvdr.client.FineTuning.Jobs.New(ctx, openai.FineTuningJobNewParams{

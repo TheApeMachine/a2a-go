@@ -7,11 +7,6 @@ import (
 	"github.com/theapemachine/a2a-go/pkg/a2a"
 )
 
-var (
-	once     sync.Once
-	instance *Registry
-)
-
 type Registry struct {
 	agents *sync.Map
 }
