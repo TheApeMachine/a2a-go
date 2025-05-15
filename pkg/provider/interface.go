@@ -11,7 +11,6 @@ import (
 
 type Interface interface {
 	Generate(context.Context, *ProviderParams) chan jsonrpc.Response
-	Embed(context.Context, string) ([]float32, error)
 }
 
 type ProviderParams struct {

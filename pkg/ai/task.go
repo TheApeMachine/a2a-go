@@ -14,7 +14,7 @@ import (
 type TaskManager struct {
 	agent     *a2a.AgentCard
 	taskStore stores.TaskStore
-	provider  *provider.OpenAIProvider
+	provider  provider.Interface
 }
 
 type TaskManagerOption func(*TaskManager)
@@ -220,8 +220,8 @@ func WithTaskStore(taskStore stores.TaskStore) TaskManagerOption {
 	}
 }
 
-func WithProvider(provider *provider.OpenAIProvider) TaskManagerOption {
+func WithProvider(p provider.Interface) TaskManagerOption {
 	return func(t *TaskManager) {
-		t.provider = provider
+		t.provider = p
 	}
 }
