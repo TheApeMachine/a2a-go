@@ -86,20 +86,25 @@ type AgentCard struct {
 }
 
 func (card *AgentCard) Tools() []*mcp.Tool {
-	tools := make([]*mcp.Tool, len(card.Skills))
+	// Initialize an empty slice with a capacity if desired, or just empty.
+	mcpTools := make([]*mcp.Tool, 0, len(card.Skills))
 
 	for _, skill := range card.Skills {
 		tool, err := skill.ToMCPTool()
 
 		if err != nil {
-			log.Error("failed to aquire tool", "error", err)
+			log.Error("failed to aquire tool", "error", err, "skill_id", skill.ID)
+			// Decide if a nil tool should be added or if the loop should just skip this tool
+			// For now, skipping seems more appropriate than adding a nil.
 			continue
 		}
 
-		tools = append(tools, tool)
+		if tool != nil { // Ensure the acquired tool is not nil before appending
+			mcpTools = append(mcpTools, tool)
+		}
 	}
 
-	return tools
+	return mcpTools
 }
 
 func NewAgentCardFromConfig(key string) *AgentCard {

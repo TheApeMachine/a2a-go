@@ -176,7 +176,7 @@ func (prvdr *CohereProvider) handleToolCall(
 	}
 
 	results, err := tools.NewExecutor(
-		ctx, toolCall.Name, string(params),
+		ctx, toolCall.Name, string(params), task.SessionID,
 	)
 
 	if err != nil {
@@ -230,7 +230,7 @@ func (prvdr *CohereProvider) convertTools(
 
 		paramDefs := make(map[string]*cohere.ToolParameterDefinitionsValue)
 		for name, prop := range tool.InputSchema.Properties {
-			propMap := prop.(map[string]interface{})
+			propMap := prop.(map[string]any)
 			desc := propMap["description"].(string)
 			paramDefs[name] = &cohere.ToolParameterDefinitionsValue{
 				Description: cohere.String(desc),

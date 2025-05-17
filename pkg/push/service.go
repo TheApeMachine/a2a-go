@@ -26,7 +26,7 @@ type Service struct {
 // notificationRequest represents a notification to be sent
 type notificationRequest struct {
 	taskID    string
-	event     interface{}
+	event     any
 	retries   int
 	timestamp time.Time
 }
@@ -68,7 +68,7 @@ func (s *Service) GetConfig(taskID string) (*types.TaskPushNotificationConfig, b
 }
 
 // SendNotification sends a notification for a task
-func (s *Service) SendNotification(taskID string, event interface{}) error {
+func (s *Service) SendNotification(taskID string, event any) error {
 	s.mu.RLock()
 	config, exists := s.configs[taskID]
 	client := s.clients[taskID]

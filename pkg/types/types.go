@@ -174,5 +174,5 @@ type SSEPublisher interface {
 	CloseTaskBroker(taskID string)
 
 	// GetOrCreateTaskBroker creates or retrieves a task-specific broker
-	GetOrCreateTaskBroker(taskID string) interface{}
+	GetOrCreateTaskBroker(taskID string) any
 }

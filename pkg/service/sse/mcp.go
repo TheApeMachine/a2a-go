@@ -1,17 +1,25 @@
 package sse
 
 import (
-	"net/http"
+	"context"
+	"fmt"
 
+	"github.com/charmbracelet/log"
 	"github.com/mark3labs/mcp-go/server"
 )
 
 type MCPBroker struct {
-	srv *server.MCPServer
-	sse *server.SSEServer
+	stdio *server.MCPServer
+	sse   *server.SSEServer
 }
 
-func NewMCPBroker() *MCPBroker {
+func NewMCPBroker(hostname string) *MCPBroker {
+	hooks := &server.Hooks{}
+	hooks.AddOnRequestInitialization(func(ctx context.Context, id any, messageRaw any) error {
+		log.Info("MCP Server: AddOnRequestInitialization hook called", "sessionID_from_context", id)
+		return nil
+	})
+
 	mcpSrv := server.NewMCPServer(
 		"mcp-server",
 		"1.0.0",
@@ -19,22 +27,26 @@ func NewMCPBroker() *MCPBroker {
 		server.WithResourceCapabilities(true, true),
 		server.WithPromptCapabilities(true),
 		server.WithToolCapabilities(true),
+		server.WithHooks(hooks),
 	)
 
+	baseURL := fmt.Sprintf("http://%s:3210", hostname)
 	sseSrv := server.NewSSEServer(
 		mcpSrv,
+		server.WithBaseURL(baseURL),
 	)
 
 	return &MCPBroker{
-		srv: mcpSrv,
-		sse: sseSrv,
+		stdio: mcpSrv,
+		sse:   sseSrv,
 	}
 }
 
-func (b *MCPBroker) Start() error {
-	return b.sse.Start("0.0.0.0:3210")
+// MCPServer returns the underlying *server.MCPServer instance.
+func (broker *MCPBroker) MCPServer() (*server.MCPServer, *server.SSEServer) {
+	return broker.stdio, broker.sse
 }
 
-func (b *MCPBroker) Server() http.Handler {
-	return b.sse
+func (broker *MCPBroker) Start() error {
+	return broker.sse.Start(":3210")
 }

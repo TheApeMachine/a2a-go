@@ -18,7 +18,7 @@ type DockerTool struct {
 
 func NewDockerTool() *mcp.Tool {
 	tool := mcp.NewTool(
-		"terminal",
+		"docker",
 		mcp.WithDescription("A fully featured Debian terminal, useful for when you require access to a computer."),
 		mcp.WithString("cmd",
 			mcp.Description("Shell command to execute inside the container"),
@@ -30,13 +30,13 @@ func NewDockerTool() *mcp.Tool {
 }
 
 func (dt *DockerTool) RegisterDockerTools(srv *server.MCPServer) {
-	srv.AddTool(*dt.tool, dt.handle)
+	srv.AddTool(*dt.tool, dt.Handle)
 }
 
-func (dt *DockerTool) handle(
+func (dt *DockerTool) Handle(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	log.Info("terminal executing")
+	log.Info("docker tool executing")
 
 	var (
 		args   = req.Params.Arguments

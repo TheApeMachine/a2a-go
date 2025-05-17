@@ -18,6 +18,9 @@ type RpcError struct {
 Error implements the error interface for RpcError.
 */
 func (e *RpcError) Error() string {
+	if e == nil {
+		return "RPC error: (nil RpcError)"
+	}
 	return fmt.Sprintf("RPC error %d: %s", e.Code, e.Message)
 }
 

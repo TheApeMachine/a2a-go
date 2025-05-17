@@ -5,7 +5,7 @@ type MessageIdentifier struct {
 	// ID is the request identifier. Can be a string, number, or null.
 	// Responses must have the same ID as the request they relate to.
 	// Notifications (requests without an expected response) should omit the ID or use null.
-	ID interface{} `json:"id,omitempty"`
+	ID any `json:"id,omitempty"`
 }
 
 // JSONRPCMessage represents the base interface for all JSON-RPC messages
@@ -22,5 +22,5 @@ type Error struct {
 	// Message is a string providing a short description of the error
 	Message string `json:"message"`
 	// Data is optional additional data about the error
-	Data interface{} `json:"data,omitempty"`
+	Data any `json:"data,omitempty"`
 }

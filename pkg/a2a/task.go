@@ -150,13 +150,13 @@ type TaskSendParams struct {
 	Message          Message                 `json:"message"`
 	PushNotification *PushNotificationConfig `json:"pushNotification,omitempty"`
 	HistoryLength    *int                    `json:"historyLength,omitempty"`
-	Metadata         map[string]interface{}  `json:"metadata,omitempty"`
+	Metadata         map[string]any          `json:"metadata,omitempty"`
 }
 
 // TaskIDParams represents the base parameters for task ID-based operations
 type TaskIDParams struct {
-	ID       string                 `json:"id"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	ID       string         `json:"id"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // TaskQueryParams represents the parameters for querying task information

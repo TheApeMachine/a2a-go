@@ -59,8 +59,8 @@ func getDockerTool() mcp.Tool {
 	tool.InputSchema.Type = "object"
 
 	// Add the command property
-	tool.InputSchema.Properties = map[string]interface{}{
-		"command": map[string]interface{}{
+	tool.InputSchema.Properties = map[string]any{
+		"command": map[string]any{
 			"type":        "string",
 			"description": "The command to execute in the terminal",
 		},

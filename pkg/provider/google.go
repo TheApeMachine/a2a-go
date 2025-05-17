@@ -160,7 +160,7 @@ func (prvdr *GoogleProvider) convertTools(
 		properties := make(map[string]*genai.Schema)
 		for k, v := range tool.InputSchema.Properties {
 			// Get the type from the property
-			propMap, ok := v.(map[string]interface{})
+			propMap, ok := v.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -194,7 +194,7 @@ func (prvdr *GoogleProvider) convertTools(
 			}
 
 			// Handle enum values
-			if enum, ok := propMap["enum"].([]interface{}); ok {
+			if enum, ok := propMap["enum"].([]any); ok {
 				enumStrings := make([]string, len(enum))
 				for i, e := range enum {
 					enumStrings[i] = e.(string)
@@ -235,7 +235,7 @@ func (prvdr *GoogleProvider) convertTools(
 					maxItemsInt := int64(maxItems)
 					schema.MaxItems = &maxItemsInt
 				}
-				if items, ok := propMap["items"].(map[string]interface{}); ok {
+				if items, ok := propMap["items"].(map[string]any); ok {
 					schema.Items = prvdr.convertSchema(items)
 				}
 			}
@@ -250,15 +250,15 @@ func (prvdr *GoogleProvider) convertTools(
 					maxPropsInt := int64(maxProps)
 					schema.MaxProperties = &maxPropsInt
 				}
-				if props, ok := propMap["properties"].(map[string]interface{}); ok {
+				if props, ok := propMap["properties"].(map[string]any); ok {
 					schema.Properties = make(map[string]*genai.Schema)
 					for pk, pv := range props {
-						if propMap, ok := pv.(map[string]interface{}); ok {
+						if propMap, ok := pv.(map[string]any); ok {
 							schema.Properties[pk] = prvdr.convertSchema(propMap)
 						}
 					}
 				}
-				if required, ok := propMap["required"].([]interface{}); ok {
+				if required, ok := propMap["required"].([]any); ok {
 					requiredStrings := make([]string, len(required))
 					for i, r := range required {
 						requiredStrings[i] = r.(string)
@@ -268,10 +268,10 @@ func (prvdr *GoogleProvider) convertTools(
 			}
 
 			// Handle anyOf
-			if anyOf, ok := propMap["anyOf"].([]interface{}); ok {
+			if anyOf, ok := propMap["anyOf"].([]any); ok {
 				schema.AnyOf = make([]*genai.Schema, len(anyOf))
 				for i, a := range anyOf {
-					if anyOfMap, ok := a.(map[string]interface{}); ok {
+					if anyOfMap, ok := a.(map[string]any); ok {
 						schema.AnyOf[i] = prvdr.convertSchema(anyOfMap)
 					}
 				}
@@ -298,7 +298,7 @@ func (prvdr *GoogleProvider) convertTools(
 }
 
 // Helper function to convert a map to a Schema
-func (prvdr *GoogleProvider) convertSchema(propMap map[string]interface{}) *genai.Schema {
+func (prvdr *GoogleProvider) convertSchema(propMap map[string]any) *genai.Schema {
 	var schemaType genai.Type
 	switch propMap["type"] {
 	case "string":
@@ -326,7 +326,7 @@ func (prvdr *GoogleProvider) convertSchema(propMap map[string]interface{}) *gena
 	}
 
 	// Handle enum values
-	if enum, ok := propMap["enum"].([]interface{}); ok {
+	if enum, ok := propMap["enum"].([]any); ok {
 		enumStrings := make([]string, len(enum))
 		for i, e := range enum {
 			enumStrings[i] = e.(string)
@@ -367,7 +367,7 @@ func (prvdr *GoogleProvider) convertSchema(propMap map[string]interface{}) *gena
 			maxItemsInt := int64(maxItems)
 			schema.MaxItems = &maxItemsInt
 		}
-		if items, ok := propMap["items"].(map[string]interface{}); ok {
+		if items, ok := propMap["items"].(map[string]any); ok {
 			schema.Items = prvdr.convertSchema(items)
 		}
 	}
@@ -382,15 +382,15 @@ func (prvdr *GoogleProvider) convertSchema(propMap map[string]interface{}) *gena
 			maxPropsInt := int64(maxProps)
 			schema.MaxProperties = &maxPropsInt
 		}
-		if props, ok := propMap["properties"].(map[string]interface{}); ok {
+		if props, ok := propMap["properties"].(map[string]any); ok {
 			schema.Properties = make(map[string]*genai.Schema)
 			for pk, pv := range props {
-				if propMap, ok := pv.(map[string]interface{}); ok {
+				if propMap, ok := pv.(map[string]any); ok {
 					schema.Properties[pk] = prvdr.convertSchema(propMap)
 				}
 			}
 		}
-		if required, ok := propMap["required"].([]interface{}); ok {
+		if required, ok := propMap["required"].([]any); ok {
 			requiredStrings := make([]string, len(required))
 			for i, r := range required {
 				requiredStrings[i] = r.(string)
@@ -400,10 +400,10 @@ func (prvdr *GoogleProvider) convertSchema(propMap map[string]interface{}) *gena
 	}
 
 	// Handle anyOf
-	if anyOf, ok := propMap["anyOf"].([]interface{}); ok {
+	if anyOf, ok := propMap["anyOf"].([]any); ok {
 		schema.AnyOf = make([]*genai.Schema, len(anyOf))
 		for i, a := range anyOf {
-			if anyOfMap, ok := a.(map[string]interface{}); ok {
+			if anyOfMap, ok := a.(map[string]any); ok {
 				schema.AnyOf[i] = prvdr.convertSchema(anyOfMap)
 			}
 		}

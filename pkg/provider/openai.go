@@ -14,6 +14,7 @@ import (
 	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
 	"github.com/theapemachine/a2a-go/pkg/a2a"
+	"github.com/theapemachine/a2a-go/pkg/errors"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
 	"github.com/theapemachine/a2a-go/pkg/tools"
 	"github.com/theapemachine/a2a-go/pkg/utils"
@@ -128,7 +129,7 @@ func (prvdr *OpenAIProvider) Generate(
 							acc.ChatCompletion.Choices[0].Message.ToParam(),
 						)
 
-						tools.NewExecutor(ctx, tool.Name, tool.Arguments)
+						tools.NewExecutor(ctx, tool.Name, tool.Arguments, params.Task.SessionID)
 					}
 
 					if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
@@ -142,14 +143,27 @@ func (prvdr *OpenAIProvider) Generate(
 				completion, err := prvdr.client.Chat.Completions.New(ctx, *prvdr.params)
 
 				if err != nil {
-					log.Error("failed to generate completion", "error", err)
-
+					log.Error("failed to generate completion after tool call processing or initial call", "error", err)
 					ch <- jsonrpc.Response{
 						Error: &jsonrpc.Error{
 							Code:    int(a2a.ErrorCodeInternalError),
 							Message: err.Error(),
 						},
 					}
+					isDone = true // Mark as done if OpenAI call itself fails
+					break         // Exit the for !isDone loop
+				}
+
+				if completion.Choices == nil || len(completion.Choices) == 0 {
+					log.Error("OpenAI completion returned no choices")
+					ch <- jsonrpc.Response{
+						Error: &jsonrpc.Error{
+							Code:    int(a2a.ErrorCodeInternalError),
+							Message: "OpenAI completion returned no choices",
+						},
+					}
+					isDone = true
+					break
 				}
 
 				toolCalls := completion.Choices[0].Message.ToolCalls
@@ -162,19 +176,27 @@ func (prvdr *OpenAIProvider) Generate(
 
 					params.Task.AddFinalPart(a2a.NewTextPart(completion.Choices[0].Message.Content))
 					isDone = true
-				}
+				} else { // Only append message and process tools if there are tool calls
+					prvdr.params.Messages = append(
+						prvdr.params.Messages,
+						completion.Choices[0].Message.ToParam(),
+					)
 
-				prvdr.params.Messages = append(
-					prvdr.params.Messages,
-					completion.Choices[0].Message.ToParam(),
-				)
+					for _, toolCall := range toolCalls {
+						toolErr := prvdr.handleToolCall(ctx, toolCall, ch, params.Task)
 
-				for _, toolCall := range toolCalls {
-					err := prvdr.handleToolCall(ctx, toolCall, ch, params.Task)
-
-					if err != nil {
-						log.Error("error executing tool", "error", err)
-						continue
+						if toolErr != nil {
+							log.Error("error executing tool from handleToolCall", "tool_name", toolCall.Function.Name, "error", toolErr)
+							// Propagate this tool execution error out on the channel
+							ch <- jsonrpc.Response{
+								Error: &jsonrpc.Error{
+									Code:    errors.ErrInternal.Code, // Using errors.ErrInternal from a2a-go/pkg/errors for code
+									Message: fmt.Sprintf("Error executing tool %s: %v", toolCall.Function.Name, toolErr),
+								},
+							}
+							isDone = true // Critical: mark as done to prevent re-looping OpenAI call
+							break         // Exit the tool call loop, which will then exit the for !isDone loop
+						}
 					}
 				}
 			}
@@ -191,7 +213,7 @@ func (prvdr *OpenAIProvider) handleToolCall(
 	task *a2a.Task,
 ) error {
 	results, err := tools.NewExecutor(
-		ctx, toolCall.Function.Name, toolCall.Function.Arguments,
+		ctx, toolCall.Function.Name, toolCall.Function.Arguments, task.SessionID,
 	)
 
 	if err != nil {

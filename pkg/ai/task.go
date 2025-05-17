@@ -48,8 +48,12 @@ func (manager *TaskManager) handleUpdate(
 	chunk jsonrpc.Response,
 ) error {
 	if chunk.Error != nil {
-		log.Error("failed to handle update", "error", chunk.Error)
-		return (*errors.RpcError)(chunk.Error)
+		log.Error("failed to handle update (raw chunk error)", "code", chunk.Error.Code, "message", chunk.Error.Message, "data", chunk.Error.Data)
+		return &errors.RpcError{
+			Code:    chunk.Error.Code,
+			Message: chunk.Error.Message,
+			Data:    chunk.Error.Data,
+		}
 	}
 
 	switch result := chunk.Result.(type) {
@@ -66,30 +70,49 @@ func (manager *TaskManager) selectTask(
 	ctx context.Context,
 	params a2a.TaskSendParams,
 ) (*a2a.Task, *errors.RpcError) {
-	existing, err := manager.taskStore.Get(ctx, params.ID, 0)
+	existingTask, getErr := manager.taskStore.Get(ctx, params.ID, 0)
 
-	if err != nil && err.Error() != "The specified key does not exist." {
-		log.Error("something went wrong when selecting task", "error", err)
+	if getErr != nil {
+		if getErr == errors.ErrTaskNotFound {
+			log.Info("task not found, creating new task", "task_id", params.ID, "session_id", params.SessionID)
+
+			newTask := a2a.NewTask(manager.agent.Name)
+			newTask.ID = params.ID
+			if params.SessionID != "" {
+				newTask.SessionID = params.SessionID
+			}
+
+			newTask.History = append(newTask.History, params.Message)
+
+			newTask.ToStatus(a2a.TaskStateSubmitted,
+				a2a.NewTextMessage(manager.agent.Name, "task created and submitted"),
+			)
+
+			if createErr := manager.taskStore.Create(ctx, newTask); createErr != nil {
+				log.Error("failed to create new task in store", "task_id", params.ID, "error", createErr)
+				return nil, createErr
+			}
+			log.Info("newly created task stored", "task_id", newTask.ID, "status", newTask.Status.State)
+			return newTask, nil
+		}
+		log.Error("error getting task from store (not ErrTaskNotFound)", "task_id", params.ID, "error", getErr)
+		return nil, getErr
 	}
 
-	if existing != nil {
-		return existing, nil
+	if existingTask == nil {
+		log.Error("task store returned nil task and nil error, which is unexpected", "task_id", params.ID)
+		return nil, errors.ErrInternal.WithMessagef("task store returned (nil, nil) for ID %s", params.ID)
 	}
 
-	task := a2a.NewTask(manager.agent.Name)
-	task.History = append(task.History, params.Message)
+	log.Info("existing task found, appending new message", "task_id", existingTask.ID, "current_status", existingTask.Status.State)
+	existingTask.History = append(existingTask.History, params.Message)
 
-	task.Status = a2a.TaskStatus{
-		State:   a2a.TaskStateSubmitted,
-		Message: a2a.NewTextMessage(manager.agent.Name, "task submitted"),
+	if updateErr := manager.taskStore.Update(ctx, existingTask); updateErr != nil {
+		log.Error("failed to update existing task in store after appending message", "task_id", existingTask.ID, "error", updateErr)
+		return nil, updateErr
 	}
-
-	if err := manager.taskStore.Create(ctx, task); err != nil {
-		log.Error("failed to create task", "error", err)
-		return nil, err
-	}
-
-	return task, nil
+	log.Info("existing task updated in store", "task_id", existingTask.ID)
+	return existingTask, nil
 }
 
 func (manager *TaskManager) SendTask(

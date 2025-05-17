@@ -54,7 +54,7 @@ func (client *Client) doRequest(req jsonrpc.Request) (jsonrpc.Response, error) {
 
 	// Parse error if present
 	var jsonErr *jsonrpc.Error
-	if errMap, ok := fm["error"].(map[string]interface{}); ok {
+	if errMap, ok := fm["error"].(map[string]any); ok {
 		jsonErr = &jsonrpc.Error{
 			Code:    int(errMap["code"].(float64)),
 			Message: errMap["message"].(string),
@@ -128,7 +128,7 @@ func (client *Client) CancelTask(params TaskIDParams) (jsonrpc.Response, error) 
 SendTaskStreaming sends a task message and streams the response.
 */
 func (client *Client) SendTaskStreaming(
-	params TaskSendParams, eventChan chan<- interface{},
+	params TaskSendParams, eventChan chan<- any,
 ) error {
 	req := jsonrpc.Request{
 		Message: jsonrpc.Message{
