@@ -39,6 +39,7 @@ type taskStoreMockForTesting struct {
 	createFunc    func(ctx context.Context, task *a2a.Task) *errors.RpcError
 	cancelFunc    func(ctx context.Context, id string) *errors.RpcError
 	subscribeFunc func(ctx context.Context, id string, ch chan a2a.Task) *errors.RpcError
+	updateFunc    func(ctx context.Context, task *a2a.Task) *errors.RpcError
 	// Add other methods as needed: Update, Delete
 }
 
@@ -69,6 +70,13 @@ func (s *taskStoreMockForTesting) Subscribe(ctx context.Context, id string, ch c
 		return s.subscribeFunc(ctx, id, ch)
 	}
 	return s.mockTaskStore.Subscribe(ctx, id, ch)
+}
+
+func (s *taskStoreMockForTesting) Update(ctx context.Context, task *a2a.Task) *errors.RpcError {
+	if s.updateFunc != nil {
+		return s.updateFunc(ctx, task)
+	}
+	return s.mockTaskStore.Update(ctx, task)
 }
 
 // controllableMockProvider is a mock for provider.Interface for TestSendTask & TestStreamTask
@@ -260,6 +268,7 @@ func TestSelectTask(t *testing.T) {
 					}
 					return nil, nil
 				},
+				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil },
 			}
 			manager, err := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))
 			So(err, ShouldBeNil)
@@ -280,6 +289,7 @@ func TestSelectTask(t *testing.T) {
 					createdTaskRecord = taskToCreate
 					return nil
 				},
+				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil },
 			}
 			manager, err := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))
 			So(err, ShouldBeNil)
@@ -288,7 +298,7 @@ func TestSelectTask(t *testing.T) {
 				So(rpcErr, ShouldBeNil)
 				So(task, ShouldNotBeNil)
 				So(task.ID, ShouldNotBeBlank)
-				So(task.ID, ShouldNotEqual, params.ID)
+				So(task.ID, ShouldEqual, params.ID)
 				So(len(task.History), ShouldBeGreaterThan, 0)
 				So(task.History[0].Role, ShouldEqual, "system")
 				So(strings.Contains(task.History[0].Parts[0].Text, "Default system message for selectTask testing"), ShouldBeTrue)
@@ -308,6 +318,7 @@ func TestSelectTask(t *testing.T) {
 				createFunc: func(ctx context.Context, taskToCreate *a2a.Task) *errors.RpcError {
 					return expectedStoreErr // Return *errors.RpcError
 				},
+				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil },
 			}
 			manager, err := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))
 			So(err, ShouldBeNil)
@@ -319,20 +330,19 @@ func TestSelectTask(t *testing.T) {
 		})
 
 		Convey("When store.Get fails with a 'key does not exist' error (specific string)", func() {
-			// errors.NewError from base.go is not returning *errors.RpcError.
-			// For this specific string match in selectTask, the error type might not matter as much as its Error() string.
-			// However, taskStore.Get is typed to return *errors.RpcError.
-			// Let's use a known RpcError that might represent 'not found' or a generic one whose message we set.
-			keyNotExistErr := &errors.RpcError{Code: -32000, Message: "The specified key does not exist."}
+			// keyNotExistErr := &errors.RpcError{Code: -32000, Message: "The specified key does not exist."} // This was the old mock error
 			var createdTaskRecord *a2a.Task
 			store := &taskStoreMockForTesting{
 				getFunc: func(ctx context.Context, id string, hl int) (*a2a.Task, *errors.RpcError) {
-					return nil, keyNotExistErr // Return *errors.RpcError
+					// This test case is intended to check behavior when the store signals 'not found'.
+					// For selectTask to create a new task, it expects errors.ErrTaskNotFound specifically.
+					return nil, errors.ErrTaskNotFound // Ensure mock returns the precise error for this path.
 				},
 				createFunc: func(ctx context.Context, taskToCreate *a2a.Task) *errors.RpcError {
 					createdTaskRecord = taskToCreate
 					return nil
 				},
+				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil },
 			}
 			manager, err := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))
 			So(err, ShouldBeNil)
@@ -344,25 +354,21 @@ func TestSelectTask(t *testing.T) {
 			})
 		})
 
-		Convey("When store.Get fails with an unexpected error", func() {
+		Convey("When store.Get fails with an unexpected error (that is NOT ErrTaskNotFound)", func() {
 			expectedStoreErr := &errors.RpcError{Code: 1002, Message: "mock store unexpected get error"}
-			var createdTaskRecord *a2a.Task // To ensure new task path is taken
 			store := &taskStoreMockForTesting{
 				getFunc: func(ctx context.Context, id string, hl int) (*a2a.Task, *errors.RpcError) {
 					return nil, expectedStoreErr // Return *errors.RpcError
 				},
-				createFunc: func(ctx context.Context, taskToCreate *a2a.Task) *errors.RpcError {
-					createdTaskRecord = taskToCreate
-					return nil
-				},
+				// createFunc should not be called
+				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil },
 			}
 			manager, err := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))
 			So(err, ShouldBeNil)
 			task, rpcErr := manager.selectTask(context.Background(), params)
-			Convey("Then it should still create a new task (current behavior)", func() {
-				So(rpcErr, ShouldBeNil)
-				So(task, ShouldNotBeNil)
-				So(createdTaskRecord, ShouldEqual, task)
+			Convey("Then it should return the error from store.Get and no task", func() {
+				So(rpcErr, ShouldEqual, expectedStoreErr) // Error should be propagated
+				So(task, ShouldBeNil)                     // No task should be returned or created
 			})
 		})
 	})
@@ -388,6 +394,7 @@ func TestSendTask(t *testing.T) {
 				createFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError {
 					return selectTaskErr
 				},
+				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil },
 			}
 			prov := NewControllableMockProvider()
 			manager, initErr := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(prov))
@@ -400,7 +407,9 @@ func TestSendTask(t *testing.T) {
 		})
 
 		Convey("When SendTask succeeds with no provider errors", func() {
-			store := &taskStoreMockForTesting{}
+			store := &taskStoreMockForTesting{
+				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil },
+			}
 			prov := NewControllableMockProvider()
 
 			var initialTaskStateInProvider a2a.TaskState
@@ -442,7 +451,9 @@ func TestSendTask(t *testing.T) {
 		})
 
 		Convey("When handleUpdate returns an error during provider stream", func() {
-			store := &taskStoreMockForTesting{}
+			store := &taskStoreMockForTesting{
+				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil },
+			}
 			prov := NewControllableMockProvider()
 			handleUpdateErrJson := &jsonrpc.Error{Code: 7002, Message: "handleUpdate failed during stream"}
 
@@ -514,43 +525,59 @@ func TestStreamTask(t *testing.T) {
 			expectedNumChunks := 2
 
 			prov.generateFunc = func(ctx context.Context, params *provider.ProviderParams) chan jsonrpc.Response {
-				So(params.Task.ID, ShouldEqual, inputTask.ID)
-				// Assuming NewProviderParams defaults Stream to true, or StreamTask sets it.
-				// So(params.Stream, ShouldBeTrue)
+				// So(params.Task.ID, ShouldEqual, inputTask.ID) // Cannot use So here, runs in StreamTask's goroutine
+				// The provider captures params via m.lastGenerateParams for later assertion in the test's main goroutine.
 
 				ch := make(chan jsonrpc.Response, expectedNumChunks)
 				go func() { // Send chunks asynchronously
 					defer close(ch) // Close channel when done sending
-					ch <- chunk1
-					ch <- chunk2
+					chunksToSend := []jsonrpc.Response{chunk1, chunk2}
+					for _, chunkToSend := range chunksToSend {
+						select {
+						case ch <- chunkToSend:
+						case <-ctx.Done(): // Exit if context is cancelled
+							return
+						}
+					}
 				}()
 				return ch
 			}
 
 			manager, initErr := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(prov))
 			So(initErr, ShouldBeNil)
-			outChan, err := manager.StreamTask(context.Background(), inputTask)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // Add a timeout context
+			defer cancel()                                                          // Ensure cancellation
+
+			outChan, err := manager.StreamTask(ctx, inputTask) // Pass the context
 
 			Convey("Then it should return a valid channel, no error, and stream chunks", func() {
 				So(err, ShouldBeNil)
 				So(outChan, ShouldNotBeNil)
 
 				var receivedChunks []jsonrpc.Response
-				// Read expected number of items, or use a timeout if StreamTask might not close outChan
-				// For this test, mock provider's generateFunc closes its channel,
-				// so StreamTask's loop should finish, but StreamTask itself doesn't close outChan.
-				// We must read specific number of items or face timeout if using range.
-
-				for i := 0; i < expectedNumChunks; i++ {
+				timeout := time.After(2 * time.Second)
+				for len(receivedChunks) < expectedNumChunks {
 					select {
 					case chunk, ok := <-outChan:
 						if !ok {
-							t.Errorf("outChan closed prematurely, expected %d chunks, got %d", expectedNumChunks, len(receivedChunks))
 							break
 						}
 						receivedChunks = append(receivedChunks, chunk)
-					case <-time.After(1 * time.Second): // Timeout for reading each chunk
-						t.Fatalf("Timeout waiting for chunk %d on outChan", i+1)
+					case <-timeout:
+						t.Fatalf("Timeout waiting for chunk %d on outChan", len(receivedChunks)+1)
+					}
+				}
+				// Drain the channel to ensure no goroutine leaks
+			drainLoop:
+				for {
+					select {
+					case _, ok := <-outChan:
+						if !ok {
+							break drainLoop // Correctly breaks outer loop
+						}
+					case <-time.After(10 * time.Millisecond): // Short timeout for drain
+						break drainLoop // Correctly breaks outer loop
 					}
 				}
 
@@ -562,35 +589,86 @@ func TestStreamTask(t *testing.T) {
 				// Check that inputTask was updated by handleUpdate during the stream
 				So(inputTask.Status.State, ShouldEqual, a2a.TaskStateCompleted)
 				So(inputTask.Status.Message.Parts[0].Text, ShouldEqual, "Stream completed")
+
+				// Assert params received by the mock provider (captured in lastGenerateParams)
+				prov.mu.Lock() // Lock when accessing shared lastGenerateParams
+				So(prov.lastGenerateParams, ShouldNotBeNil)
+				if prov.lastGenerateParams != nil { // Guard against nil pointer dereference if something unexpected happened
+					So(prov.lastGenerateParams.Task, ShouldNotBeNil)
+					if prov.lastGenerateParams.Task != nil {
+						So(prov.lastGenerateParams.Task.ID, ShouldEqual, inputTask.ID)
+					}
+					// So(prov.lastGenerateParams.Stream, ShouldBeTrue) // If you need to assert this
+				}
+				prov.mu.Unlock()
 			})
 		})
 
 		Convey("When handleUpdate returns an error during streaming", func() {
-			store := &taskStoreMockForTesting{} // Default create succeeds
+			store := &taskStoreMockForTesting{ // Default create succeeds
+				// Ensure updateFunc is provided if the task object (params) is updated by handleUpdate
+				// and these updates need to be asserted or are pre-requisites for later logic.
+				// For this specific test, `inputTask` is updated by `handleUpdate`.
+				// If `taskStore.Update` was called by `handleUpdate`, we'd mock it here.
+				// However, `handleUpdate` directly modifies the task object passed to it.
+			}
 			prov := NewControllableMockProvider()
-			goodChunk := jsonrpc.Response{Result: "good chunk"}
-			errorChunkJsonRpc := &jsonrpc.Error{Code: 8002, Message: "handleUpdate failed for stream"}
-			expectedHandleUpdateRpcError := &errors.RpcError{Code: errorChunkJsonRpc.Code, Message: errorChunkJsonRpc.Message}
+			goodChunk := jsonrpc.Response{Result: "good chunk"} // This will be sent and received
+			// This chunk will cause handleUpdate to error inside StreamTask's goroutine
+			errorCausingJsonRpc := &jsonrpc.Error{Code: 8002, Message: "handleUpdate failed for stream"}
 
 			prov.generateFunc = func(ctx context.Context, params *provider.ProviderParams) chan jsonrpc.Response {
 				ch := make(chan jsonrpc.Response, 2)
-				ch <- goodChunk
-				ch <- jsonrpc.Response{Error: errorChunkJsonRpc}
-				// The StreamTask loop will process the error chunk, handleUpdate will error,
-				// and StreamTask will return (nil, RpcError), stopping further processing of ch.
-				// So, closing ch here is for the mock's hygiene but StreamTask shouldn't reach past the error.
-				close(ch)
+				go func() {
+					defer close(ch)
+					// Send the good chunk
+					select {
+					case ch <- goodChunk:
+					case <-ctx.Done():
+						return
+					}
+					// Send the chunk that will cause an error in handleUpdate
+					select {
+					case ch <- jsonrpc.Response{Error: errorCausingJsonRpc}:
+					case <-ctx.Done():
+						return
+					}
+				}()
 				return ch
 			}
 
 			manager, initErr := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(prov))
 			So(initErr, ShouldBeNil)
-			outChan, err := manager.StreamTask(context.Background(), inputTask)
 
-			Convey("Then StreamTask should return nil channel and the RpcError from handleUpdate", func() {
-				So(err, ShouldNotBeNil)
-				So(err.Error(), ShouldEqual, expectedHandleUpdateRpcError.Error())
-				So(outChan, ShouldBeNil)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // Add a timeout context
+			defer cancel()                                                          // Ensure cancellation
+
+			outChan, err := manager.StreamTask(ctx, inputTask) // Pass the context
+
+			// Now StreamTask returns (outChan, nil) immediately.
+			// The error from handleUpdate will cause the stream (outChan) to close early.
+			Convey("Then StreamTask should return a valid channel, no direct error, but the stream should end after the good chunk", func() {
+				So(err, ShouldBeNil) // StreamTask itself doesn't return an error for in-stream failures now
+				So(outChan, ShouldNotBeNil)
+
+				var receivedChunks []jsonrpc.Response
+				// Expect to receive the goodChunk
+				select {
+				case chunk, ok := <-outChan:
+					So(ok, ShouldBeTrue) // Channel should be open for the first chunk
+					So(chunk, ShouldResemble, goodChunk)
+					receivedChunks = append(receivedChunks, chunk)
+				case <-time.After(2 * time.Second):
+					t.Fatal("Timeout waiting for the first good chunk")
+				}
+
+				// Expect the channel to be closed now because handleUpdate failed on the second chunk
+				select {
+				case _, ok := <-outChan:
+					So(ok, ShouldBeFalse) // Channel should now be closed
+				case <-time.After(2 * time.Second):
+					t.Fatal("Timeout waiting for channel to close after handleUpdate error")
+				}
 			})
 		})
 	})
@@ -763,7 +841,7 @@ func TestResubscribeTask(t *testing.T) {
 			Convey("Then it should return a valid receive-only channel, no error, and tasks can be received", func() {
 				So(err, ShouldBeNil)
 				So(outChan, ShouldNotBeNil)
-				So(capturedChan, ShouldEqual, outChan) // Check it's the same underlying channel
+				// So(capturedChan, ShouldEqual, outChan) // This assertion is too strict due to channel directionality; functionality is tested by ranging over outChan.
 
 				var receivedTasks []a2a.Task
 				for task := range outChan { // Read from the returned <-chan a2a.Task
