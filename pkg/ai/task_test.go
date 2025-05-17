@@ -555,6 +555,7 @@ func TestStreamTask(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(outChan, ShouldNotBeNil)
 
+				// nolint:ineffassign // slice inspected later for assertions
 				var receivedChunks []jsonrpc.Response
 				timeout := time.After(2 * time.Second)
 				for len(receivedChunks) < expectedNumChunks {

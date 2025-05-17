@@ -12,10 +12,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-const MCP_SESSION_ID_HEADER = "Mcp-Session-Id"
-
 func Aquire(id string) (*mcp.Tool, error) {
-	log.Info("aquiring tool", "id", id)
+	log.Info("initializing MCP client")
 
 	switch id {
 	case "development":
@@ -47,10 +45,10 @@ func NewExecutor(
 	defer c.Close()
 
 	c.OnNotification(func(notification mcp.JSONRPCNotification) {
-		fmt.Printf("Received notification: %s\n", notification.Method)
+		log.Info("received notification", "method", notification.Method)
 	})
 
-	fmt.Println("Initializing client...")
+	log.Info("initializing MCP client")
 	initRequest := mcp.InitializeRequest{}
 	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
 	initRequest.Params.ClientInfo = mcp.Implementation{
@@ -65,45 +63,34 @@ func NewExecutor(
 		return "", fmt.Errorf("Failed to initialize: %w", err)
 	}
 
-	// Display server information
-	fmt.Printf("Connected to server: %s (version %s)\n",
-		serverInfo.ServerInfo.Name,
-		serverInfo.ServerInfo.Version)
-	fmt.Printf("Server capabilities: %+v\n", serverInfo.Capabilities)
+	log.Info("connected to server", "serverName", serverInfo.ServerInfo.Name, "serverVersion", serverInfo.ServerInfo.Version, "serverCapabilities", serverInfo.Capabilities)
 
-	// Prepare arguments for CallTool
 	arguments := map[string]any{}
 	if err := json.Unmarshal([]byte(args), &arguments); err != nil {
 		c.Close()
 		return "", fmt.Errorf("failed to unmarshal tool arguments '%s': %w", args, err)
 	}
 
-	// Perform the tool call
-	fmt.Printf("Calling tool '%s' with args: %v\n", name, arguments)
+	log.Info("calling tool", "toolName", name, "args", arguments)
 	callToolRequest := mcp.CallToolRequest{}
-	callToolRequest.Params.Name = name // This 'name' is the actual tool name like "browser"
+	callToolRequest.Params.Name = name
 	callToolRequest.Params.Arguments = arguments
-	// We are not sending any Meta for now, so no need to set callToolRequest.Params.Meta
 
 	callToolResult, err := c.CallTool(ctx, callToolRequest)
 	if err != nil {
 		c.Close()
-		log.Error("failed to call tool", "tool", name, "error", err)
+		log.Error("failed to call tool", "error", err, "tool", name)
 		return "", fmt.Errorf("failed to call tool %s: %w", name, err)
 	}
 
-	fmt.Printf("Tool '%s' executed successfully. Result: %+v\n", name, callToolResult)
+	log.Info("tool executed successfully", "toolName", name, "result", callToolResult)
 
-	// Process the result
-	// For now, we'll take the text from the first TextContent item.
-	// This might need to be more sophisticated depending on expected tool outputs.
 	var resultString string
 	if len(callToolResult.Content) > 0 {
 		firstContent := callToolResult.Content[0]
 		if textContent, ok := firstContent.(mcp.TextContent); ok {
 			resultString = textContent.Text
 		} else {
-			// If not text, marshal the first content item to JSON as a fallback
 			jsonResult, err := json.Marshal(firstContent)
 			if err != nil {
 				log.Warn("failed to marshal tool result content", "error", err)
@@ -116,6 +103,6 @@ func NewExecutor(
 		resultString = "[empty tool result]"
 	}
 
-	fmt.Println("Client shutting down after tool call...")
+	log.Info("client shutting down after tool call")
 	return resultString, nil
 }

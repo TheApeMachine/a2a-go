@@ -81,9 +81,7 @@ func (prvdr *OpenAIProvider) Generate(
 			prvdr.params.ResponseFormat = prvdr.applySchema(params.Task)
 		}
 
-		isDone := false
-
-		for !isDone {
+		for {
 			if params.Stream {
 				stream := prvdr.client.Chat.Completions.NewStreaming(ctx, *prvdr.params)
 				acc := openai.ChatCompletionAccumulator{}
@@ -101,7 +99,7 @@ func (prvdr *OpenAIProvider) Generate(
 						)
 
 						params.Task.AddFinalPart(a2a.NewTextPart(chunk.Choices[0].Delta.Content))
-						isDone = true
+						break
 					}
 
 					if refusal, ok := acc.JustFinishedRefusal(); ok {
@@ -150,11 +148,10 @@ func (prvdr *OpenAIProvider) Generate(
 							Message: err.Error(),
 						},
 					}
-					isDone = true // Mark as done if OpenAI call itself fails
-					break         // Exit the for !isDone loop
+					break
 				}
 
-				if completion.Choices == nil || len(completion.Choices) == 0 {
+				if len(completion.Choices) == 0 {
 					log.Error("OpenAI completion returned no choices")
 					ch <- jsonrpc.Response{
 						Error: &jsonrpc.Error{
@@ -162,7 +159,6 @@ func (prvdr *OpenAIProvider) Generate(
 							Message: "OpenAI completion returned no choices",
 						},
 					}
-					isDone = true
 					break
 				}
 
@@ -179,7 +175,7 @@ func (prvdr *OpenAIProvider) Generate(
 					ch <- jsonrpc.Response{
 						Result: params.Task, // Return the entire updated Task object
 					}
-					isDone = true
+					break
 				} else { // Assistant wants to make more tool calls
 					// Add assistant's message (which contains the tool call requests) to our params for the next OpenAI call.
 					prvdr.params.Messages = append(
@@ -188,7 +184,7 @@ func (prvdr *OpenAIProvider) Generate(
 					)
 
 					for _, toolCall := range toolCalls {
-						toolErr := prvdr.handleToolCall(ctx, toolCall, ch, params.Task) // ch is not used by handleToolCall anymore
+						toolErr := prvdr.handleToolCall(ctx, toolCall, params.Task)
 
 						if toolErr != nil {
 							log.Error("error executing tool from handleToolCall", "tool_name", toolCall.Function.Name, "error", toolErr)
@@ -202,15 +198,10 @@ func (prvdr *OpenAIProvider) Generate(
 									Message: fmt.Sprintf("Error executing tool %s: %v", toolCall.Function.Name, toolErr),
 								},
 							}
-							isDone = true // Critical: mark as done to prevent re-looping OpenAI call
-							break         // Exit the tool call loop
+							break
 						}
 					}
-					// If a tool call failed and set isDone, break the outer loop too.
-					if isDone {
-						break
-					}
-				} // End of else (len(toolCalls) > 0)
+				}
 			}
 		}
 	}()
@@ -221,7 +212,6 @@ func (prvdr *OpenAIProvider) Generate(
 func (prvdr *OpenAIProvider) handleToolCall(
 	ctx context.Context,
 	toolCall openai.ChatCompletionMessageToolCall,
-	out chan jsonrpc.Response,
 	task *a2a.Task,
 ) error {
 	results, err := tools.NewExecutor(

@@ -48,7 +48,11 @@ func (manager *TaskManager) handleUpdate(
 	chunk jsonrpc.Response,
 ) error {
 	if chunk.Error != nil {
-		log.Error("failed to handle update (raw chunk error)", "code", chunk.Error.Code, "message", chunk.Error.Message, "data", chunk.Error.Data)
+		log.Debug("failed to handle update (raw chunk error)",
+			"code", chunk.Error.Code,
+			"message", chunk.Error.Message,
+		)
+		log.Debug("chunk error data", "data", chunk.Error.Data)
 		return &errors.RpcError{
 			Code:    chunk.Error.Code,
 			Message: chunk.Error.Message,
