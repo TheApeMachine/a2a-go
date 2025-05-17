@@ -9,6 +9,7 @@ import (
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/spf13/viper"
 )
 
 const MCP_SESSION_ID_HEADER = "Mcp-Session-Id"
@@ -29,7 +30,8 @@ func Aquire(id string) (*mcp.Tool, error) {
 func NewExecutor(
 	ctx context.Context, name, args string,
 ) (string, error) {
-	sseTransport, err := transport.NewSSE("http://" + name + "tool:3210/sse")
+	url := viper.GetViper().GetString("endpoints." + name)
+	sseTransport, err := transport.NewSSE(url + "/sse")
 
 	if err != nil {
 		log.Error("failed to create SSE transport", "error", err)
@@ -42,6 +44,7 @@ func NewExecutor(
 	}
 
 	c := client.NewClient(sseTransport)
+	defer c.Close()
 
 	c.OnNotification(func(notification mcp.JSONRPCNotification) {
 		fmt.Printf("Received notification: %s\n", notification.Method)
@@ -114,7 +117,5 @@ func NewExecutor(
 	}
 
 	fmt.Println("Client shutting down after tool call...")
-	c.Close()
-
 	return resultString, nil
 }
