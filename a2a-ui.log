@@ -1,0 +1,673 @@
+2025-05-17 10:56:33.985949 [logging.go:27] Logging initialized to file: a2a-ui.log
+2025-05-17 10:56:33.986069 [ui.go:30] Starting UI command
+2025-05-17 10:56:33.986089 [component.go:42] Spinner.NewSpinner: Called
+2025-05-17 10:56:33.986093 [component.go:57] Spinner.NewSpinner: Applying options (0)
+2025-05-17 10:56:33.986107 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1x1 (size: 1)
+2025-05-17 10:56:33.986111 [pool.go:66] BufferPool.GetBuffer: Got buffer from small pool (initial len 5). Ensuring dimensions.
+2025-05-17 10:56:33.986114 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 5x1
+2025-05-17 10:56:33.986127 [component.go:96] Spinner.updateArtifactSize: Artifact (re)created with width 1 for label ''
+2025-05-17 10:56:33.986130 [component.go:68] Spinner.NewSpinner: Starting render
+2025-05-17 10:56:33.986141 [component.go:188] Spinner.render: Goroutine starting, state=Running
+2025-05-17 10:56:33.986150 [component.go:74] Spinner.NewSpinner: Initialization complete, label: '', artifact width: 1
+2025-05-17 10:56:33.986155 [grid.go:32] GridLayout.NewGridLayout: Called
+2025-05-17 10:56:33.986159 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1x1 (size: 1)
+2025-05-17 10:56:33.986163 [pool.go:66] BufferPool.GetBuffer: Got buffer from small pool (initial len 5). Ensuring dimensions.
+2025-05-17 10:56:33.986167 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 5x1
+2025-05-17 10:56:33.986194 [grid.go:46] GridLayout.NewGridLayout: Applying options (4)
+2025-05-17 10:56:33.986198 [grid.go:48] GridLayout.NewGridLayout: Applying option 0
+2025-05-17 10:56:33.986201 [grid.go:48] GridLayout.NewGridLayout: Applying option 1
+2025-05-17 10:56:33.986204 [grid.go:48] GridLayout.NewGridLayout: Applying option 2
+2025-05-17 10:56:33.986207 [grid.go:48] GridLayout.NewGridLayout: Applying option 3
+2025-05-17 10:56:33.986230 [grid.go:253] GridLayout.WithComponents: Setting 1 components
+2025-05-17 10:56:33.986234 [grid.go:259] GridLayout.WithComponents: Setting context for component 0 (*spinner.Spinner)
+2025-05-17 10:56:33.986238 [component.go:290] Spinner.WithContext: Called. Current spinner label: ''
+2025-05-17 10:56:33.986231 [component.go:192] Spinner.render: Goroutine waiting for wg.Wait() (signal from WithContext)
+2025-05-17 10:56:33.986245 [component.go:301] Spinner.WithContext: Context and cancel function set. Calling wg.Done() for spinner: ''
+2025-05-17 10:56:33.986266 [grid.go:52] GridLayout.NewGridLayout: Starting render
+2025-05-17 10:56:33.986276 [component.go:194] Spinner.render: Goroutine wg.Wait() done, context should be set.
+2025-05-17 10:56:33.986285 [grid.go:65] GridLayout.render: Goroutine starting, status=Running
+2025-05-17 10:56:33.986292 [grid.go:58] GridLayout.NewGridLayout: Initialization complete
+2025-05-17 10:56:33.986297 [app.go:46] App.NewApp: Called
+2025-05-17 10:56:33.986317 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 53x214 (size: 11342)
+2025-05-17 10:56:33.986325 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 100). Ensuring dimensions.
+2025-05-17 10:56:33.986349 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 100x214
+2025-05-17 10:56:33.986357 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 53x214 (size: 11342)
+2025-05-17 10:56:33.986361 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 100). Ensuring dimensions.
+2025-05-17 10:56:33.986380 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 100x214
+2025-05-17 10:56:33.986387 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:33.986390 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 100). Ensuring dimensions.
+2025-05-17 10:56:33.986394 [pool.go:70] BufferPool.GetBuffer: Resizing rows from 100 to 1024
+2025-05-17 10:56:33.987520 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:33.987529 [app.go:57] App.NewApp: Initializing StreamTransport
+2025-05-17 10:56:33.987533 [app.go:61] App.NewApp: Getting transport size
+2025-05-17 10:56:33.987545 [app.go:66] App.NewApp: Transport size: width=1024, height=1024
+2025-05-17 10:56:33.987549 [app.go:69] App.NewApp: Applying options (1)
+2025-05-17 10:56:33.987552 [app.go:71] App.NewApp: Applying option 0
+2025-05-17 10:56:33.987556 [app.go:223] App.WithScreen: Adding screen (*layouts.GridLayout)
+2025-05-17 10:56:33.987571 [grid.go:247] GridLayout.WithContext: Called
+2025-05-17 10:56:33.987575 [app.go:232] App.WithScreen: Setting rect for screen: width=1024, height=1024
+2025-05-17 10:56:33.987584 [grid.go:179] GridLayout.SetRect: Called with rect: {Pos:{Row:0 Col:0} Size:{Width:1024 Height:1024}}. Current internalBuffer isNil: false
+2025-05-17 10:56:33.987589 [grid.go:192] GridLayout.SetRect: internalBuffer exists. Current size W:1, H:1. Resizing to W:1024, H:1024
+2025-05-17 10:56:33.987592 [buffer.go:266] Buffer.Resize: Called for buffer 1x1 to new size 1024x1024
+2025-05-17 10:56:33.987596 [buffer.go:275] Buffer.Resize: Getting new data buffer from pool for 1024x1024
+2025-05-17 10:56:33.987599 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:33.987603 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 100). Ensuring dimensions.
+2025-05-17 10:56:33.987606 [pool.go:70] BufferPool.GetBuffer: Resizing rows from 100 to 1024
+2025-05-17 10:56:33.988338 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:33.988348 [buffer.go:277] Buffer.Resize: Got new data buffer. Current old data isNil: false
+2025-05-17 10:56:33.988353 [buffer.go:282] Buffer.Resize: Copying content (minH:1, minW:1)
+2025-05-17 10:56:33.988358 [buffer.go:292] Buffer.Resize: Returning old data buffer to pool
+2025-05-17 10:56:33.988373 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 5x1 (total: 5) back to pool
+2025-05-17 10:56:33.988378 [pool.go:131] BufferPool.PutBuffer: Buffer placed in small pool.
+2025-05-17 10:56:33.988382 [buffer.go:302] Buffer.Resize: Dimensions updated. Clearing dirty regions and marking full buffer dirty.
+2025-05-17 10:56:33.988386 [buffer.go:310] Buffer.Resize: Invalidating readBuffer.
+2025-05-17 10:56:33.988390 [buffer.go:316] Buffer.Resize: Finished.
+2025-05-17 10:56:33.988393 [grid.go:195] GridLayout.SetRect: Resize completed.
+2025-05-17 10:56:33.988397 [grid.go:201] GridLayout.SetRect: Finished. Buffer new size W:1024, H:1024
+2025-05-17 10:56:33.988400 [app.go:76] App.NewApp: Creating Terminal
+2025-05-17 10:56:33.988403 [terminal.go:38] Terminal.NewTerminal: Called
+2025-05-17 10:56:33.988407 [terminal.go:47] Terminal.NewTerminal: Applying option 0
+2025-05-17 10:56:33.988421 [terminal.go:242] Terminal.WithRoot: Setting root to *layouts.GridLayout
+2025-05-17 10:56:33.988425 [terminal.go:47] Terminal.NewTerminal: Applying option 1
+2025-05-17 10:56:33.988428 [terminal.go:249] Terminal.WithTransport: Setting transport to *kubrick.StreamTransport
+2025-05-17 10:56:33.988431 [terminal.go:51] Terminal.NewTerminal: Transport is *kubrick.StreamTransport
+2025-05-17 10:56:33.988434 [terminal.go:55] Terminal.NewTerminal: Starting render (main loop)
+2025-05-17 10:56:33.988437 [terminal.go:66] Terminal.render: Called (main loop started)
+2025-05-17 10:56:33.988440 [terminal.go:90] Terminal.render: Transport is not LocalTransport (*kubrick.StreamTransport), not setting raw mode or signals.
+2025-05-17 10:56:33.988443 [terminal.go:94] Terminal.render: Writing hideCursor to transport
+2025-05-17 10:56:33.988448 [buffer.go:181] Buffer.Write: Called with 6 bytes. Current buffer 1024x1024. Content: [?25l
+2025-05-17 10:56:33.989358 [buffer.go:199] Buffer.Write: Cleared buffer. Starting to write new content.
+2025-05-17 10:56:34.003368 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.004245 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.004251 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.004255 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.004267 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.004313 [buffer.go:377] Buffer.Read: Finished serializing 2 bytes to readBuffer
+2025-05-17 10:56:34.019061 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.019846 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.019853 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.019857 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.019862 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.020013 [buffer.go:377] Buffer.Read: Finished serializing 2 bytes to readBuffer
+2025-05-17 10:56:34.035044 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.035899 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.035904 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.035909 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.035914 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.036380 [buffer.go:377] Buffer.Read: Finished serializing 2 bytes to readBuffer
+2025-05-17 10:56:34.051316 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.052353 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.052361 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.052366 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.052373 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.052877 [buffer.go:377] Buffer.Read: Finished serializing 2 bytes to readBuffer
+2025-05-17 10:56:34.067320 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.068457 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.068464 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.068469 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.068477 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.068643 [buffer.go:377] Buffer.Read: Finished serializing 2 bytes to readBuffer
+2025-05-17 10:56:34.083046 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.084362 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.084372 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.084379 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.084389 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.084475 [buffer.go:377] Buffer.Read: Finished serializing 2 bytes to readBuffer
+2025-05-17 10:56:34.099377 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.100568 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.100611 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.100619 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.100663 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.101271 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.115465 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.116995 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.117053 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.117084 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.117105 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.117536 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.131103 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.132633 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.132773 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.133057 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.133089 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.133359 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.147388 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.149420 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.149760 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.150708 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.150776 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.151254 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.162967 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.164609 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.164664 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.164675 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.164684 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.165667 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.179231 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.181136 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.181175 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.181185 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.181195 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.181391 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.195224 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.197773 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.197798 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.197808 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.197817 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.197974 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.210472 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.213439 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.213471 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.213489 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.213510 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.213869 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.227364 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.230145 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.230181 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.230197 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.230213 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.230316 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.243355 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.246150 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.246183 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.246197 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.246213 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.246317 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.259200 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.262153 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.262183 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.262197 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.262212 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.262316 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.275350 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.278172 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.278199 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.278211 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.278223 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.279204 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.290686 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.293114 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.293195 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.293211 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.293229 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.293493 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.307351 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.308781 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.308816 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.308826 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.308837 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.309023 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.322409 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.324085 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.324114 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.324126 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.324138 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.324245 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.338954 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.340618 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.340681 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.340708 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.340730 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.341196 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.355096 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.359446 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.359520 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.359534 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.359546 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.359654 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.371318 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.374262 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.374298 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.374312 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.374328 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.374444 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.387369 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.390125 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.390150 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.390163 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.390177 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.390290 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.402503 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.405461 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.405499 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.405516 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.405535 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.406501 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.419388 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.422671 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.424158 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.424172 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.424187 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.424312 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.435386 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.438683 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.438733 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.438746 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.438760 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.438871 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.451393 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.454252 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.454295 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.454310 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.454326 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.454435 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.467228 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.469925 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.469972 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.469986 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.470003 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.470369 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.483017 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.485738 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.485796 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.485809 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.485825 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.485954 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.499128 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.501650 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.501694 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.501708 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.501723 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.501845 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.514533 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.517167 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.517197 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.517210 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.517226 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.517680 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.531101 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.533300 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.533346 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.533359 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.533372 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.533474 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.547400 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.550490 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.550528 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.550546 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.550565 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.550700 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.562866 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.564511 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.564560 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.564571 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.564582 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.564725 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.579401 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.580976 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.581035 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.581047 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.581060 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.581505 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.594827 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.596864 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.596968 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.596997 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.597020 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.597166 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.610779 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.613726 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.613917 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.613937 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.613950 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.614098 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.627398 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.628978 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.629024 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.629035 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.629045 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.629207 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.644261 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.688423 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.688460 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.688465 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.688470 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.688646 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.688657 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.689545 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.689558 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.689563 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.689567 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.689631 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.690448 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.691003 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.691007 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.691010 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.691014 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.691072 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.706796 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.707338 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.707347 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.707361 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.707365 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.707530 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.722400 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.722905 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.722909 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.722913 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.722917 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.722961 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.738967 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.739514 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.739523 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.739526 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.739529 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.739566 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.754877 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.756351 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.756382 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.756412 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.756439 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.756516 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.771413 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.773231 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.773251 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.773259 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.773267 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.773780 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.787367 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.789266 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.789287 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.789299 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.789315 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.789384 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.803058 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.805842 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.805883 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.805907 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.805916 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.805984 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.819404 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.821871 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.821894 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.821903 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.821911 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.821970 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.835434 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.838152 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.838205 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.838225 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.838240 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.838618 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.850486 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.853459 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.853488 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.853507 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.853527 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.853625 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.867336 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.870158 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.870193 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.870209 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.870225 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.870333 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.883370 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.886307 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.886343 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.886361 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.886377 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.886486 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.899437 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.902105 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.902132 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.902147 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.902200 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.902654 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.915132 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.917793 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.917834 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.917853 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.917872 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.918082 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.931423 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.932646 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.932684 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.932697 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.932708 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.932951 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.947011 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.948788 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.948862 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.948884 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.948902 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.949087 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.962964 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.964807 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.964878 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.964907 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.964930 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.965459 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.978499 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.980291 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.980348 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.980376 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.980399 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.980693 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:34.995035 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:34.997621 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:34.997699 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:34.997736 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:34.997820 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:34.998230 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.011235 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.014054 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.014147 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.014197 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.014227 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.014449 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.026548 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.029106 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.029165 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.029187 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.029206 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.029596 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.042672 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.045143 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.045219 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.045246 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.045267 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.045471 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.059476 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.062783 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.062866 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.062902 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.062942 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.064070 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.075212 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.079763 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.079839 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.079850 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.079860 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.079996 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.090443 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.092322 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.092364 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.092378 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.092390 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.093978 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.107236 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.110636 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.110730 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.110743 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.110757 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.111015 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.123394 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.124782 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.124882 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.124903 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.124926 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.125151 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.139224 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.141227 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.141268 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.141279 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.141290 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.141378 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.155435 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.157636 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.157695 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.157719 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.157741 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.158184 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.171461 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.174108 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.174159 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.174178 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.174196 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.174280 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.187004 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.190111 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.190165 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.190189 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.190222 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.190323 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.203484 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.205289 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.205354 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.205452 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.205517 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.205684 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.218908 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.220687 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.220740 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.220758 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.220772 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.221110 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.235455 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.237503 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.237569 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.237599 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.237626 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.237744 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.251459 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.254015 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.254072 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.254094 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.254114 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.254316 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.266641 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.269211 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.269265 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.269283 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.269300 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.269399 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.283463 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.286575 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.286671 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.286713 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.286740 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.287289 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.299313 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.301026 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.301106 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.301139 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.301164 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.301386 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.314704 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.316934 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.316979 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.316999 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.317019 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.317131 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.331484 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.334013 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.334079 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.334111 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.334139 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.334351 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.347413 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.350553 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.350625 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.350654 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.350680 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.351292 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.363480 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.365262 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.365324 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.365346 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.365363 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.365480 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.379463 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.381314 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.381401 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.381437 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.381465 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.381729 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.394911 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.399786 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.399891 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.399929 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.399960 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.400088 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.410691 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.412002 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.412115 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.412150 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.412162 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.412530 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.427014 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.428709 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.428736 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.428744 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.428753 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.428823 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.443454 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.446195 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.446213 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.446221 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.446231 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.446298 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.459435 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.460907 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.460944 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.460956 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.460967 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.461034 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.475438 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.477820 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.477868 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.477889 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.477910 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.478334 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.491485 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.494283 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.494313 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.494347 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.494361 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.494446 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.507446 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.510386 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.510403 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.510412 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.510423 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.510500 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.523472 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.526404 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.526430 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.526443 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.526458 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.526546 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.539445 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.542434 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.542457 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.542473 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.542492 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.542871 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.555458 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.557432 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.557457 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.557473 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.557492 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.557589 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.571474 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.573213 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.573261 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.573276 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.573290 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.573401 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
+2025-05-17 10:56:35.587487 [pool.go:107] BufferPool.PutBuffer: Putting buffer of size 1024x1024 (total: 1048576) back to pool
+2025-05-17 10:56:35.589249 [pool.go:131] BufferPool.PutBuffer: Buffer placed in large pool.
+2025-05-17 10:56:35.589315 [pool.go:50] BufferPool.GetBuffer: Requesting buffer for 1024x1024 (size: 1048576)
+2025-05-17 10:56:35.589341 [pool.go:66] BufferPool.GetBuffer: Got buffer from large pool (initial len 1024). Ensuring dimensions.
+2025-05-17 10:56:35.589361 [pool.go:82] BufferPool.GetBuffer: Returning buffer with actual dimensions 1024x1024
+2025-05-17 10:56:35.589482 [buffer.go:377] Buffer.Read: Finished serializing 4 bytes to readBuffer
