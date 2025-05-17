@@ -125,7 +125,7 @@ package ai
 // /*
 // SendPushNotification sends a notification for a task
 // */
-// func (a *Agent) SendPushNotification(taskID string, event interface{}) error {
+// func (a *Agent) SendPushNotification(taskID string, event any) error {
 // 	if a.pushService == nil {
 // 		return fmt.Errorf("push notification service not initialized")
 // 	}

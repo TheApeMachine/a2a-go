@@ -48,8 +48,16 @@ func (manager *TaskManager) handleUpdate(
 	chunk jsonrpc.Response,
 ) error {
 	if chunk.Error != nil {
-		log.Error("failed to handle update", "error", chunk.Error)
-		return (*errors.RpcError)(chunk.Error)
+		log.Debug("failed to handle update (raw chunk error)",
+			"code", chunk.Error.Code,
+			"message", chunk.Error.Message,
+		)
+		log.Debug("chunk error data", "data", chunk.Error.Data)
+		return &errors.RpcError{
+			Code:    chunk.Error.Code,
+			Message: chunk.Error.Message,
+			Data:    chunk.Error.Data,
+		}
 	}
 
 	switch result := chunk.Result.(type) {
@@ -62,34 +70,52 @@ func (manager *TaskManager) handleUpdate(
 	return nil
 }
 
+func (manager *TaskManager) createNewTask(ctx context.Context, params a2a.TaskSendParams) (*a2a.Task, *errors.RpcError) {
+	log.Info("creating new task", "task_id", params.ID, "session_id", params.SessionID)
+	newTask := a2a.NewTask(manager.agent.Name)
+	newTask.ID = params.ID
+	if params.SessionID != "" {
+		newTask.SessionID = params.SessionID
+	}
+	newTask.History = append(newTask.History, params.Message)
+	newTask.ToStatus(a2a.TaskStateSubmitted,
+		a2a.NewTextMessage(manager.agent.Name, "task created and submitted"),
+	)
+	if createErr := manager.taskStore.Create(ctx, newTask); createErr != nil {
+		log.Error("failed to create new task in store", "task_id", params.ID, "error", createErr)
+		return nil, createErr
+	}
+	log.Info("newly created task stored", "task_id", newTask.ID, "status", newTask.Status.State)
+	return newTask, nil
+}
+
 func (manager *TaskManager) selectTask(
 	ctx context.Context,
 	params a2a.TaskSendParams,
 ) (*a2a.Task, *errors.RpcError) {
-	existing, err := manager.taskStore.Get(ctx, params.ID, 0)
+	existingTask, getErr := manager.taskStore.Get(ctx, params.ID, 0)
 
-	if err != nil && err.Error() != "The specified key does not exist." {
-		log.Error("something went wrong when selecting task", "error", err)
+	if getErr != nil {
+		if getErr == errors.ErrTaskNotFound {
+			return manager.createNewTask(ctx, params)
+		}
+		log.Error("error getting task from store (not ErrTaskNotFound)", "task_id", params.ID, "error", getErr)
+		return nil, getErr
 	}
 
-	if existing != nil {
-		return existing, nil
+	if existingTask == nil {
+		return manager.createNewTask(ctx, params)
 	}
 
-	task := a2a.NewTask(manager.agent.Name)
-	task.History = append(task.History, params.Message)
+	log.Info("existing task found, appending new message", "task_id", existingTask.ID, "current_status", existingTask.Status.State)
+	existingTask.History = append(existingTask.History, params.Message)
 
-	task.Status = a2a.TaskStatus{
-		State:   a2a.TaskStateSubmitted,
-		Message: a2a.NewTextMessage(manager.agent.Name, "task submitted"),
+	if updateErr := manager.taskStore.Update(ctx, existingTask); updateErr != nil {
+		log.Error("failed to update existing task in store after appending message", "task_id", existingTask.ID, "error", updateErr)
+		return nil, updateErr
 	}
-
-	if err := manager.taskStore.Create(ctx, task); err != nil {
-		log.Error("failed to create task", "error", err)
-		return nil, err
-	}
-
-	return task, nil
+	log.Info("existing task updated in store", "task_id", existingTask.ID)
+	return existingTask, nil
 }
 
 func (manager *TaskManager) SendTask(
@@ -140,30 +166,50 @@ func (manager *TaskManager) StreamTask(
 ) (chan jsonrpc.Response, *errors.RpcError) {
 	params.ToStatus(
 		a2a.TaskStateWorking,
-		a2a.NewTextMessage(
-			manager.agent.Name,
-			"starting task",
-		),
+		a2a.NewTextMessage(manager.agent.Name, "starting task"),
 	)
 
-	if err := manager.taskStore.Create(ctx, params); err != nil {
-		return nil, err
+	if createErr := manager.taskStore.Create(ctx, params); createErr != nil {
+		log.Error("failed to create task in store for streaming", "task_id", params.ID, "error", createErr)
+		return nil, createErr
 	}
 
 	out := make(chan jsonrpc.Response)
 
-	for chunk := range manager.provider.Generate(
-		ctx, provider.NewProviderParams(params),
-	) {
-		if err := manager.handleUpdate(params, chunk); err != nil {
-			log.Error("failed to handle update", "error", err)
-			return nil, err.(*errors.RpcError)
+	go func() {
+		defer close(out) // Ensure out is closed when this goroutine exits
+
+		providerChan := manager.provider.Generate(ctx, provider.NewProviderParams(params))
+		for {
+			select {
+			case <-ctx.Done(): // If the overall context for StreamTask is done/cancelled
+				log.Info("StreamTask context done, exiting stream processing.", "task_id", params.ID)
+				return
+			case chunk, ok := <-providerChan:
+				if !ok { // providerChan was closed, normal completion of provider stream
+					return // Goroutine finishes, out will be closed by defer
+				}
+
+				if err := manager.handleUpdate(params, chunk); err != nil {
+					log.Error("failed to handle update during stream, stopping stream", "task_id", params.ID, "error", err)
+					// Error logged, goroutine will exit, and 'out' will be closed by defer.
+					// The client will see any chunks sent before this error, then the channel closes.
+					return
+				}
+
+				// Send the processed chunk to the output channel
+				select {
+				case out <- chunk:
+					// Chunk sent successfully
+				case <-ctx.Done():
+					log.Info("StreamTask context done while sending chunk to output, exiting stream processing.", "task_id", params.ID)
+					return
+				}
+			}
 		}
+	}()
 
-		out <- chunk
-	}
-
-	return out, nil
+	return out, nil // Return immediately
 }
 
 /*

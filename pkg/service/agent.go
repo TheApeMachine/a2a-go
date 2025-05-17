@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/theapemachine/a2a-go/pkg/a2a"
 	"github.com/theapemachine/a2a-go/pkg/ai"
+	"github.com/theapemachine/a2a-go/pkg/errors"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
 )
 
@@ -52,7 +53,7 @@ func (srv *A2AServer) handleAgentCard(ctx fiber.Ctx) error {
 	return ctx.JSON(srv.agent.Card())
 }
 
-func (srv *A2AServer) parseParamsWithDecoding(params interface{}) ([]byte, error) {
+func (srv *A2AServer) parseParamsWithDecoding(params any) ([]byte, error) {
 	var paramsBytes []byte
 	var err error
 
@@ -90,73 +91,142 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 	if err := ctx.Bind().Body(&request); err != nil {
 		return ctx.Status(
 			fiber.StatusBadRequest,
-		).SendString("Invalid request body")
+		).JSON(jsonrpc.Response{ // Send structured error
+			Message: jsonrpc.Message{
+				MessageIdentifier: jsonrpc.MessageIdentifier{ID: nil}, // ID might not be available if body is invalid
+				JSONRPC:           "2.0",
+			},
+			Error: &jsonrpc.Error{
+				Code:    errors.ErrInvalidRequest.Code,
+				Message: "Invalid request body: " + err.Error(),
+			},
+		})
 	}
 
 	switch request.Method {
 	case "tasks/send":
-		return srv.handleTaskOperation(ctx, func() (any, error) {
+		return srv.handleTaskOperation(ctx, request.ID, func() (any, error) {
 			var params a2a.TaskSendParams
 
 			paramsBytes, err := srv.parseParamsWithDecoding(request.Params)
 			if err != nil {
-				return nil, err
+				// This error occurs before the main operation, might not fit RpcError perfectly
+				// but we should return an RpcError style if possible.
+				return nil, errors.ErrInvalidParams.WithMessagef("failed to parse params: %v", err)
 			}
 
 			if err := json.Unmarshal(paramsBytes, &params); err != nil {
 				log.Error("failed to unmarshal params", "error", err, "params", string(paramsBytes))
-				return nil, err
+				return nil, errors.ErrInvalidParams.WithMessagef("failed to unmarshal params: %v", err)
 			}
 
 			return srv.agent.SendTask(ctx.Context(), params)
 		})
 	case "tasks/get":
-		return srv.handleTaskOperation(ctx, func() (any, error) {
+		return srv.handleTaskOperation(ctx, request.ID, func() (any, error) {
 			var params a2a.TaskQueryParams
 
 			paramsBytes, err := srv.parseParamsWithDecoding(request.Params)
 			if err != nil {
-				return nil, err
+				return nil, errors.ErrInvalidParams.WithMessagef("failed to parse params: %v", err)
 			}
 
 			if err := json.Unmarshal(paramsBytes, &params); err != nil {
 				log.Error("failed to unmarshal params", "error", err, "params", string(paramsBytes))
-				return nil, err
+				return nil, errors.ErrInvalidParams.WithMessagef("failed to unmarshal params: %v", err)
 			}
 
 			return srv.agent.GetTask(ctx.Context(), params.ID, *params.HistoryLength)
 		})
 	case "tasks/cancel":
-		return srv.handleTaskOperation(ctx, func() (any, error) {
+		return srv.handleTaskOperation(ctx, request.ID, func() (any, error) {
 			var params a2a.TaskIDParams
 
 			paramsBytes, err := srv.parseParamsWithDecoding(request.Params)
 			if err != nil {
-				return nil, err
+				return nil, errors.ErrInvalidParams.WithMessagef("failed to parse params: %v", err)
 			}
 
 			if err := json.Unmarshal(paramsBytes, &params); err != nil {
 				log.Error("failed to unmarshal params", "error", err, "params", string(paramsBytes))
-				return nil, err
+				return nil, errors.ErrInvalidParams.WithMessagef("failed to unmarshal params: %v", err)
 			}
-
+			// CancelTask specifically returns nil result on success, and an error on failure.
+			// The handleTaskOperation will correctly wrap this in a JSON-RPC response.
 			return nil, srv.agent.CancelTask(ctx.Context(), params.ID)
 		})
 	default:
-		return ctx.Status(fiber.StatusBadRequest).SendString("Unsupported method")
+		return ctx.Status(fiber.StatusBadRequest).JSON(jsonrpc.Response{
+			Message: jsonrpc.Message{
+				MessageIdentifier: jsonrpc.MessageIdentifier{ID: request.ID},
+				JSONRPC:           "2.0",
+			},
+			Error: &jsonrpc.Error{
+				Code:    errors.ErrMethodNotFound.Code,
+				Message: errors.ErrMethodNotFound.Message + ": " + request.Method,
+			},
+		})
 	}
 }
 
-func (srv *A2AServer) handleTaskOperation(ctx fiber.Ctx, op func() (interface{}, error)) error {
-	result, err := op()
+func (srv *A2AServer) handleTaskOperation(ctx fiber.Ctx, requestID any, op func() (any, error)) error {
+	result, errOp := op()
 
-	if err != nil {
-		return ctx.Status(fiber.StatusInternalServerError).SendString(err.Error())
+	// First, explicitly check if errOp is an interface holding (*errors.RpcError)(nil).
+	// If so, treat it as a non-error (effectively plain nil) for further processing.
+	if rpcErr, ok := errOp.(*errors.RpcError); ok && rpcErr == nil {
+		// Log an info message for visibility, but this is now handled as a success path.
+		log.Info("Operation returned a (nil *errors.RpcError), treating as success.", "requestID", requestID)
+		errOp = nil // Normalize it to plain nil, so it passes the next error check.
 	}
 
+	// Now, errOp is either plain nil (if originally nil, or normalized from typed nil),
+	// or it's a non-nil concrete error.
+	if errOp != nil {
+		// This block is now only for actual, non-nil errors.
+		log.Error("Error processing task operation", "error", errOp, "requestID", requestID)
+
+		respErrorCode := errors.ErrInternal.Code
+		// Use the error's message directly. .Error() on RpcError includes "RPC error %d: ".
+		respErrorMessage := errOp.Error()
+
+		// If the actual error is an RpcError (and not the typed nil we already handled), use its details.
+		if e, ok := errOp.(*errors.RpcError); ok { // No '&& e != nil' needed here, typed nil handled above
+			respErrorCode = e.Code
+			respErrorMessage = e.Message // Prefer the direct message for clarity in JSON response
+		}
+
+		return ctx.Status(fiber.StatusInternalServerError).JSON(jsonrpc.Response{
+			Message: jsonrpc.Message{
+				MessageIdentifier: jsonrpc.MessageIdentifier{ID: requestID},
+				JSONRPC:           "2.0",
+			},
+			Error: &jsonrpc.Error{
+				Code:    respErrorCode,
+				Message: respErrorMessage,
+			},
+		})
+	}
+
+	// Success cases (errOp is now guaranteed to be plain nil here)
+	// If result is nil (and errOp was nil), return JSON-RPC null result
+	// This handles cases like successful task cancellation that might return (nil, nil) from the op.
 	if result == nil {
-		return ctx.SendString("Task cancelled successfully")
+		return ctx.Status(fiber.StatusOK).JSON(jsonrpc.Response{
+			Message: jsonrpc.Message{
+				MessageIdentifier: jsonrpc.MessageIdentifier{ID: requestID},
+				JSONRPC:           "2.0",
+			},
+			Result: nil, // Explicit null result
+		})
 	}
 
-	return ctx.JSON(result)
+	// Success with a non-nil result
+	return ctx.Status(fiber.StatusOK).JSON(jsonrpc.Response{
+		Message: jsonrpc.Message{
+			MessageIdentifier: jsonrpc.MessageIdentifier{ID: requestID},
+			JSONRPC:           "2.0",
+		},
+		Result: result,
+	})
 }

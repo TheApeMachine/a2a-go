@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 )
@@ -43,6 +44,7 @@ func (browser *Browser) Fetch(
 	takeScreenshot bool,
 	waitForSelector string,
 ) (*Result, error) {
+	log.Info("Fetching page", "pageURL", pageURL)
 	u, err := url.Parse(pageURL)
 
 	if err != nil {

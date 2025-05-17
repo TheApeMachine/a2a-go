@@ -17,7 +17,7 @@ type ProviderParams struct {
 	Task              *a2a.Task
 	Model             string
 	Tools             []*mcp.Tool
-	Schema            interface{}
+	Schema            any
 	Temperature       float64
 	MaxTokens         int64
 	TopP              float64
@@ -73,7 +73,7 @@ func WithTools(tools ...*mcp.Tool) ProviderParamsOption {
 	}
 }
 
-func WithSchema(schema interface{}) ProviderParamsOption {
+func WithSchema(schema any) ProviderParamsOption {
 	return func(params *ProviderParams) {
 		params.Schema = schema
 	}

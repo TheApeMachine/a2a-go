@@ -60,11 +60,11 @@ func (m *StreamingMetrics) RecordEvent(dropped bool, latency, processingTime tim
 }
 
 // GetMetrics returns a snapshot of the current metrics
-func (m *StreamingMetrics) GetMetrics() map[string]interface{} {
+func (m *StreamingMetrics) GetMetrics() map[string]any {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"total_connections":   m.TotalConnections,
 		"failed_connections":  m.FailedConnections,
 		"reconnections":       m.Reconnections,

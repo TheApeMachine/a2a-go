@@ -52,7 +52,7 @@ func (s *Service) AuthenticateRequest(req *http.Request) error {
 	}
 
 	// Validate token
-	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (any, error) {
 		// TODO: Implement proper key retrieval based on token claims
 		return []byte("your-secret-key"), nil
 	})
@@ -112,7 +112,7 @@ func (s *Service) RefreshToken(refreshToken string) (*TokenInfo, error) {
 	}
 
 	// Parse the old token to get claims
-	token, err := jwt.Parse(oldToken, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.Parse(oldToken, func(token *jwt.Token) (any, error) {
 		return []byte("your-secret-key"), nil
 	})
 	if err != nil {

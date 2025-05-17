@@ -47,7 +47,7 @@ func NewTestSSEBroker() *SSEBroker {
 GetOrCreateTaskBroker returns a task-specific broker, creating one if it doesn't exist.
 This allows for targeted event delivery to clients interested in specific tasks.
 */
-func (broker *SSEBroker) GetOrCreateTaskBroker(taskID string) interface{} {
+func (broker *SSEBroker) GetOrCreateTaskBroker(taskID string) any {
 	broker.mu.Lock()
 	defer broker.mu.Unlock()
 
@@ -206,14 +206,14 @@ func (broker *SSEBroker) Broadcast(v any) error {
 	switch data := v.(type) {
 	case struct{ Event string }:
 		eventType = data.Event
-	case map[string]interface{}:
+	case map[string]any:
 		if evt, ok := data["event"].(string); ok {
 			eventType = evt
 		}
 	}
 
 	// If this is a specific event type, format properly
-	if typeMap, ok := v.(map[string]interface{}); ok && typeMap["type"] != nil {
+	if typeMap, ok := v.(map[string]any); ok && typeMap["type"] != nil {
 		if eventType == "message" && typeMap["type"] != nil {
 			eventType = typeMap["type"].(string)
 		}

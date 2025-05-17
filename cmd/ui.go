@@ -84,14 +84,43 @@ var (
 			})
 
 			if err != nil {
-				log.Error("failed to send task", "error", err)
+				log.Error("client.SendTask failed", "error", err)
 				return err
+			}
+
+			// Check for JSON-RPC level error returned by the server
+			if response.Error != nil {
+				log.Error("RPC error from server", "code", response.Error.Code, "message", response.Error.Message, "data", response.Error.Data)
+				return fmt.Errorf("server error: %s (code: %d)", response.Error.Message, response.Error.Code)
+			}
+
+			// If response.Error is nil, then response.Result should contain the actual result.
+			if response.Result == nil {
+				log.Error("RPC success, but server returned a nil result")
+				return fmt.Errorf("server returned success but with a nil result")
+			}
+
+			var resultBytes []byte
+			var marshalErr error
+
+			// Attempt to convert response.Result to []byte for unmarshalling
+			// Original code expected []byte, so try type assertion first.
+			resultBytes, ok := response.Result.([]byte)
+			if !ok {
+				// If not already []byte, assume it might be a map[string]interface{} or similar
+				// and try to marshal it to JSON bytes.
+				log.Warn("response.Result is not []byte; attempting to marshal for unmarshalling", "type", fmt.Sprintf("%T", response.Result))
+				resultBytes, marshalErr = json.Marshal(response.Result)
+				if marshalErr != nil {
+					log.Error("failed to marshal response.Result for unmarshalling", "error", marshalErr, "result_type", fmt.Sprintf("%T", response.Result))
+					return fmt.Errorf("cannot process result of type %T: %w", response.Result, marshalErr)
+				}
 			}
 
 			// Convert the response result to a Task
 			task := &a2a.Task{}
-			if err := json.Unmarshal(response.Result.([]byte), task); err != nil {
-				log.Error("failed to unmarshal task response", "error", err)
+			if err := json.Unmarshal(resultBytes, task); err != nil {
+				log.Error("failed to unmarshal task response from resultBytes", "error", err)
 				return err
 			}
 

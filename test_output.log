@@ -1,0 +1,196 @@
+=== RUN   TestNewAgentFromCard
+
+  Given an agent is configured with necessary dependencies 
+    When NewAgentFromCard is called 2025/05/17 08:25:39 INFO agent registered name=TestAgentForNew
+
+      Then it should succeed and return a valid agent [32m✔[0m[32m✔[0m
+
+[31m[0m[33m[0m[32m
+2 total assertions[0m
+
+--- PASS: TestNewAgentFromCard (0.10s)
+=== RUN   TestName
+
+  Given an agent created successfully 2025/05/17 08:25:39 INFO agent registered name=TestAgentForName
+[32m✔[0m[32m✔[0m
+    When Name() is called 
+      Then it should return the correct agent name [32m✔[0m
+
+[31m[0m[33m[0m[32m
+5 total assertions[0m
+
+--- PASS: TestName (0.10s)
+=== RUN   TestCard
+
+  Given an agent created successfully 2025/05/17 08:25:39 INFO agent registered name=TestAgentForCard
+[32m✔[0m[32m✔[0m
+    When Card() is called 
+      Then it should return the original agent card [32m✔[0m
+
+[31m[0m[33m[0m[32m
+8 total assertions[0m
+
+--- PASS: TestCard (0.10s)
+=== RUN   TestAuthInjectingRoundTripper
+
+  Given an auth injecting round tripper 
+    When making a request 
+      Then it should call the base RoundTripper [32m✔[0m[32m✔[0m
+      And it should inject the auth headers [32m✔[0m[32m✔[0m
+    When the inject function is nil 
+      Then it should still call the base RoundTripper [32m✔[0m[32m✔[0m
+      And it should not modify the request [32m✔[0m[32m✔[0m
+
+[31m[0m[33m[0m[32m
+16 total assertions[0m
+
+--- PASS: TestAuthInjectingRoundTripper (0.00s)
+=== RUN   TestNewTaskManager
+
+  Given an AgentCard and dependencies 
+    When NewTaskManager is called with all dependencies 
+      Then it should succeed and return a valid TaskManager [32m✔[0m[32m✔[0m[32m✔[0m[32m✔[0m[32m✔[0m
+    When NewTaskManager is called without a TaskStore 2025/05/17 08:25:39 ERRO missing task store
+
+      Then it should fail with ErrMissingTaskStore [32m✔[0m[32m✔[0m[32m✔[0m
+    When NewTaskManager is called without a Provider 2025/05/17 08:25:39 ERRO missing provider
+
+      Then it should fail with ErrMissingProvider [32m✔[0m[32m✔[0m[32m✔[0m
+
+[31m[0m[33m[0m[32m
+27 total assertions[0m
+
+--- PASS: TestNewTaskManager (0.00s)
+=== RUN   TestHandleUpdate
+
+  Given a TaskManager and a Task 
+    When handleUpdate receives a chunk with an RPC error 2025/05/17 08:25:39 ERRO failed to handle update (raw chunk error) code=123 message="test jsonrpc error in chunk" data=<nil>
+
+      Then it should return a non-nil error [32m✔[0m
+    When handleUpdate receives a TaskStatusUpdateResult 2025/05/17 08:25:39 INFO task status update status=working message="Task is now working"
+
+      Then it should update the task's status and return nil [32m✔[0m[32m✔[0m[32m✔[0m
+    When handleUpdate receives a TaskArtifactUpdateEvent 
+      Then it should add the artifact to the task and return nil [32m✔[0m[32m✔[0m[32m✔[0m
+    When handleUpdate receives a chunk with an unknown result type [32m✔[0m
+      Then it should not modify the task and return nil [32m✔[0m[32m✔[0m[32m✔[0m
+
+[31m[0m[33m[0m[32m
+38 total assertions[0m
+
+--- PASS: TestHandleUpdate (0.00s)
+=== RUN   TestSelectTask
+
+  Given a TaskManager with a configurable task store 
+    When an existing task is found by the store [32m✔[0m2025/05/17 08:25:39 INFO existing task found, appending new message task_id=test-task-id-from-params current_status=submitted
+2025/05/17 08:25:39 INFO existing task updated in store task_id=test-task-id-from-params
+
+      Then it should return the existing task and no error [32m✔[0m[32m✔[0m
+    When no existing task is found and store.Create succeeds [32m✔[0m2025/05/17 08:25:39 ERRO task store returned nil task and nil error, which is unexpected task_id=test-task-id-from-params
+
+      Then it should create a new task, store it, and return it [33m✘[0m
+    When no existing task is found and store.Create fails [32m✔[0m2025/05/17 08:25:39 ERRO task store returned nil task and nil error, which is unexpected task_id=test-task-id-from-params
+
+      Then it should return nil for task and the error from store.Create [32m✔[0m[33m✘[0m
+    When store.Get fails with a 'key does not exist' error (specific string) [32m✔[0m2025/05/17 08:25:39 ERRO error getting task from store (not ErrTaskNotFound) task_id=test-task-id-from-params error="RPC error -32000: The specified key does not exist."
+
+      Then it should still create a new task and return it [33m✘[0m
+    When store.Get fails with an unexpected error [32m✔[0m2025/05/17 08:25:39 ERRO error getting task from store (not ErrTaskNotFound) task_id=test-task-id-from-params error="RPC error 1002: mock store unexpected get error"
+
+      Then it should still create a new task (current behavior) [33m✘[0m
+
+[31m[0m[33m
+Failures:
+
+  * /Users/theapemachine/go/src/github.com/theapemachine/a2a-go/pkg/ai/task_test.go 
+  Line 288:
+  Expected: nil
+  Actual:   'RPC error -32603: task store returned (nil, nil) for ID test-task-id-from-params'
+
+  * /Users/theapemachine/go/src/github.com/theapemachine/a2a-go/pkg/ai/task_test.go 
+  Line 317:
+  Expected: (*errors.RpcError){Code:1001, Message:"mock store create failed", Data:any(nil)}
+  Actual:   (*errors.RpcError){Code:-32603, Message:"task store returned (nil, nil) for ID test-task-id-from-params", Data:any(nil)}
+  (Should equal)!
+  Diff:     '(*errors.RpcError){Code:[31m10[0m[32m-326[0m0[31m1[0m[32m3[0m, Message:"[31mmoc[0m[32mtas[0mk store [31mc[0mre[31ma[0mt[32murn[0me[32md[0m [31mfa[0m[32m(nil, n[0mil[32m) for ID t[0me[32mst-task-i[0md[32m-from-params[0m", Data:any(nil)}'
+
+  * /Users/theapemachine/go/src/github.com/theapemachine/a2a-go/pkg/ai/task_test.go 
+  Line 341:
+  Expected: nil
+  Actual:   'RPC error -32000: The specified key does not exist.'
+
+  * /Users/theapemachine/go/src/github.com/theapemachine/a2a-go/pkg/ai/task_test.go 
+  Line 363:
+  Expected: nil
+  Actual:   'RPC error 1002: mock store unexpected get error'
+
+[0m[33m
+50 total assertions[0m
+
+--- FAIL: TestSelectTask (0.00s)
+=== RUN   TestSendTask
+
+  Given a TaskManager with controllable store and provider 
+    When selectTask returns an error [32m✔[0m2025/05/17 08:25:39 ERRO task store returned nil task and nil error, which is unexpected task_id=task-id-for-send
+2025/05/17 08:25:39 ERRO failed to select task error="RPC error -32603: task store returned (nil, nil) for ID task-id-for-send"
+
+      Then SendTask should return nil task and the error from selectTask [32m✔[0m[33m✘[0m
+    When SendTask succeeds with no provider errors [32m✔[0m2025/05/17 08:25:39 ERRO task store returned nil task and nil error, which is unexpected task_id=task-id-for-send
+2025/05/17 08:25:39 ERRO failed to select task error="RPC error -32603: task store returned (nil, nil) for ID task-id-for-send"
+
+      Then it should return the updated task, nil error, and provider called correctly [33m✘[0m
+    When handleUpdate returns an error during provider stream [32m✔[0m2025/05/17 08:25:39 ERRO task store returned nil task and nil error, which is unexpected task_id=task-id-for-send
+2025/05/17 08:25:39 ERRO failed to select task error="RPC error -32603: task store returned (nil, nil) for ID task-id-for-send"
+
+      Then SendTask should return the task and the RpcError from handleUpdate [33m✘[0m
+
+[31m[0m[33m
+Failures:
+
+  * /Users/theapemachine/go/src/github.com/theapemachine/a2a-go/pkg/ai/task_test.go 
+  Line 398:
+  Expected: (*errors.RpcError){Code:7001, Message:"selectTask failed", Data:any(nil)}
+  Actual:   (*errors.RpcError){Code:-32603, Message:"task store returned (nil, nil) for ID task-id-for-send", Data:any(nil)}
+  (Should equal)!
+  Diff:     '(*errors.RpcError){Code:[31m70[0m[32m-326[0m0[31m1[0m[32m3[0m, Message:"[32mta[0ms[32mk stor[0me[32m returned (ni[0ml[31mec[0m[32m, nil) for ID [0mt[31mT[0mask[31m fa[0m[32m-[0mi[31ml[0m[32md-for-s[0me[32mn[0md", Data:any(nil)}'
+
+  * /Users/theapemachine/go/src/github.com/theapemachine/a2a-go/pkg/ai/task_test.go 
+  Line 428:
+  Expected: nil
+  Actual:   'RPC error -32603: task store returned (nil, nil) for ID task-id-for-send'
+
+  * /Users/theapemachine/go/src/github.com/theapemachine/a2a-go/pkg/ai/task_test.go 
+  Line 461:
+  Expected '<nil>' to NOT be nil (but it was)!
+
+[0m[33m
+57 total assertions[0m
+
+--- FAIL: TestSendTask (0.00s)
+=== RUN   TestStreamTask
+
+  Given a TaskManager with controllable store and provider 
+    When taskStore.Create fails [32m✔[0m2025/05/17 08:25:39 INFO task status update status=working message="starting task"
+
+      Then it should return a nil channel and the error from the store [32m✔[0m[32m✔[0m
+    When streaming succeeds with multiple chunks [32m✔[0m2025/05/17 08:25:39 INFO task status update status=working message="starting task"
+[32m✔[0m[32m✔[0m2025/05/17 08:25:39 INFO new provider params
+  params=
+  │ &{Task:Task Details
+  │ │ ID: 4435c343-2b1a-4c40-b29a-50424ba2a5e6
+  │ │ Session ID: 14e5b3f1-f42a-4327-96e3-1a305b1f11c7
+  │ 
+  │ Status
+  │ │ State: working
+  │ │ Message: starting task
+  │ │ Timestamp: 2025-05-17T08:25:39+02:00
+  │ 
+  │ History
+  │ │ Message 1
+  │ │    Role: system
+  │ │    Content: Default system message for StreamTask testing
+  │ │ Message 2
+  │ │    Role: user
+  │ │    Content: stream this
+  │  Model:gpt-4o-mini Tools:[] Schema:<nil> Temperature:0.5 MaxTokens:1000 TopP:1 TopK:100 FrequencyPenalty:0 PresencePenalty:0 Seed:0 Stop:[] Stream:true ParallelToolCalls:true}
+[32m✔[0m

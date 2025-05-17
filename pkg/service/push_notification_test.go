@@ -80,7 +80,7 @@ func TestPushNotificationSenderAuth_Send(t *testing.T) {
 	// Decode JWT header
 	headerJSON, err := base64URLDecode(parts[0])
 	assert.NoError(t, err)
-	var header map[string]interface{}
+	var header map[string]any
 	err = json.Unmarshal(headerJSON, &header)
 	assert.NoError(t, err)
 	assert.Equal(t, "RS256", header["alg"])
@@ -90,7 +90,7 @@ func TestPushNotificationSenderAuth_Send(t *testing.T) {
 	// Decode JWT claims
 	claimsJSON, err := base64URLDecode(parts[1])
 	assert.NoError(t, err)
-	var claims map[string]interface{}
+	var claims map[string]any
 	err = json.Unmarshal(claimsJSON, &claims)
 	assert.NoError(t, err)
 	assert.Equal(t, "a2a‑go", claims["iss"])

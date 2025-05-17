@@ -27,10 +27,10 @@ func NewBrowserTool() *mcp.Tool {
 }
 
 func (bt *BrowserTool) RegisterBrowserTools(srv *server.MCPServer) {
-	srv.AddTool(*bt.tool, bt.handle)
+	srv.AddTool(*bt.tool, bt.Handle)
 }
 
-func (bt *BrowserTool) handle(
+func (bt *BrowserTool) Handle(
 	ctx context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	log.Info("browser executing")
