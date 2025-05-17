@@ -172,31 +172,26 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 func (srv *A2AServer) handleTaskOperation(ctx fiber.Ctx, requestID any, op func() (any, error)) error {
 	result, errOp := op()
 
-	if errOp != nil {
-		// Case 1: The error is an (*errors.RpcError)(nil)
-		if rpcErr, ok := errOp.(*errors.RpcError); ok && rpcErr == nil {
-			log.Warn("Operation resulted in a (nil *errors.RpcError). Responding with a generic internal server error.")
-			return ctx.Status(fiber.StatusInternalServerError).JSON(jsonrpc.Response{
-				Message: jsonrpc.Message{
-					MessageIdentifier: jsonrpc.MessageIdentifier{ID: requestID},
-					JSONRPC:           "2.0",
-				},
-				Error: &jsonrpc.Error{ // Use jsonrpc.Error
-					Code:    errors.ErrInternal.Code,
-					Message: "Internal server error: operation failed with an improperly constructed nil error.",
-				},
-			})
-		}
+	// First, explicitly check if errOp is an interface holding (*errors.RpcError)(nil).
+	// If so, treat it as a non-error (effectively plain nil) for further processing.
+	if rpcErr, ok := errOp.(*errors.RpcError); ok && rpcErr == nil {
+		// Log an info message for visibility, but this is now handled as a success path.
+		log.Info("Operation returned a (nil *errors.RpcError), treating as success.", "requestID", requestID)
+		errOp = nil // Normalize it to plain nil, so it passes the next error check.
+	}
 
-		// Case 2: Other non-nil errors
+	// Now, errOp is either plain nil (if originally nil, or normalized from typed nil),
+	// or it's a non-nil concrete error.
+	if errOp != nil {
+		// This block is now only for actual, non-nil errors.
 		log.Error("Error processing task operation", "error", errOp, "requestID", requestID)
 
 		respErrorCode := errors.ErrInternal.Code
-		// Use the error's message directly. If it's an RpcError, .Message is cleaner.
-		// .Error() on RpcError now has a nil check and includes "RPC error %d: ".
+		// Use the error's message directly. .Error() on RpcError includes "RPC error %d: ".
 		respErrorMessage := errOp.Error()
 
-		if e, ok := errOp.(*errors.RpcError); ok && e != nil {
+		// If the actual error is an RpcError (and not the typed nil we already handled), use its details.
+		if e, ok := errOp.(*errors.RpcError); ok { // No '&& e != nil' needed here, typed nil handled above
 			respErrorCode = e.Code
 			respErrorMessage = e.Message // Prefer the direct message for clarity in JSON response
 		}
@@ -213,7 +208,7 @@ func (srv *A2AServer) handleTaskOperation(ctx fiber.Ctx, requestID any, op func(
 		})
 	}
 
-	// Success cases
+	// Success cases (errOp is now guaranteed to be plain nil here)
 	// If result is nil (and errOp was nil), return JSON-RPC null result
 	// This handles cases like successful task cancellation that might return (nil, nil) from the op.
 	if result == nil {

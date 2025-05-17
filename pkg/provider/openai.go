@@ -166,39 +166,51 @@ func (prvdr *OpenAIProvider) Generate(
 					break
 				}
 
-				toolCalls := completion.Choices[0].Message.ToolCalls
+				messageFromAssistant := completion.Choices[0].Message
+				toolCalls := messageFromAssistant.ToolCalls
 
 				if len(toolCalls) == 0 {
-					ch <- a2a.NewArtifactResult(
-						params.Task.ID,
-						a2a.NewTextPart(completion.Choices[0].Message.Content),
-					)
+					// No more tool calls, this is the final response from the assistant.
+					// Add the assistant's final message to task history.
+					params.Task.AddFinalPart(a2a.NewTextPart(messageFromAssistant.Content))
+					params.Task.ToStatus(a2a.TaskStateCompleted, a2a.NewTextMessage("assistant", messageFromAssistant.Content))
 
-					params.Task.AddFinalPart(a2a.NewTextPart(completion.Choices[0].Message.Content))
+					// Send the fully updated task as the result.
+					ch <- jsonrpc.Response{
+						Result: params.Task, // Return the entire updated Task object
+					}
 					isDone = true
-				} else { // Only append message and process tools if there are tool calls
+				} else { // Assistant wants to make more tool calls
+					// Add assistant's message (which contains the tool call requests) to our params for the next OpenAI call.
 					prvdr.params.Messages = append(
 						prvdr.params.Messages,
-						completion.Choices[0].Message.ToParam(),
+						messageFromAssistant.ToParam(),
 					)
 
 					for _, toolCall := range toolCalls {
-						toolErr := prvdr.handleToolCall(ctx, toolCall, ch, params.Task)
+						toolErr := prvdr.handleToolCall(ctx, toolCall, ch, params.Task) // ch is not used by handleToolCall anymore
 
 						if toolErr != nil {
 							log.Error("error executing tool from handleToolCall", "tool_name", toolCall.Function.Name, "error", toolErr)
-							// Propagate this tool execution error out on the channel
+							// Update task status to failed
+							params.Task.ToStatus(a2a.TaskStateFailed, a2a.NewTextMessage("system", fmt.Sprintf("Error executing tool %s: %v", toolCall.Function.Name, toolErr)))
+							// Propagate this tool execution error out on the channel with the updated task.
 							ch <- jsonrpc.Response{
+								Result: params.Task, // Send failed task
 								Error: &jsonrpc.Error{
-									Code:    errors.ErrInternal.Code, // Using errors.ErrInternal from a2a-go/pkg/errors for code
+									Code:    errors.ErrInternal.Code,
 									Message: fmt.Sprintf("Error executing tool %s: %v", toolCall.Function.Name, toolErr),
 								},
 							}
 							isDone = true // Critical: mark as done to prevent re-looping OpenAI call
-							break         // Exit the tool call loop, which will then exit the for !isDone loop
+							break         // Exit the tool call loop
 						}
 					}
-				}
+					// If a tool call failed and set isDone, break the outer loop too.
+					if isDone {
+						break
+					}
+				} // End of else (len(toolCalls) > 0)
 			}
 		}
 	}()
@@ -217,29 +229,46 @@ func (prvdr *OpenAIProvider) handleToolCall(
 	)
 
 	if err != nil {
-		log.Error("error executing tool", "error", err)
+		log.Error("error executing tool", "tool_name", toolCall.Function.Name, "error", err)
 
+		// Add error result as a tool message for OpenAI
 		prvdr.params.Messages = append(
 			prvdr.params.Messages,
-			openai.ToolMessage(err.Error(), toolCall.ID),
+			openai.ToolMessage(fmt.Sprintf("Error executing tool: %s", err.Error()), toolCall.ID),
 		)
-
-		return err
+		// Also, let's add an artifact indicating tool failure.
+		task.AddArtifact(a2a.Artifact{
+			Name:        &toolCall.Function.Name,
+			Description: &[]string{"Tool execution failed."}[0], // Pointer to string literal
+			Parts: []a2a.Part{
+				a2a.NewTextPart(fmt.Sprintf("Error: %s", err.Error())),
+			},
+			// Index, Append, LastChunk are for streaming parts, not relevant here for a single error artifact.
+		})
+		return err // Propagate the error
 	}
 
+	// Add successful tool result as an artifact to the task
+	toolName := toolCall.Function.Name
+	description := fmt.Sprintf("Output from %s tool.", toolName)
+	task.AddArtifact(a2a.Artifact{
+		Name:        &toolName,
+		Description: &description,
+		Parts: []a2a.Part{
+			a2a.NewTextPart(results),
+		},
+	})
+
+	// Add successful result as a tool message for OpenAI
 	prvdr.params.Messages = append(
 		prvdr.params.Messages,
 		openai.ToolMessage(results, toolCall.ID),
 	)
 
-	out <- jsonrpc.Response{
-		Result: a2a.TaskStatusUpdateResult{
-			ID:       task.ID,
-			Status:   a2a.TaskStatus{State: a2a.TaskStateWorking},
-			Final:    false,
-			Metadata: map[string]any{},
-		},
-	}
+	// DO NOT send on 'out' here.
+	// The 'out' channel in Generate should be for the *final* response of the non-streaming call
+	// or for actual stream events in a streaming call.
+	// The task is updated in place, and OpenAIProvider.Generate will handle the final response.
 
 	return nil
 }
