@@ -12,8 +12,8 @@ server:
   catalog: "http://catalog:3210"
 
 endpoints:
-  browsertool: "http://browsertool:3210"
-  dockertool: "http://dockertool:3210"
+  browser: "http://browsertool:3210"
+  docker: "http://dockertool:3210"
 
 agent:
   ui:
