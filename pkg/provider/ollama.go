@@ -239,7 +239,7 @@ func (prvdr *OllamaProvider) handleToolCall(
 	task *a2a.Task,
 ) error {
 	results, err := tools.NewExecutor(
-		ctx, toolCall.Function.Name, toolCall.Function.Arguments.String(), task.SessionID,
+		ctx, toolCall.Function.Name, toolCall.Function.Arguments.String(),
 	)
 
 	if err != nil {

@@ -176,7 +176,7 @@ func (prvdr *CohereProvider) handleToolCall(
 	}
 
 	results, err := tools.NewExecutor(
-		ctx, toolCall.Name, string(params), task.SessionID,
+		ctx, toolCall.Name, string(params),
 	)
 
 	if err != nil {

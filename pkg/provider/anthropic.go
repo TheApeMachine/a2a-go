@@ -169,7 +169,7 @@ func (prvdr *AnthropicProvider) handleToolCall(
 	task *a2a.Task,
 ) error {
 	results, err := tools.NewExecutor(
-		ctx, toolCall.Name, string(toolCall.Input), task.SessionID,
+		ctx, toolCall.Name, string(toolCall.Input),
 	)
 
 	if err != nil {

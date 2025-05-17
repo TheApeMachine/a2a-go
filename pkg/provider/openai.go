@@ -129,7 +129,7 @@ func (prvdr *OpenAIProvider) Generate(
 							acc.ChatCompletion.Choices[0].Message.ToParam(),
 						)
 
-						tools.NewExecutor(ctx, tool.Name, tool.Arguments, params.Task.SessionID)
+						tools.NewExecutor(ctx, tool.Name, tool.Arguments)
 					}
 
 					if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
@@ -146,7 +146,7 @@ func (prvdr *OpenAIProvider) Generate(
 					log.Error("failed to generate completion after tool call processing or initial call", "error", err)
 					ch <- jsonrpc.Response{
 						Error: &jsonrpc.Error{
-							Code:    int(a2a.ErrorCodeInternalError),
+							Code:    errors.ErrInternal.Code,
 							Message: err.Error(),
 						},
 					}
@@ -158,7 +158,7 @@ func (prvdr *OpenAIProvider) Generate(
 					log.Error("OpenAI completion returned no choices")
 					ch <- jsonrpc.Response{
 						Error: &jsonrpc.Error{
-							Code:    int(a2a.ErrorCodeInternalError),
+							Code:    errors.ErrInternal.Code,
 							Message: "OpenAI completion returned no choices",
 						},
 					}
@@ -225,7 +225,7 @@ func (prvdr *OpenAIProvider) handleToolCall(
 	task *a2a.Task,
 ) error {
 	results, err := tools.NewExecutor(
-		ctx, toolCall.Function.Name, toolCall.Function.Arguments, task.SessionID,
+		ctx, toolCall.Function.Name, toolCall.Function.Arguments,
 	)
 
 	if err != nil {

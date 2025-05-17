@@ -27,7 +27,7 @@ func Aquire(id string) (*mcp.Tool, error) {
 }
 
 func NewExecutor(
-	ctx context.Context, name, args string, sessionID string,
+	ctx context.Context, name, args string,
 ) (string, error) {
 	sseTransport, err := transport.NewSSE("http://" + name + "tool:3210/sse")
 
@@ -58,7 +58,8 @@ func NewExecutor(
 
 	serverInfo, err := c.Initialize(ctx, initRequest)
 	if err != nil {
-		log.Fatalf("Failed to initialize: %v", err)
+		log.Error("Failed to initialize", "error", err)
+		return "", fmt.Errorf("Failed to initialize: %w", err)
 	}
 
 	// Display server information
