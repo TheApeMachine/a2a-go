@@ -93,7 +93,7 @@ func (card *AgentCard) Tools() []*mcp.Tool {
 		tool, err := skill.ToMCPTool()
 
 		if err != nil {
-			log.Error("failed to aquire tool", "error", err, "skill_id", skill.ID)
+			log.Error("failed to acquire tool", "error", err, "skill_id", skill.ID)
 			// Decide if a nil tool should be added or if the loop should just skip this tool
 			// For now, skipping seems more appropriate than adding a nil.
 			continue
