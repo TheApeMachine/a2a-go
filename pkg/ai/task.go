@@ -8,6 +8,7 @@ import (
 	"github.com/theapemachine/a2a-go/pkg/a2a"
 	"github.com/theapemachine/a2a-go/pkg/errors"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
+	"github.com/theapemachine/a2a-go/pkg/memory"
 	"github.com/theapemachine/a2a-go/pkg/provider"
 	"github.com/theapemachine/a2a-go/pkg/stores"
 )
@@ -16,6 +17,7 @@ type TaskManager struct {
 	agent     *a2a.AgentCard
 	taskStore stores.TaskStore
 	provider  provider.Interface
+	memory    memory.UnifiedStore
 }
 
 type TaskManagerOption func(*TaskManager)
@@ -156,6 +158,12 @@ func (manager *TaskManager) SendTask(
 		),
 	)
 
+	if manager.memory != nil {
+		if err := manager.memory.InjectMemories(ctx, &task); err != nil {
+			log.Error("failed to inject memories", "task_id", task.ID, "error", err)
+		}
+	}
+
 	prvdrParams := provider.NewProviderParams(
 		&task, provider.WithTools(manager.agent.Tools()...),
 	)
@@ -168,6 +176,12 @@ func (manager *TaskManager) SendTask(
 		if err := manager.handleUpdate(&task, chunk); err != nil {
 			log.Error("failed to handle update", "error", err)
 			return &task, err.(*errors.RpcError)
+		}
+	}
+
+	if manager.memory != nil {
+		if err := manager.memory.ExtractMemories(ctx, &task); err != nil {
+			log.Error("failed to extract memories", "task_id", task.ID, "error", err)
 		}
 	}
 
@@ -190,7 +204,13 @@ func (manager *TaskManager) StreamTask(
 		a2a.NewTextMessage(manager.agent.Name, "starting task"),
 	)
 
-	if createErr := manager.taskStore.Create(ctx, params, manager.agent.Name); createErr != nil {
+	if manager.memory != nil {
+		if err := manager.memory.InjectMemories(ctx, params); err != nil {
+			log.Error("failed to inject memories", "task_id", params.ID, "error", err)
+		}
+	}
+
+	if createErr := manager.taskStore.Create(ctx, params); createErr != nil {
 		log.Error("failed to create task in store for streaming", "task_id", params.ID, "error", createErr)
 		return nil, createErr
 	}
@@ -201,6 +221,7 @@ func (manager *TaskManager) StreamTask(
 		defer close(out) // Ensure out is closed when this goroutine exits
 
 		providerChan := manager.provider.Generate(ctx, provider.NewProviderParams(params))
+	Loop:
 		for {
 			select {
 			case <-ctx.Done(): // If the overall context for StreamTask is done/cancelled
@@ -208,7 +229,7 @@ func (manager *TaskManager) StreamTask(
 				return
 			case chunk, ok := <-providerChan:
 				if !ok { // providerChan was closed, normal completion of provider stream
-					return // Goroutine finishes, out will be closed by defer
+					break Loop
 				}
 
 				if err := manager.handleUpdate(params, chunk); err != nil {
@@ -226,6 +247,12 @@ func (manager *TaskManager) StreamTask(
 					log.Info("StreamTask context done while sending chunk to output, exiting stream processing.", "task_id", params.ID)
 					return
 				}
+			}
+		}
+
+		if manager.memory != nil {
+			if err := manager.memory.ExtractMemories(ctx, params); err != nil {
+				log.Error("failed to extract memories for streaming task", "task_id", params.ID, "error", err)
 			}
 		}
 	}()
@@ -313,5 +340,11 @@ func WithTaskStore(taskStore stores.TaskStore) TaskManagerOption {
 func WithProvider(p provider.Interface) TaskManagerOption {
 	return func(t *TaskManager) {
 		t.provider = p
+	}
+}
+
+func WithMemoryStore(m memory.UnifiedStore) TaskManagerOption {
+	return func(t *TaskManager) {
+		t.memory = m
 	}
 }
