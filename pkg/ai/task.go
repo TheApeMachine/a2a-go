@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/theapemachine/a2a-go/pkg/a2a"
@@ -83,7 +84,7 @@ func (manager *TaskManager) createNewTask(ctx context.Context, params a2a.TaskSe
 	newTask.ToStatus(a2a.TaskStateSubmitted,
 		a2a.NewTextMessage(manager.agent.Name, "task created and submitted"),
 	)
-	if createErr := manager.taskStore.Create(ctx, newTask); createErr != nil {
+	if createErr := manager.taskStore.Create(ctx, newTask, manager.agent.Name); createErr != nil {
 		log.Error("failed to create new task in store", "task_id", params.ID, "error", createErr)
 		return nil, createErr
 	}
@@ -94,30 +95,50 @@ func (manager *TaskManager) createNewTask(ctx context.Context, params a2a.TaskSe
 func (manager *TaskManager) selectTask(
 	ctx context.Context,
 	params a2a.TaskSendParams,
-) (*a2a.Task, *errors.RpcError) {
-	existingTask, getErr := manager.taskStore.Get(ctx, params.ID, 0)
+) (a2a.Task, *errors.RpcError) {
+	existingTasks, getErr := manager.taskStore.Get(
+		ctx, manager.agent.Name+"/"+params.ID, 0,
+	)
 
 	if getErr != nil {
-		if getErr == errors.ErrTaskNotFound {
-			return manager.createNewTask(ctx, params)
+		errMsg := getErr.Error()
+		if errMsg == errors.ErrTaskNotFound.Error() {
+			task, err := manager.createNewTask(ctx, params)
+			if err != nil {
+				return a2a.Task{}, err
+			}
+			return *task, nil
 		}
 		log.Error("error getting task from store (not ErrTaskNotFound)", "task_id", params.ID, "error", getErr)
-		return nil, getErr
+		return a2a.Task{}, getErr
 	}
 
-	if existingTask == nil {
-		return manager.createNewTask(ctx, params)
+	if len(existingTasks) == 0 {
+		task, err := manager.createNewTask(ctx, params)
+		if err != nil {
+			return a2a.Task{}, err
+		}
+		return *task, nil
 	}
 
-	log.Info("existing task found, appending new message", "task_id", existingTask.ID, "current_status", existingTask.Status.State)
-	existingTask.History = append(existingTask.History, params.Message)
+	mostRecentTimestamp := time.Unix(0, 0).UTC()
+	var mostRecentTask a2a.Task
 
-	if updateErr := manager.taskStore.Update(ctx, existingTask); updateErr != nil {
-		log.Error("failed to update existing task in store after appending message", "task_id", existingTask.ID, "error", updateErr)
-		return nil, updateErr
+	for _, task := range existingTasks {
+		if task.Status.Timestamp.After(mostRecentTimestamp) || task.Status.Timestamp.Equal(mostRecentTimestamp) {
+			mostRecentTimestamp = task.Status.Timestamp
+			mostRecentTask = task
+		}
 	}
-	log.Info("existing task updated in store", "task_id", existingTask.ID)
-	return existingTask, nil
+
+	mostRecentTask.History = append(mostRecentTask.History, params.Message)
+
+	if updateErr := manager.taskStore.Update(ctx, &mostRecentTask, manager.agent.Name); updateErr != nil {
+		log.Error("failed to update existing task in store after appending message", "task_id", mostRecentTask.ID, "error", updateErr)
+		return a2a.Task{}, updateErr
+	}
+
+	return mostRecentTask, nil
 }
 
 func (manager *TaskManager) SendTask(
@@ -138,13 +159,13 @@ func (manager *TaskManager) SendTask(
 	)
 
 	if manager.memory != nil {
-		if err := manager.memory.InjectMemories(ctx, task); err != nil {
+		if err := manager.memory.InjectMemories(ctx, &task); err != nil {
 			log.Error("failed to inject memories", "task_id", task.ID, "error", err)
 		}
 	}
 
 	prvdrParams := provider.NewProviderParams(
-		task, provider.WithTools(manager.agent.Tools()...),
+		&task, provider.WithTools(manager.agent.Tools()...),
 	)
 
 	prvdrParams.Stream = false
@@ -152,19 +173,19 @@ func (manager *TaskManager) SendTask(
 	for chunk := range manager.provider.Generate(
 		ctx, prvdrParams,
 	) {
-		if err := manager.handleUpdate(task, chunk); err != nil {
+		if err := manager.handleUpdate(&task, chunk); err != nil {
 			log.Error("failed to handle update", "error", err)
-			return task, err.(*errors.RpcError)
+			return &task, err.(*errors.RpcError)
 		}
 	}
 
 	if manager.memory != nil {
-		if err := manager.memory.ExtractMemories(ctx, task); err != nil {
+		if err := manager.memory.ExtractMemories(ctx, &task); err != nil {
 			log.Error("failed to extract memories", "task_id", task.ID, "error", err)
 		}
 	}
 
-	return task, nil
+	return &task, nil
 }
 
 /*
@@ -251,7 +272,30 @@ func (manager *TaskManager) GetTask(
 	id string,
 	historyLength int,
 ) (*a2a.Task, *errors.RpcError) {
-	return manager.taskStore.Get(ctx, id, historyLength)
+	tasks, err := manager.taskStore.Get(ctx, manager.agent.Name+"/"+id, historyLength)
+	if err != nil {
+		return nil, err
+	}
+	if len(tasks) == 0 {
+		return nil, errors.ErrTaskNotFound
+	}
+
+	// If multiple task versions are returned, use the most recent one
+	if len(tasks) > 1 {
+		mostRecentTimestamp := time.Unix(0, 0).UTC()
+		mostRecentIdx := 0
+
+		for i, task := range tasks {
+			if task.Status.Timestamp.After(mostRecentTimestamp) || task.Status.Timestamp.Equal(mostRecentTimestamp) {
+				mostRecentTimestamp = task.Status.Timestamp
+				mostRecentIdx = i
+			}
+		}
+
+		return &tasks[mostRecentIdx], nil
+	}
+
+	return &tasks[0], nil
 }
 
 /*
@@ -264,7 +308,7 @@ Returns:
 func (manager *TaskManager) CancelTask(
 	ctx context.Context, id string,
 ) *errors.RpcError {
-	return manager.taskStore.Cancel(ctx, id)
+	return manager.taskStore.Cancel(ctx, manager.agent.Name+"/"+id)
 }
 
 /*
@@ -279,7 +323,7 @@ func (manager *TaskManager) ResubscribeTask(
 ) (<-chan a2a.Task, *errors.RpcError) {
 	ch := make(chan a2a.Task)
 
-	if err := manager.taskStore.Subscribe(ctx, id, ch); err != nil {
+	if err := manager.taskStore.Subscribe(ctx, manager.agent.Name+"/"+id, ch); err != nil {
 		log.Error("failed to subscribe to task", "error", err)
 		return nil, err
 	}

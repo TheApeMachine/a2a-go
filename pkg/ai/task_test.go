@@ -35,7 +35,7 @@ func NewMockOpenAIProvider() *mockOpenAIProvider {
 // taskStoreMockForTesting is a general-purpose mock for stores.TaskStore
 type taskStoreMockForTesting struct {
 	mockTaskStore // Embed basic mock from agent_test.go if we need its defaults
-	getFunc       func(ctx context.Context, id string, historyLength int) (*a2a.Task, *errors.RpcError)
+	getFunc       func(ctx context.Context, id string, historyLength int) ([]a2a.Task, *errors.RpcError)
 	createFunc    func(ctx context.Context, task *a2a.Task) *errors.RpcError
 	cancelFunc    func(ctx context.Context, id string) *errors.RpcError
 	subscribeFunc func(ctx context.Context, id string, ch chan a2a.Task) *errors.RpcError
@@ -43,7 +43,7 @@ type taskStoreMockForTesting struct {
 	// Add other methods as needed: Update, Delete
 }
 
-func (s *taskStoreMockForTesting) Get(ctx context.Context, id string, historyLength int) (*a2a.Task, *errors.RpcError) {
+func (s *taskStoreMockForTesting) Get(ctx context.Context, id string, historyLength int) ([]a2a.Task, *errors.RpcError) {
 	if s.getFunc != nil {
 		return s.getFunc(ctx, id, historyLength)
 	}
@@ -51,7 +51,7 @@ func (s *taskStoreMockForTesting) Get(ctx context.Context, id string, historyLen
 	return s.mockTaskStore.Get(ctx, id, historyLength)
 }
 
-func (s *taskStoreMockForTesting) Create(ctx context.Context, task *a2a.Task) *errors.RpcError {
+func (s *taskStoreMockForTesting) Create(ctx context.Context, task *a2a.Task, optionals ...string) *errors.RpcError {
 	if s.createFunc != nil {
 		return s.createFunc(ctx, task)
 	}
@@ -72,7 +72,7 @@ func (s *taskStoreMockForTesting) Subscribe(ctx context.Context, id string, ch c
 	return s.mockTaskStore.Subscribe(ctx, id, ch)
 }
 
-func (s *taskStoreMockForTesting) Update(ctx context.Context, task *a2a.Task) *errors.RpcError {
+func (s *taskStoreMockForTesting) Update(ctx context.Context, task *a2a.Task, optionals ...string) *errors.RpcError {
 	if s.updateFunc != nil {
 		return s.updateFunc(ctx, task)
 	}
@@ -259,30 +259,44 @@ func TestSelectTask(t *testing.T) {
 		}
 
 		Convey("When an existing task is found by the store", func() {
+			// Create a task with the correct ID and updated timestamp
 			existingTask := a2a.NewTask(agentCard.Name)
 			existingTask.ID = params.ID
+			existingTask.Status.Timestamp = time.Now().UTC() // Ensure timestamp is set
+
+			// Add a debug print to see the ID
+			fmt.Printf("Test task ID: %s\n", existingTask.ID)
+
 			store := &taskStoreMockForTesting{
-				getFunc: func(ctx context.Context, id string, hl int) (*a2a.Task, *errors.RpcError) {
-					if id == params.ID {
-						return existingTask, nil
+				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
+					if id == agentCard.Name+"/"+params.ID {
+						fmt.Printf("Mock returning task with ID: %s\n", existingTask.ID)
+						return []a2a.Task{*existingTask}, nil
 					}
 					return nil, nil
 				},
-				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil },
+				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError {
+					// Print the task ID being updated
+					fmt.Printf("Update called with task ID: %s\n", task.ID)
+					return nil
+				},
 			}
 			manager, err := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))
 			So(err, ShouldBeNil)
 			task, rpcErr := manager.selectTask(context.Background(), params)
+			// Debug print the result
+			fmt.Printf("Task returned from selectTask, ID: %s\n", task.ID)
+
 			Convey("Then it should return the existing task and no error", func() {
 				So(rpcErr, ShouldBeNil)
-				So(task, ShouldEqual, existingTask)
+				So(task.ID, ShouldEqual, params.ID)
 			})
 		})
 
 		Convey("When no existing task is found and store.Create succeeds", func() {
 			var createdTaskRecord *a2a.Task
 			store := &taskStoreMockForTesting{
-				getFunc: func(ctx context.Context, id string, hl int) (*a2a.Task, *errors.RpcError) {
+				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
 					return nil, nil
 				},
 				createFunc: func(ctx context.Context, taskToCreate *a2a.Task) *errors.RpcError {
@@ -304,7 +318,7 @@ func TestSelectTask(t *testing.T) {
 				So(strings.Contains(task.History[0].Parts[0].Text, "Default system message for selectTask testing"), ShouldBeTrue)
 				So(task.History[len(task.History)-1], ShouldResemble, params.Message)
 				So(task.Status.State, ShouldEqual, a2a.TaskStateSubmitted)
-				So(createdTaskRecord, ShouldEqual, task)
+				So(createdTaskRecord, ShouldResemble, &task)
 			})
 		})
 
@@ -312,7 +326,7 @@ func TestSelectTask(t *testing.T) {
 			// Use an actual *errors.RpcError for the mock
 			expectedStoreErr := &errors.RpcError{Code: 1001, Message: "mock store create failed"}
 			store := &taskStoreMockForTesting{
-				getFunc: func(ctx context.Context, id string, hl int) (*a2a.Task, *errors.RpcError) {
+				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
 					return nil, nil
 				},
 				createFunc: func(ctx context.Context, taskToCreate *a2a.Task) *errors.RpcError {
@@ -323,8 +337,8 @@ func TestSelectTask(t *testing.T) {
 			manager, err := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))
 			So(err, ShouldBeNil)
 			task, rpcErr := manager.selectTask(context.Background(), params)
-			Convey("Then it should return nil for task and the error from store.Create", func() {
-				So(task, ShouldBeNil)
+			Convey("Then it should return empty task and the error from store.Create", func() {
+				So(task, ShouldResemble, a2a.Task{})
 				So(rpcErr, ShouldEqual, expectedStoreErr)
 			})
 		})
@@ -333,7 +347,7 @@ func TestSelectTask(t *testing.T) {
 			// keyNotExistErr := &errors.RpcError{Code: -32000, Message: "The specified key does not exist."} // This was the old mock error
 			var createdTaskRecord *a2a.Task
 			store := &taskStoreMockForTesting{
-				getFunc: func(ctx context.Context, id string, hl int) (*a2a.Task, *errors.RpcError) {
+				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
 					// This test case is intended to check behavior when the store signals 'not found'.
 					// For selectTask to create a new task, it expects errors.ErrTaskNotFound specifically.
 					return nil, errors.ErrTaskNotFound // Ensure mock returns the precise error for this path.
@@ -349,15 +363,14 @@ func TestSelectTask(t *testing.T) {
 			task, rpcErr := manager.selectTask(context.Background(), params)
 			Convey("Then it should still create a new task and return it", func() {
 				So(rpcErr, ShouldBeNil)
-				So(task, ShouldNotBeNil)
-				So(createdTaskRecord, ShouldEqual, task)
+				So(createdTaskRecord, ShouldResemble, &task)
 			})
 		})
 
 		Convey("When store.Get fails with an unexpected error (that is NOT ErrTaskNotFound)", func() {
 			expectedStoreErr := &errors.RpcError{Code: 1002, Message: "mock store unexpected get error"}
 			store := &taskStoreMockForTesting{
-				getFunc: func(ctx context.Context, id string, hl int) (*a2a.Task, *errors.RpcError) {
+				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
 					return nil, expectedStoreErr // Return *errors.RpcError
 				},
 				// createFunc should not be called
@@ -366,9 +379,9 @@ func TestSelectTask(t *testing.T) {
 			manager, err := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))
 			So(err, ShouldBeNil)
 			task, rpcErr := manager.selectTask(context.Background(), params)
-			Convey("Then it should return the error from store.Get and no task", func() {
+			Convey("Then it should return empty task and the error from store.Get", func() {
 				So(rpcErr, ShouldEqual, expectedStoreErr) // Error should be propagated
-				So(task, ShouldBeNil)                     // No task should be returned or created
+				So(task, ShouldResemble, a2a.Task{})      // Empty task should be returned
 			})
 		})
 	})
@@ -391,8 +404,8 @@ func TestSendTask(t *testing.T) {
 		Convey("When selectTask returns an error", func() {
 			selectTaskErr := &errors.RpcError{Code: 7001, Message: "selectTask failed"}
 			store := &taskStoreMockForTesting{
-				createFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError {
-					return selectTaskErr
+				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
+					return nil, selectTaskErr
 				},
 				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil },
 			}
@@ -407,7 +420,14 @@ func TestSendTask(t *testing.T) {
 		})
 
 		Convey("When SendTask succeeds with no provider errors", func() {
+			taskForTest := a2a.NewTask(agentCard.Name)
+			taskForTest.ID = sendParams.ID
+			taskForTest.History = append(taskForTest.History, sendParams.Message)
+
 			store := &taskStoreMockForTesting{
+				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
+					return []a2a.Task{*taskForTest}, nil
+				},
 				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil },
 			}
 			prov := NewControllableMockProvider()
@@ -451,7 +471,14 @@ func TestSendTask(t *testing.T) {
 		})
 
 		Convey("When handleUpdate returns an error during provider stream", func() {
+			taskForTest := a2a.NewTask(agentCard.Name)
+			taskForTest.ID = sendParams.ID
+			taskForTest.History = append(taskForTest.History, sendParams.Message)
+
 			store := &taskStoreMockForTesting{
+				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
+					return []a2a.Task{*taskForTest}, nil
+				},
 				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil },
 			}
 			prov := NewControllableMockProvider()
@@ -685,10 +712,10 @@ func TestGetTask(t *testing.T) {
 		Convey("When taskStore.Get returns a task successfully", func() {
 			expectedTask := &a2a.Task{ID: taskID, Status: a2a.TaskStatus{State: a2a.TaskStateWorking}}
 			store := &taskStoreMockForTesting{
-				getFunc: func(ctx context.Context, id string, hl int) (*a2a.Task, *errors.RpcError) {
-					So(id, ShouldEqual, taskID)
+				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
+					So(id, ShouldEqual, agentCard.Name+"/"+taskID)
 					So(hl, ShouldEqual, historyLength)
-					return expectedTask, nil
+					return []a2a.Task{*expectedTask}, nil
 				},
 			}
 			manager, initErr := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))
@@ -698,15 +725,17 @@ func TestGetTask(t *testing.T) {
 
 			Convey("Then it should return the task and no error", func() {
 				So(err, ShouldBeNil)
-				So(task, ShouldEqual, expectedTask)
+				So(task, ShouldNotBeNil)
+				So(task.ID, ShouldEqual, expectedTask.ID)
+				So(task.Status.State, ShouldEqual, expectedTask.Status.State)
 			})
 		})
 
 		Convey("When taskStore.Get returns an error", func() {
 			expectedErr := &errors.RpcError{Code: 9001, Message: "store.Get failed"}
 			store := &taskStoreMockForTesting{
-				getFunc: func(ctx context.Context, id string, hl int) (*a2a.Task, *errors.RpcError) {
-					So(id, ShouldEqual, taskID)
+				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
+					So(id, ShouldEqual, agentCard.Name+"/"+taskID)
 					So(hl, ShouldEqual, historyLength)
 					return nil, expectedErr
 				},
@@ -722,12 +751,12 @@ func TestGetTask(t *testing.T) {
 			})
 		})
 
-		Convey("When taskStore.Get returns nil, nil (task not found, no error)", func() {
+		Convey("When taskStore.Get returns an empty slice (task not found, no error)", func() {
 			store := &taskStoreMockForTesting{
-				getFunc: func(ctx context.Context, id string, hl int) (*a2a.Task, *errors.RpcError) {
-					So(id, ShouldEqual, taskID)
+				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
+					So(id, ShouldEqual, agentCard.Name+"/"+taskID)
 					So(hl, ShouldEqual, historyLength)
-					return nil, nil
+					return []a2a.Task{}, nil
 				},
 			}
 			manager, initErr := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))
@@ -735,9 +764,9 @@ func TestGetTask(t *testing.T) {
 
 			task, err := manager.GetTask(context.Background(), taskID, historyLength)
 
-			Convey("Then it should return nil task and nil error", func() {
+			Convey("Then it should return nil task and ErrTaskNotFound error", func() {
 				So(task, ShouldBeNil)
-				So(err, ShouldBeNil)
+				So(err, ShouldEqual, errors.ErrTaskNotFound)
 			})
 		})
 	})
@@ -752,7 +781,7 @@ func TestCancelTask(t *testing.T) {
 		Convey("When taskStore.Cancel succeeds", func() {
 			store := &taskStoreMockForTesting{
 				cancelFunc: func(ctx context.Context, id string) *errors.RpcError {
-					So(id, ShouldEqual, taskID)
+					So(id, ShouldEqual, agentCard.Name+"/"+taskID)
 					return nil // Success
 				},
 			}
@@ -770,7 +799,7 @@ func TestCancelTask(t *testing.T) {
 			expectedErr := &errors.RpcError{Code: 9002, Message: "store.Cancel failed"}
 			store := &taskStoreMockForTesting{
 				cancelFunc: func(ctx context.Context, id string) *errors.RpcError {
-					So(id, ShouldEqual, taskID)
+					So(id, ShouldEqual, agentCard.Name+"/"+taskID)
 					return expectedErr
 				},
 			}
@@ -798,7 +827,7 @@ func TestResubscribeTask(t *testing.T) {
 			expectedErr := &errors.RpcError{Code: 9003, Message: "store.Subscribe failed"}
 			store := &taskStoreMockForTesting{
 				subscribeFunc: func(ctx context.Context, id string, ch chan a2a.Task) *errors.RpcError {
-					So(id, ShouldEqual, taskID)
+					So(id, ShouldEqual, agentCard.Name+"/"+taskID)
 					// ch is not closed or used by the mock in this error case
 					return expectedErr
 				},
@@ -821,7 +850,7 @@ func TestResubscribeTask(t *testing.T) {
 
 			store := &taskStoreMockForTesting{
 				subscribeFunc: func(ctx context.Context, id string, ch chan a2a.Task) *errors.RpcError {
-					So(id, ShouldEqual, taskID)
+					So(id, ShouldEqual, agentCard.Name+"/"+taskID)
 					capturedChan = ch // Capture the channel
 
 					// Simulate the store sending some tasks to the channel asynchronously
