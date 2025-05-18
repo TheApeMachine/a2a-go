@@ -1,17 +1,21 @@
 package service
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"net/http"
 
 	"github.com/charmbracelet/log"
 	"github.com/gofiber/fiber/v3"
+	fiberadaptor "github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/healthcheck"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/theapemachine/a2a-go/pkg/a2a"
 	"github.com/theapemachine/a2a-go/pkg/ai"
 	"github.com/theapemachine/a2a-go/pkg/errors"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
+	"github.com/theapemachine/a2a-go/pkg/service/sse"
 )
 
 /*
@@ -19,8 +23,9 @@ A2AServer is safe for concurrent use by default because
 RPCServer & SSEBroker are.
 */
 type A2AServer struct {
-	app   *fiber.App
-	agent *ai.Agent
+	app    *fiber.App
+	agent  *ai.Agent
+	broker *sse.SSEBroker
 }
 
 /*
@@ -33,7 +38,8 @@ func NewAgentServer(agent *ai.Agent) *A2AServer {
 			ServerHeader:      "A2A-Agent-Server",
 			StreamRequestBody: true,
 		}),
-		agent: agent,
+		agent:  agent,
+		broker: sse.NewSSEBroker(),
 	}
 }
 
@@ -41,6 +47,7 @@ func (srv *A2AServer) Start() error {
 	srv.app.Use(logger.New(), healthcheck.NewHealthChecker())
 	srv.app.Get("/", srv.handleRoot)
 	srv.app.Get("/.well-known/agent.json", srv.handleAgentCard)
+	srv.app.Get("/events", srv.handleEvents)
 	srv.app.Post("/rpc", srv.handleRPC)
 	return srv.app.Listen(":3210", fiber.ListenConfig{DisableStartupMessage: true})
 }
@@ -51,6 +58,17 @@ func (srv *A2AServer) handleRoot(ctx fiber.Ctx) error {
 
 func (srv *A2AServer) handleAgentCard(ctx fiber.Ctx) error {
 	return ctx.JSON(srv.agent.Card())
+}
+
+func (srv *A2AServer) handleEvents(ctx fiber.Ctx) error {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		// Ensure standard SSE headers are set for clients
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		srv.broker.Subscribe(w, r)
+	}
+	return fiberadaptor.HTTPHandler(http.HandlerFunc(handler))(ctx)
 }
 
 func (srv *A2AServer) parseParamsWithDecoding(params any) ([]byte, error) {
@@ -78,6 +96,86 @@ func (srv *A2AServer) parseParamsWithDecoding(params any) ([]byte, error) {
 	}
 
 	return paramsBytes, nil
+}
+
+// forwardStream reads from a channel until closed or the context is done
+// and broadcasts each event on the SSE broker.
+func (srv *A2AServer) forwardStream(ctx context.Context, stream <-chan any) {
+	go func() {
+		for {
+			select {
+			case evt, ok := <-stream:
+				if !ok {
+					return
+				}
+				if err := srv.broker.Broadcast(evt); err != nil {
+					log.Error("failed to broadcast event in forwardStream", "error", err)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+// forwardResponseStream handles streaming jsonrpc.Response objects
+func (srv *A2AServer) forwardResponseStream(ctx context.Context, stream chan jsonrpc.Response) {
+	go func() {
+		for {
+			select {
+			case evt, ok := <-stream:
+				if !ok {
+					return
+				}
+				if err := srv.broker.Broadcast(evt); err != nil {
+					log.Error("failed to broadcast event in forwardResponseStream", "error", err)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+// forwardTaskStreamAdapter creates a channel adapter from <-chan a2a.Task to <-chan any
+func forwardTaskStreamAdapter(ctx context.Context, input <-chan a2a.Task) <-chan any {
+	output := make(chan any)
+
+	go func() {
+		defer close(output)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case task, ok := <-input:
+				if !ok {
+					return
+				}
+				output <- task
+			}
+		}
+	}()
+
+	return output
+}
+
+// forwardTaskStream handles streaming a2a.Task objects
+func (srv *A2AServer) forwardTaskStream(ctx context.Context, stream <-chan a2a.Task) {
+	go func() {
+		for {
+			select {
+			case evt, ok := <-stream:
+				if !ok {
+					return
+				}
+				if err := srv.broker.Broadcast(evt); err != nil {
+					log.Error("failed to broadcast event in forwardTaskStream", "error", err)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 }
 
 /*
@@ -122,6 +220,45 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 
 			return srv.agent.SendTask(ctx.Context(), params)
 		})
+	case "tasks/sendSubscribe":
+		return srv.handleTaskOperation(ctx, request.ID, func() (any, error) {
+			var params a2a.TaskSendParams
+
+			paramsBytes, err := srv.parseParamsWithDecoding(request.Params)
+			if err != nil {
+				return nil, errors.ErrInvalidParams.WithMessagef("failed to parse params: %v", err)
+			}
+
+			if err := json.Unmarshal(paramsBytes, &params); err != nil {
+				log.Error("failed to unmarshal params", "error", err, "params", string(paramsBytes))
+				return nil, errors.ErrInvalidParams.WithMessagef("failed to unmarshal params: %v", err)
+			}
+
+			// Convert send parameters into a task for streaming
+			task := a2a.NewTask(srv.agent.Name())
+			task.ID = params.ID
+			if params.SessionID != "" {
+				task.SessionID = params.SessionID
+			}
+			task.History = append(task.History, params.Message)
+			task.Metadata = params.Metadata
+
+			stream, rpcErr := srv.agent.StreamTask(ctx.Context(), task)
+			if rpcErr != nil {
+				return nil, rpcErr
+			}
+
+			var first any
+			select {
+			case first = <-stream:
+			default:
+				first = nil
+			}
+
+			srv.forwardResponseStream(ctx.Context(), stream)
+
+			return first, nil
+		})
 	case "tasks/get":
 		return srv.handleTaskOperation(ctx, request.ID, func() (any, error) {
 			var params a2a.TaskQueryParams
@@ -154,6 +291,41 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 			// CancelTask specifically returns nil result on success, and an error on failure.
 			// The handleTaskOperation will correctly wrap this in a JSON-RPC response.
 			return nil, srv.agent.CancelTask(ctx.Context(), params.ID)
+		})
+	case "tasks/resubscribe":
+		return srv.handleTaskOperation(ctx, request.ID, func() (any, error) {
+			var params a2a.TaskQueryParams
+
+			paramsBytes, err := srv.parseParamsWithDecoding(request.Params)
+			if err != nil {
+				return nil, errors.ErrInvalidParams.WithMessagef("failed to parse params: %v", err)
+			}
+
+			if err := json.Unmarshal(paramsBytes, &params); err != nil {
+				log.Error("failed to unmarshal params", "error", err, "params", string(paramsBytes))
+				return nil, errors.ErrInvalidParams.WithMessagef("failed to unmarshal params: %v", err)
+			}
+
+			hl := 0
+			if params.HistoryLength != nil {
+				hl = *params.HistoryLength
+			}
+			stream, rpcErr := srv.agent.ResubscribeTask(ctx.Context(), params.ID, hl)
+			if rpcErr != nil {
+				return nil, rpcErr
+			}
+
+			var first any
+			select {
+			case first = <-stream:
+			default:
+				first = nil
+			}
+
+			taskStream := forwardTaskStreamAdapter(ctx.Context(), stream)
+			srv.forwardStream(ctx.Context(), taskStream)
+
+			return first, nil
 		})
 	default:
 		return ctx.Status(fiber.StatusBadRequest).JSON(jsonrpc.Response{
