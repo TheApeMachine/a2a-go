@@ -3,8 +3,6 @@ package memory
 import (
 	"context"
 	"fmt"
-
-	"github.com/charmbracelet/log"
 )
 
 // UnifiedMemory implements the UnifiedStore interface.
