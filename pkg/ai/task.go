@@ -108,7 +108,7 @@ func (manager *TaskManager) selectTask(
 		return nil, getErr
 	}
 
-	if existingTask == nil || len(existingTask) == 0 {
+	if len(existingTask) == 0 {
 		task, err := manager.createNewTask(ctx, params)
 		if err != nil {
 			return nil, err
@@ -119,7 +119,7 @@ func (manager *TaskManager) selectTask(
 	log.Info("existing task found, appending new message", "task_id", existingTask[0].ID, "current_status", existingTask[0].Status.State)
 	existingTask[0].History = append(existingTask[0].History, params.Message)
 
-	if updateErr := manager.taskStore.Update(ctx, &existingTask[0]); updateErr != nil {
+	if updateErr := manager.taskStore.Update(ctx, &existingTask[0], manager.agent.Name); updateErr != nil {
 		log.Error("failed to update existing task in store after appending message", "task_id", existingTask[0].ID, "error", updateErr)
 		return nil, updateErr
 	}
@@ -135,6 +135,10 @@ func (manager *TaskManager) SendTask(
 	if err != nil {
 		log.Error("failed to select task", "error", err)
 		return nil, err
+	}
+
+	if len(task) == 0 {
+		return nil, errors.ErrInternal.WithMessagef("no tasks available")
 	}
 
 	task[0].ToStatus(a2a.TaskStateWorking,
@@ -178,7 +182,7 @@ func (manager *TaskManager) StreamTask(
 		a2a.NewTextMessage(manager.agent.Name, "starting task"),
 	)
 
-	if createErr := manager.taskStore.Create(ctx, params); createErr != nil {
+	if createErr := manager.taskStore.Create(ctx, params, manager.agent.Name); createErr != nil {
 		log.Error("failed to create task in store for streaming", "task_id", params.ID, "error", createErr)
 		return nil, createErr
 	}
@@ -238,7 +242,7 @@ func (manager *TaskManager) GetTask(
 		return nil, err
 	}
 	if len(tasks) == 0 {
-		return nil, nil
+		return nil, errors.ErrTaskNotFound
 	}
 	return &tasks[0], nil
 }

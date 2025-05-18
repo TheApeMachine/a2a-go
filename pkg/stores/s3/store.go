@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 
 	"github.com/charmbracelet/log"
@@ -137,9 +138,19 @@ func (store *Store) Cancel(ctx context.Context, prefix string) *errors.RpcError 
 		return rpcErr
 	}
 
+	// Extract the agent name from the prefix if possible (assuming prefix format: agentName/taskID)
+	parts := strings.Split(prefix, "/")
+	var optionals []string
+	if len(parts) > 1 {
+		optionals = append(optionals, parts[0]) // First part should be agent name
+	}
+
 	for _, t := range task {
 		t.Status.State = a2a.TaskStateCanceled
-		store.Update(ctx, &t)
+		if updateErr := store.Update(ctx, &t, optionals...); updateErr != nil {
+			log.Error("failed to update task status to canceled", "error", updateErr)
+			return updateErr
+		}
 	}
 
 	return nil

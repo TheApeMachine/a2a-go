@@ -65,13 +65,10 @@ func NewTaskFromRequest(body []byte) (*Task, error) {
 }
 
 /*
-Prefix returns a deterministic S3 compatible storage key for a task.
-It consists out of the following segments, which have been selected for
-the following reasons:
+Prefix constructs the storage prefix for this task.
 
-  - State: at the front so no matter how much time has passed, we can always easily
-    get all tasks for a given state.
-  - SessionID: naturally groups all tasks for a given session, so we can easily retrieve
+It combines (in order):
+  - Optionals: arbitrary prefix segments, typically agent name to help partition
     all tasks for a given session.
   - ID: the main unique segment needed to make sure all tasks have their own
     space on storage, and no overwriting occurs.
@@ -79,7 +76,13 @@ the following reasons:
     but instead follow an append only strategy.
 */
 func (task *Task) Prefix(optionals ...string) string {
-	builder := optionals
+	// Pre-allocate the slice with capacity for optionals + 4 additional segments
+	builder := make([]string, 0, len(optionals)+4)
+
+	// Add optional prefixes first (typically agent name)
+	builder = append(builder, optionals...)
+
+	// Add the core segments that make up the standard task prefix
 	builder = append(builder, []string{
 		string(task.Status.State),
 		task.SessionID,
