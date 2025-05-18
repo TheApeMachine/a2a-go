@@ -20,6 +20,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/theapemachine/a2a-go/pkg/a2a"
 	"github.com/theapemachine/a2a-go/pkg/catalog"
+	"github.com/theapemachine/a2a-go/pkg/sse"
 	"github.com/theapemachine/a2a-go/pkg/stores/s3"
 )
 
@@ -85,6 +86,7 @@ type fetchAgentDetailMsg struct{ agent a2a.AgentCard }
 type fetchTasksMsg struct{ tasks []a2a.Task }
 type fetchTaskDetailMsg struct{ task a2a.Task }
 type errorMsg struct{ err error }
+type streamEventMsg struct{ event any }
 
 // Item implementations for the lists
 type agentItem struct {
@@ -193,6 +195,8 @@ type App struct {
 	agents        []a2a.AgentCard
 	statusMessage string
 	errorMessage  string
+	sseClient     *sse.Client
+	cancelSSE     context.CancelFunc
 }
 
 // NewApp creates a new application with default state
@@ -462,6 +466,7 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					cmds = append(cmds, func() tea.Msg {
 						return app.getTasksByAgent(app.selectedAgent.Name)
 					})
+					cmds = append(cmds, app.subscribeToEvents(app.selectedAgent.URL))
 
 					app.statusMessage = fmt.Sprintf("Selected agent: %s", i.agent.Name)
 				}
@@ -512,7 +517,7 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						},
 					},
 				}
-				response, err := agentClient.SendTask(a2a.TaskSendParams{
+				response, err := agentClient.SendTaskSubscribe(a2a.TaskSendParams{
 					ID:        uuid.New().String(),
 					SessionID: uuid.New().String(),
 					Message:   message,
@@ -566,7 +571,8 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Reset the textarea after successful send
 				app.textarea.Reset()
 
-				// After sending, refresh the task list
+				// After sending, refresh the task list and subscribe to events
+				app.subscribeToEvents(app.selectedAgent.URL)()
 				return app.getTasksByAgent(app.selectedAgent.Name)
 			})
 		}
@@ -646,6 +652,10 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		app.taskList.SetItems(items)
 		app.tasks = msg.Tasks
 		app.statusMessage = fmt.Sprintf("Loaded %d tasks", len(items))
+		return app, nil
+
+	case streamEventMsg:
+		app.statusMessage = fmt.Sprintf("stream event: %v", msg.event)
 		return app, nil
 
 	case errorMsg:
@@ -902,6 +912,26 @@ func (app *App) getTasksByID(
 	}
 
 	return TaskMessage{Tasks: tasks}
+}
+
+// subscribeToEvents connects to the agent's /events SSE endpoint and forwards
+// events to the application.
+func (app *App) subscribeToEvents(url string) tea.Cmd {
+	return func() tea.Msg {
+		if app.cancelSSE != nil {
+			app.cancelSSE()
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		app.cancelSSE = cancel
+		client := sse.NewClient(url + "/events")
+		app.sseClient = client
+		go func() {
+			_ = client.SubscribeWithContext(ctx, "", func(e *sse.Event) {
+				app.SafeUpdate(streamEventMsg{event: string(e.Data)})
+			})
+		}()
+		return nil
+	}
 }
 
 type TaskMessage struct {

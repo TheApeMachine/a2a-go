@@ -95,6 +95,21 @@ func (client *Client) SendTask(params TaskSendParams) (jsonrpc.Response, error) 
 }
 
 /*
+SendTaskSubscribe sends a task message and returns the first streaming result.
+*/
+func (client *Client) SendTaskSubscribe(params TaskSendParams) (jsonrpc.Response, error) {
+	req := jsonrpc.Request{
+		Message: jsonrpc.Message{
+			JSONRPC: "2.0",
+		},
+		Method: "tasks/sendSubscribe",
+		Params: params,
+	}
+
+	return client.doRequest(req)
+}
+
+/*
 GetTask retrieves the status of a task.
 */
 func (client *Client) GetTask(params TaskQueryParams) (jsonrpc.Response, error) {
@@ -153,9 +168,9 @@ func (client *Client) SendTaskStreaming(
 		return err
 	}
 
-	body := res.Body()
-	reader := bytes.NewReader(body)
-	decoder := json.NewDecoder(reader)
+	defer res.Body().Close()
+
+	decoder := json.NewDecoder(res.Body())
 	ctx := context.Background()
 
 	for {

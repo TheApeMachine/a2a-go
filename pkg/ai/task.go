@@ -239,6 +239,10 @@ func (manager *TaskManager) StreamTask(
 					return
 				}
 
+				if updErr := manager.taskStore.Update(ctx, params, manager.agent.Name); updErr != nil {
+					log.Error("failed to persist streaming update", "task_id", params.ID, "error", updErr)
+				}
+
 				// Send the processed chunk to the output channel
 				select {
 				case out <- chunk:
