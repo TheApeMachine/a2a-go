@@ -15,3 +15,4 @@ a2a-go
 specs/MCPAddons.txt
 .vscode/settings.json
 .env
+.cursor/rules/code-standards.mdc

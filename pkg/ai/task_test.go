@@ -263,7 +263,7 @@ func TestSelectTask(t *testing.T) {
 			existingTask.ID = params.ID
 			store := &taskStoreMockForTesting{
 				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
-					if id == params.ID {
+					if id == agentCard.Name+"/"+params.ID {
 						return []a2a.Task{*existingTask}, nil
 					}
 					return nil, nil
@@ -272,10 +272,11 @@ func TestSelectTask(t *testing.T) {
 			}
 			manager, err := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))
 			So(err, ShouldBeNil)
-			task, rpcErr := manager.selectTask(context.Background(), params)
+			tasks, rpcErr := manager.selectTask(context.Background(), params)
 			Convey("Then it should return the existing task and no error", func() {
 				So(rpcErr, ShouldBeNil)
-				So(task, ShouldEqual, existingTask)
+				So(len(tasks), ShouldEqual, 1)
+				So(tasks[0].ID, ShouldEqual, existingTask.ID)
 			})
 		})
 
@@ -293,18 +294,19 @@ func TestSelectTask(t *testing.T) {
 			}
 			manager, err := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))
 			So(err, ShouldBeNil)
-			task, rpcErr := manager.selectTask(context.Background(), params)
+			tasks, rpcErr := manager.selectTask(context.Background(), params)
 			Convey("Then it should create a new task, store it, and return it", func() {
 				So(rpcErr, ShouldBeNil)
-				So(task, ShouldNotBeNil)
-				So(task[0].ID, ShouldNotBeBlank)
-				So(task[0].ID, ShouldEqual, params.ID)
-				So(len(task[0].History), ShouldBeGreaterThan, 0)
-				So(task[0].History[0].Role, ShouldEqual, "system")
-				So(strings.Contains(task[0].History[0].Parts[0].Text, "Default system message for selectTask testing"), ShouldBeTrue)
-				So(task[0].History[len(task[0].History)-1], ShouldResemble, params.Message)
-				So(task[0].Status.State, ShouldEqual, a2a.TaskStateSubmitted)
-				So(createdTaskRecord, ShouldEqual, task)
+				So(tasks, ShouldNotBeNil)
+				So(len(tasks), ShouldEqual, 1)
+				So(tasks[0].ID, ShouldNotBeBlank)
+				So(tasks[0].ID, ShouldEqual, params.ID)
+				So(len(tasks[0].History), ShouldBeGreaterThan, 0)
+				So(tasks[0].History[0].Role, ShouldEqual, "system")
+				So(strings.Contains(tasks[0].History[0].Parts[0].Text, "Default system message for selectTask testing"), ShouldBeTrue)
+				So(tasks[0].History[len(tasks[0].History)-1], ShouldResemble, params.Message)
+				So(tasks[0].Status.State, ShouldEqual, a2a.TaskStateSubmitted)
+				So(createdTaskRecord, ShouldResemble, &tasks[0])
 			})
 		})
 
@@ -322,9 +324,9 @@ func TestSelectTask(t *testing.T) {
 			}
 			manager, err := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))
 			So(err, ShouldBeNil)
-			task, rpcErr := manager.selectTask(context.Background(), params)
+			tasks, rpcErr := manager.selectTask(context.Background(), params)
 			Convey("Then it should return nil for task and the error from store.Create", func() {
-				So(task, ShouldBeNil)
+				So(tasks, ShouldBeNil)
 				So(rpcErr, ShouldEqual, expectedStoreErr)
 			})
 		})
@@ -346,11 +348,12 @@ func TestSelectTask(t *testing.T) {
 			}
 			manager, err := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))
 			So(err, ShouldBeNil)
-			task, rpcErr := manager.selectTask(context.Background(), params)
+			tasks, rpcErr := manager.selectTask(context.Background(), params)
 			Convey("Then it should still create a new task and return it", func() {
 				So(rpcErr, ShouldBeNil)
-				So(task, ShouldNotBeNil)
-				So(createdTaskRecord, ShouldEqual, task)
+				So(tasks, ShouldNotBeNil)
+				So(len(tasks), ShouldEqual, 1)
+				So(createdTaskRecord, ShouldResemble, &tasks[0])
 			})
 		})
 
@@ -365,10 +368,10 @@ func TestSelectTask(t *testing.T) {
 			}
 			manager, err := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))
 			So(err, ShouldBeNil)
-			task, rpcErr := manager.selectTask(context.Background(), params)
+			tasks, rpcErr := manager.selectTask(context.Background(), params)
 			Convey("Then it should return the error from store.Get and no task", func() {
 				So(rpcErr, ShouldEqual, expectedStoreErr) // Error should be propagated
-				So(task, ShouldBeNil)                     // No task should be returned or created
+				So(tasks, ShouldBeNil)                    // No task should be returned or created
 			})
 		})
 	})
@@ -391,8 +394,8 @@ func TestSendTask(t *testing.T) {
 		Convey("When selectTask returns an error", func() {
 			selectTaskErr := &errors.RpcError{Code: 7001, Message: "selectTask failed"}
 			store := &taskStoreMockForTesting{
-				createFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError {
-					return selectTaskErr
+				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
+					return nil, selectTaskErr
 				},
 				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil },
 			}
@@ -407,7 +410,14 @@ func TestSendTask(t *testing.T) {
 		})
 
 		Convey("When SendTask succeeds with no provider errors", func() {
+			taskForTest := a2a.NewTask(agentCard.Name)
+			taskForTest.ID = sendParams.ID
+			taskForTest.History = append(taskForTest.History, sendParams.Message)
+
 			store := &taskStoreMockForTesting{
+				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
+					return []a2a.Task{*taskForTest}, nil
+				},
 				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil },
 			}
 			prov := NewControllableMockProvider()
@@ -451,7 +461,14 @@ func TestSendTask(t *testing.T) {
 		})
 
 		Convey("When handleUpdate returns an error during provider stream", func() {
+			taskForTest := a2a.NewTask(agentCard.Name)
+			taskForTest.ID = sendParams.ID
+			taskForTest.History = append(taskForTest.History, sendParams.Message)
+
 			store := &taskStoreMockForTesting{
+				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
+					return []a2a.Task{*taskForTest}, nil
+				},
 				updateFunc: func(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil },
 			}
 			prov := NewControllableMockProvider()
@@ -698,7 +715,9 @@ func TestGetTask(t *testing.T) {
 
 			Convey("Then it should return the task and no error", func() {
 				So(err, ShouldBeNil)
-				So(task, ShouldEqual, expectedTask)
+				So(task, ShouldNotBeNil)
+				So(task.ID, ShouldEqual, expectedTask.ID)
+				So(task.Status.State, ShouldEqual, expectedTask.Status.State)
 			})
 		})
 
@@ -722,12 +741,12 @@ func TestGetTask(t *testing.T) {
 			})
 		})
 
-		Convey("When taskStore.Get returns nil, nil (task not found, no error)", func() {
+		Convey("When taskStore.Get returns an empty slice (task not found, no error)", func() {
 			store := &taskStoreMockForTesting{
 				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
 					So(id, ShouldEqual, taskID)
 					So(hl, ShouldEqual, historyLength)
-					return nil, nil
+					return []a2a.Task{}, nil
 				},
 			}
 			manager, initErr := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(mockProvider))

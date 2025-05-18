@@ -96,17 +96,24 @@ func (manager *TaskManager) selectTask(
 	existingTask, getErr := manager.taskStore.Get(ctx, manager.agent.Name+"/"+params.ID, 0)
 
 	if getErr != nil {
-		if getErr == errors.ErrTaskNotFound {
+		errMsg := getErr.Error()
+		if errMsg == errors.ErrTaskNotFound.Error() {
 			task, err := manager.createNewTask(ctx, params)
-			return []a2a.Task{*task}, err
+			if err != nil {
+				return nil, err
+			}
+			return []a2a.Task{*task}, nil
 		}
 		log.Error("error getting task from store (not ErrTaskNotFound)", "task_id", params.ID, "error", getErr)
 		return nil, getErr
 	}
 
-	if existingTask == nil {
+	if existingTask == nil || len(existingTask) == 0 {
 		task, err := manager.createNewTask(ctx, params)
-		return []a2a.Task{*task}, err
+		if err != nil {
+			return nil, err
+		}
+		return []a2a.Task{*task}, nil
 	}
 
 	log.Info("existing task found, appending new message", "task_id", existingTask[0].ID, "current_status", existingTask[0].Status.State)
@@ -229,6 +236,9 @@ func (manager *TaskManager) GetTask(
 	tasks, err := manager.taskStore.Get(ctx, id, historyLength)
 	if err != nil {
 		return nil, err
+	}
+	if len(tasks) == 0 {
+		return nil, nil
 	}
 	return &tasks[0], nil
 }
