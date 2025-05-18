@@ -754,9 +754,9 @@ func TestGetTask(t *testing.T) {
 
 			task, err := manager.GetTask(context.Background(), taskID, historyLength)
 
-			Convey("Then it should return nil task and nil error", func() {
+			Convey("Then it should return nil task and ErrTaskNotFound error", func() {
 				So(task, ShouldBeNil)
-				So(err, ShouldBeNil)
+				So(err, ShouldEqual, errors.ErrTaskNotFound)
 			})
 		})
 	})
