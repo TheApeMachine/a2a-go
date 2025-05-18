@@ -140,8 +140,13 @@ func (prvdr *CohereProvider) Generate(
 							cohereToolResponseGenerator,
 						)
 						params.Task = updatedTask
-						currentMessage += "\n" + llmToolResultStr.(string)                       // Append tool result to message for next LLM call
-						params.Task.AddMessage("tool", llmToolResultStr.(string), toolCall.Name) // Log tool interaction in task history
+						llmToolResultStrSafe, ok := llmToolResultStr.(string)
+						if !ok {
+							ch <- jsonrpc.Response{Error: &jsonrpc.Error{Code: int(a2a.ErrorCodeInternalError), Message: fmt.Sprintf("Expected string type for tool result, but got %T", llmToolResultStr)}}
+							continue // Skip processing this tool call
+						}
+						currentMessage += "\n" + llmToolResultStrSafe                       // Append tool result to message for next LLM call
+						params.Task.AddMessage("tool", llmToolResultStrSafe, toolCall.Name) // Log tool interaction in task history
 
 						if toolExecErr != nil {
 							ch <- jsonrpc.Response{Result: params.Task, Error: &jsonrpc.Error{Code: int(a2a.ErrorCodeInternalError), Message: fmt.Sprintf("Error executing tool %s: %v", toolCall.Name, toolExecErr)}}
