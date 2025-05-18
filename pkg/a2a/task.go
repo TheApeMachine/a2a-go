@@ -105,6 +105,14 @@ func (task *Task) LastMessage() *Message {
 	return &task.History[len(task.History)-1]
 }
 
+func (task *Task) AddMessage(role, name, text string) {
+	task.History = append(task.History, Message{
+		Role:     role,
+		Parts:    []Part{{Type: PartTypeText, Text: text}},
+		Metadata: map[string]any{"name": name},
+	})
+}
+
 func (task *Task) AddArtifact(artifact Artifact) {
 	task.Artifacts = append(task.Artifacts, artifact)
 }

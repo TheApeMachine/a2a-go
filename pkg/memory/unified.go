@@ -1,77 +1,93 @@
 package memory
 
 import (
-	"bytes"
-	"io"
+	"context"
+	"fmt"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/theapemachine/a2a-go/pkg/types"
+	"github.com/charmbracelet/log"
 )
 
-type Store interface {
-	io.ReadWriteCloser
+// UnifiedMemory implements the UnifiedStore interface.
+type UnifiedMemory struct {
+	embedder Embedder
+	vector   VectorStore
+	graph    GraphStore
 }
 
-type UnifiedLongTerm struct {
-	stores []Store
+func NewUnifiedStore(embedder Embedder, vector VectorStore, graph GraphStore) *UnifiedMemory {
+	return &UnifiedMemory{embedder: embedder, vector: vector, graph: graph}
 }
 
-func NewUnifiedLongTerm(stores ...Store) *UnifiedLongTerm {
-	return &UnifiedLongTerm{
-		stores: stores,
+func (u *UnifiedMemory) StoreMemory(ctx context.Context, content string, metadata map[string]any, memType string) (string, error) {
+	mem := Memory{Content: content, Metadata: metadata, Type: memType}
+	id, err := u.vector.StoreMemory(ctx, mem)
+	if err != nil {
+		return "", err
 	}
+	mem.ID = id
+	if u.graph != nil {
+		if _, err := u.graph.StoreMemory(ctx, mem); err != nil {
+			return "", fmt.Errorf("failed to store memory in graph store: %w", err)
+		}
+	}
+	return id, nil
 }
 
-func (unified *UnifiedLongTerm) Remember(task *types.Task) error {
-	for _, artifact := range task.Artifacts {
-		for _, part := range artifact.Parts {
-			if part.Type == types.PartTypeText {
-				for _, store := range unified.stores {
-					if _, err := store.Write([]byte(part.Text)); err != nil {
-						return err
-					}
-				}
+func (u *UnifiedMemory) CreateRelation(ctx context.Context, source, target, relationType string, properties map[string]any) error {
+	if u.graph == nil {
+		return nil
+	}
+	return u.graph.CreateRelation(ctx, Relation{SourceID: source, TargetID: target, Type: relationType, Properties: properties})
+}
+
+func (u *UnifiedMemory) SearchSimilar(ctx context.Context, query string, params SearchParams) ([]Memory, error) {
+	if u.vector == nil || u.embedder == nil {
+		return nil, nil
+	}
+	emb, err := u.embedder.Embed(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	return u.vector.SearchSimilar(ctx, emb, params)
+}
+
+func (u *UnifiedMemory) FindRelated(ctx context.Context, id string, relationTypes []string, limit int) ([]Memory, error) {
+	if u.graph == nil {
+		return nil, nil
+	}
+	return u.graph.FindRelated(ctx, id, relationTypes, limit)
+}
+
+func (u *UnifiedMemory) InjectMemories(ctx context.Context, task TaskLike) error {
+	last := task.LastMessage()
+	if last == nil || u.vector == nil || u.embedder == nil {
+		return nil
+	}
+	emb, err := u.embedder.Embed(ctx, last.String())
+	if err != nil {
+		return err
+	}
+	mems, err := u.vector.SearchSimilar(ctx, emb, SearchParams{Limit: 5})
+	if err != nil {
+		return err
+	}
+	for _, m := range mems {
+		task.AddMessage("system", "memory", m.Content)
+		rels, err := u.FindRelated(ctx, m.ID, nil, 5)
+		if err == nil {
+			for _, r := range rels {
+				task.AddMessage("system", "relation", r.Content)
 			}
 		}
 	}
 	return nil
 }
 
-func (unified *UnifiedLongTerm) Recall(task *types.Task) []mcp.Resource {
-	resources := make([]mcp.Resource, 0)
-
-	for _, store := range unified.stores {
-		// Create a buffer to read the store's content
-		buf := new(bytes.Buffer)
-
-		// Read all content from the store
-		if _, err := io.Copy(buf, store); err != nil {
-			continue // Skip this store if there's an error
-		}
-
-		// Create a resource with the store's content
-		resource := mcp.NewResource(
-			"unified",
-			"long-term",
-			mcp.WithResourceDescription("Long-term memory content"),
-			mcp.WithMIMEType("text/plain"),
-		)
-
-		// Set the content data using the appropriate method
-		// We need to use the appropriate method to set content in the resource
-		// This is a placeholder - we need to find the correct way to set content
-		// For now, we'll just add the resource without content
-		resources = append(resources, resource)
+func (u *UnifiedMemory) ExtractMemories(ctx context.Context, task TaskLike) error {
+	msg := task.LastMessage()
+	if msg == nil {
+		return nil
 	}
-
-	return resources
-}
-
-func (unified *UnifiedLongTerm) Forget(task *types.Task) error {
-	for _, store := range unified.stores {
-		if _, err := store.Write([]byte{}); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err := u.StoreMemory(ctx, msg.String(), map[string]any{"role": msg.Role}, "message")
+	return err
 }
