@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theapemachine/a2a-go/pkg/types"
+	"github.com/theapemachine/a2a-go/pkg/a2a"
 )
 
 func TestSSEBrokerBroadcast(t *testing.T) {
@@ -36,11 +36,11 @@ func TestSSEBrokerBroadcast(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Broadcast an event.
-	ev := types.TaskStatusUpdateEvent{
+	ev := a2a.TaskStatusUpdateEvent{
 		ID:    "abc",
 		Final: true,
-		Status: types.TaskStatus{
-			State: types.TaskStateCompleted,
+		Status: a2a.TaskStatus{
+			State: a2a.TaskStateCompleted,
 		},
 	}
 
@@ -104,7 +104,7 @@ L:
 
 	// We don't specifically check event type to maintain backward compatibility
 
-	var got types.TaskStatusUpdateEvent
+	var got a2a.TaskStatusUpdateEvent
 	if err := json.Unmarshal([]byte(dataLine), &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}

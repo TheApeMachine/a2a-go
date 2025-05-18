@@ -16,7 +16,6 @@ import (
 	"github.com/theapemachine/a2a-go/pkg/a2a"
 	"github.com/theapemachine/a2a-go/pkg/errors"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
-	"github.com/theapemachine/a2a-go/pkg/tools"
 	"github.com/theapemachine/a2a-go/pkg/utils"
 )
 
@@ -56,6 +55,11 @@ func (prvdr *OpenAIProvider) Generate(
 ) chan jsonrpc.Response {
 	ch := make(chan jsonrpc.Response)
 
+	// OpenAI-specific LLM tool response generator function
+	openAIToolResponseGenerator := func(toolCallID string, content string, isError bool) any {
+		return openai.ToolMessage(content, toolCallID)
+	}
+
 	go func() {
 		defer close(ch)
 
@@ -88,16 +92,13 @@ func (prvdr *OpenAIProvider) Generate(
 
 				for stream.Next() {
 					chunk := stream.Current()
-
 					acc.AddChunk(chunk)
 
-					// When this fires, the current chunk value will not contain content data
 					if _, ok := acc.JustFinishedContent(); ok {
 						ch <- a2a.NewArtifactResult(
 							params.Task.ID,
 							a2a.NewTextPart(chunk.Choices[0].Delta.Content),
 						)
-
 						params.Task.AddFinalPart(a2a.NewTextPart(chunk.Choices[0].Delta.Content))
 						break
 					}
@@ -105,29 +106,42 @@ func (prvdr *OpenAIProvider) Generate(
 					if refusal, ok := acc.JustFinishedRefusal(); ok {
 						params.Task.ToStatus(
 							a2a.TaskStateFailed,
-							a2a.NewTextMessage(
-								"assistant",
-								fmt.Sprintf("Error: %s", refusal),
-							),
+							a2a.NewTextMessage("assistant", fmt.Sprintf("Error: %s", refusal)),
 						)
-
 						ch <- jsonrpc.Response{
 							Result: a2a.TaskStatusUpdateResult{
-								ID:       params.Task.ID,
-								Status:   a2a.TaskStatus{State: a2a.TaskStateFailed},
-								Final:    true,
-								Metadata: map[string]any{},
+								ID:     params.Task.ID,
+								Status: params.Task.Status,
+								Final:  true,
 							},
 						}
+						break
 					}
 
-					if tool, ok := acc.JustFinishedToolCall(); ok {
-						prvdr.params.Messages = append(
-							prvdr.params.Messages,
-							acc.ChatCompletion.Choices[0].Message.ToParam(),
+					if toolCall, ok := acc.JustFinishedToolCall(); ok { // toolCall is openai.FinishedChatCompletionToolCall
+						updatedTask, llmToolMsg, toolExecErr := ExecuteAndProcessToolCall(
+							ctx,
+							toolCall.Name,
+							toolCall.Arguments,
+							toolCall.Id, // Use .Id for FinishedChatCompletionToolCall
+							params.Task,
+							openAIToolResponseGenerator,
 						)
+						params.Task = updatedTask // Persist changes to task
+						prvdr.params.Messages = append(prvdr.params.Messages, llmToolMsg.(openai.ChatCompletionMessageParamUnion))
 
-						tools.NewExecutor(ctx, tool.Name, tool.Arguments)
+						if toolExecErr != nil {
+							ch <- jsonrpc.Response{
+								Result: params.Task, // Send updated task with error artifact
+								Error: &jsonrpc.Error{
+									Code:    errors.ErrInternal.Code,
+									Message: fmt.Sprintf("Streaming: Error executing tool %s: %v", toolCall.Name, toolExecErr),
+								},
+							}
+						} else {
+							ch <- jsonrpc.Response{Result: params.Task} // Send updated task with success artifact
+						}
+						// Stream continues, LLM will get the tool response via updated prvdr.params.Messages
 					}
 
 					if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
@@ -137,130 +151,70 @@ func (prvdr *OpenAIProvider) Generate(
 						)
 					}
 				}
-			} else {
+			} else { // Non-streaming path
 				completion, err := prvdr.client.Chat.Completions.New(ctx, *prvdr.params)
-
 				if err != nil {
-					log.Error("failed to generate completion after tool call processing or initial call", "error", err)
-					ch <- jsonrpc.Response{
-						Error: &jsonrpc.Error{
-							Code:    errors.ErrInternal.Code,
-							Message: err.Error(),
-						},
-					}
+					ch <- jsonrpc.Response{Error: &jsonrpc.Error{Code: errors.ErrInternal.Code, Message: err.Error()}}
 					break
 				}
-
 				if len(completion.Choices) == 0 {
-					log.Error("OpenAI completion returned no choices")
-					ch <- jsonrpc.Response{
-						Error: &jsonrpc.Error{
-							Code:    errors.ErrInternal.Code,
-							Message: "OpenAI completion returned no choices",
-						},
-					}
+					ch <- jsonrpc.Response{Error: &jsonrpc.Error{Code: errors.ErrInternal.Code, Message: "OpenAI completion returned no choices"}}
 					break
 				}
 
 				messageFromAssistant := completion.Choices[0].Message
-				toolCalls := messageFromAssistant.ToolCalls
+				llmToolCalls := messageFromAssistant.ToolCalls // These are openai.ChatCompletionMessageToolCall
 
-				if len(toolCalls) == 0 {
-					// No more tool calls, this is the final response from the assistant.
-					// Add the assistant's final message to task history.
+				if len(llmToolCalls) == 0 {
 					params.Task.AddFinalPart(a2a.NewTextPart(messageFromAssistant.Content))
 					params.Task.ToStatus(a2a.TaskStateCompleted, a2a.NewTextMessage("assistant", messageFromAssistant.Content))
-
-					// Send the fully updated task as the result.
-					ch <- jsonrpc.Response{
-						Result: params.Task, // Return the entire updated Task object
-					}
+					ch <- jsonrpc.Response{Result: params.Task}
 					break
-				} else { // Assistant wants to make more tool calls
-					// Add assistant's message (which contains the tool call requests) to our params for the next OpenAI call.
-					prvdr.params.Messages = append(
-						prvdr.params.Messages,
-						messageFromAssistant.ToParam(),
-					)
+				} else {
+					prvdr.params.Messages = append(prvdr.params.Messages, messageFromAssistant.ToParam())
+					anyToolFailed := false
+					for _, toolCall := range llmToolCalls { // toolCall is openai.ChatCompletionMessageToolCall
+						updatedTask, llmToolMsg, toolExecErr := ExecuteAndProcessToolCall(
+							ctx,
+							toolCall.Function.Name,
+							toolCall.Function.Arguments,
+							toolCall.ID, // Use .ID for ChatCompletionMessageToolCall
+							params.Task,
+							openAIToolResponseGenerator,
+						)
+						params.Task = updatedTask // Persist changes to task
+						prvdr.params.Messages = append(prvdr.params.Messages, llmToolMsg.(openai.ChatCompletionMessageParamUnion))
 
-					for _, toolCall := range toolCalls {
-						toolErr := prvdr.handleToolCall(ctx, toolCall, params.Task)
-
-						if toolErr != nil {
-							log.Error("error executing tool from handleToolCall", "tool_name", toolCall.Function.Name, "error", toolErr)
-							// Update task status to failed
-							params.Task.ToStatus(a2a.TaskStateFailed, a2a.NewTextMessage("system", fmt.Sprintf("Error executing tool %s: %v", toolCall.Function.Name, toolErr)))
-							// Propagate this tool execution error out on the channel with the updated task.
+						if toolExecErr != nil {
+							// Send update about this specific tool failure
 							ch <- jsonrpc.Response{
-								Result: params.Task, // Send failed task
+								Result: params.Task,
 								Error: &jsonrpc.Error{
 									Code:    errors.ErrInternal.Code,
-									Message: fmt.Sprintf("Error executing tool %s: %v", toolCall.Function.Name, toolErr),
+									Message: fmt.Sprintf("Error executing tool %s: %v", toolCall.Function.Name, toolExecErr),
 								},
 							}
-							break
+							// Optional: Decide if one tool error should stop processing other parallel tool calls from LLM
+							// For now, we'll let it continue to add all tool results/errors for the LLM to see.
+							// However, we mark that a failure occurred to prevent proceeding to next LLM call if critical.
+							anyToolFailed = true
+						} else {
+							ch <- jsonrpc.Response{Result: params.Task} // Send updated task with success artifact
 						}
 					}
+					if anyToolFailed {
+						// If any tool failed, we might not want to proceed to the next LLM call immediately.
+						// The task status would have been updated by the helper if we decide to fail it there.
+						// For now, the loop will continue, and the LLM will receive all tool responses (including errors).
+						// If we want to halt on first tool error, we'd `break` here.
+						log.Warn("One or more tool calls failed in non-streaming mode. LLM will receive all results including errors.")
+					}
+					// Continue to the next iteration of the main loop to get LLM's response to tool results.
 				}
 			}
 		}
 	}()
-
 	return ch
-}
-
-func (prvdr *OpenAIProvider) handleToolCall(
-	ctx context.Context,
-	toolCall openai.ChatCompletionMessageToolCall,
-	task *a2a.Task,
-) error {
-	results, err := tools.NewExecutor(
-		ctx, toolCall.Function.Name, toolCall.Function.Arguments,
-	)
-
-	if err != nil {
-		log.Error("error executing tool", "tool_name", toolCall.Function.Name, "error", err)
-
-		// Add error result as a tool message for OpenAI
-		prvdr.params.Messages = append(
-			prvdr.params.Messages,
-			openai.ToolMessage(fmt.Sprintf("Error executing tool: %s", err.Error()), toolCall.ID),
-		)
-		// Also, let's add an artifact indicating tool failure.
-		task.AddArtifact(a2a.Artifact{
-			Name:        &toolCall.Function.Name,
-			Description: &[]string{"Tool execution failed."}[0], // Pointer to string literal
-			Parts: []a2a.Part{
-				a2a.NewTextPart(fmt.Sprintf("Error: %s", err.Error())),
-			},
-			// Index, Append, LastChunk are for streaming parts, not relevant here for a single error artifact.
-		})
-		return err // Propagate the error
-	}
-
-	// Add successful tool result as an artifact to the task
-	toolName := toolCall.Function.Name
-	description := fmt.Sprintf("Output from %s tool.", toolName)
-	task.AddArtifact(a2a.Artifact{
-		Name:        &toolName,
-		Description: &description,
-		Parts: []a2a.Part{
-			a2a.NewTextPart(results),
-		},
-	})
-
-	// Add successful result as a tool message for OpenAI
-	prvdr.params.Messages = append(
-		prvdr.params.Messages,
-		openai.ToolMessage(results, toolCall.ID),
-	)
-
-	// DO NOT send on 'out' here.
-	// The 'out' channel in Generate should be for the *final* response of the non-streaming call
-	// or for actual stream events in a streaming call.
-	// The task is updated in place, and OpenAIProvider.Generate will handle the final response.
-
-	return nil
 }
 
 /*

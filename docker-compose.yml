@@ -31,6 +31,22 @@ services:
     networks:
       - a2a-network
 
+  catalogtool:
+    image: theapemachine/a2a-go:latest
+    command: ["mcp", "-c", "catalog"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+
+  managementtool:
+    image: theapemachine/a2a-go:latest
+    command: ["mcp", "-c", "management"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+
   # UI agent service - specialized in relaying messages between the user and the agents.
   ui:
     image: theapemachine/a2a-go:latest
