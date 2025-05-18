@@ -84,9 +84,9 @@ func (task *Task) Prefix(optionals ...string) string {
 
 	// Add the core segments that make up the standard task prefix
 	builder = append(builder, []string{
-		string(task.Status.State),
-		task.SessionID,
 		task.ID,
+		task.SessionID,
+		string(task.Status.State),
 		strconv.FormatInt(time.Now().UnixNano(), 10),
 	}...)
 
@@ -97,7 +97,7 @@ func (task *Task) ToStatus(status TaskState, message *Message) {
 	log.Info("task status update", "status", status, "message", message)
 
 	task.Status.State = status
-	task.Status.Timestamp = time.Now()
+	task.Status.Timestamp = time.Now().UTC()
 	task.Status.Message = message
 }
 

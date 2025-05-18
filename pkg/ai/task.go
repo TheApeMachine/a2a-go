@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/theapemachine/a2a-go/pkg/a2a"
@@ -92,39 +93,50 @@ func (manager *TaskManager) createNewTask(ctx context.Context, params a2a.TaskSe
 func (manager *TaskManager) selectTask(
 	ctx context.Context,
 	params a2a.TaskSendParams,
-) ([]a2a.Task, *errors.RpcError) {
-	existingTask, getErr := manager.taskStore.Get(ctx, manager.agent.Name+"/"+params.ID, 0)
+) (a2a.Task, *errors.RpcError) {
+	existingTasks, getErr := manager.taskStore.Get(
+		ctx, manager.agent.Name+"/"+params.ID, 0,
+	)
 
 	if getErr != nil {
 		errMsg := getErr.Error()
 		if errMsg == errors.ErrTaskNotFound.Error() {
 			task, err := manager.createNewTask(ctx, params)
 			if err != nil {
-				return nil, err
+				return a2a.Task{}, err
 			}
-			return []a2a.Task{*task}, nil
+			return *task, nil
 		}
 		log.Error("error getting task from store (not ErrTaskNotFound)", "task_id", params.ID, "error", getErr)
-		return nil, getErr
+		return a2a.Task{}, getErr
 	}
 
-	if len(existingTask) == 0 {
+	if len(existingTasks) == 0 {
 		task, err := manager.createNewTask(ctx, params)
 		if err != nil {
-			return nil, err
+			return a2a.Task{}, err
 		}
-		return []a2a.Task{*task}, nil
+		return *task, nil
 	}
 
-	log.Info("existing task found, appending new message", "task_id", existingTask[0].ID, "current_status", existingTask[0].Status.State)
-	existingTask[0].History = append(existingTask[0].History, params.Message)
+	mostRecentTimestamp := time.Unix(0, 0).UTC()
+	var mostRecentTask a2a.Task
 
-	if updateErr := manager.taskStore.Update(ctx, &existingTask[0], manager.agent.Name); updateErr != nil {
-		log.Error("failed to update existing task in store after appending message", "task_id", existingTask[0].ID, "error", updateErr)
-		return nil, updateErr
+	for _, task := range existingTasks {
+		if task.Status.Timestamp.After(mostRecentTimestamp) || task.Status.Timestamp.Equal(mostRecentTimestamp) {
+			mostRecentTimestamp = task.Status.Timestamp
+			mostRecentTask = task
+		}
 	}
-	log.Info("existing task updated in store", "task_id", existingTask[0].ID)
-	return existingTask, nil
+
+	mostRecentTask.History = append(mostRecentTask.History, params.Message)
+
+	if updateErr := manager.taskStore.Update(ctx, &mostRecentTask, manager.agent.Name); updateErr != nil {
+		log.Error("failed to update existing task in store after appending message", "task_id", mostRecentTask.ID, "error", updateErr)
+		return a2a.Task{}, updateErr
+	}
+
+	return mostRecentTask, nil
 }
 
 func (manager *TaskManager) SendTask(
@@ -137,11 +149,7 @@ func (manager *TaskManager) SendTask(
 		return nil, err
 	}
 
-	if len(task) == 0 {
-		return nil, errors.ErrInternal.WithMessagef("no tasks available")
-	}
-
-	task[0].ToStatus(a2a.TaskStateWorking,
+	task.ToStatus(a2a.TaskStateWorking,
 		a2a.NewTextMessage(
 			manager.agent.Name,
 			"starting task",
@@ -149,7 +157,7 @@ func (manager *TaskManager) SendTask(
 	)
 
 	prvdrParams := provider.NewProviderParams(
-		&task[0], provider.WithTools(manager.agent.Tools()...),
+		&task, provider.WithTools(manager.agent.Tools()...),
 	)
 
 	prvdrParams.Stream = false
@@ -157,13 +165,13 @@ func (manager *TaskManager) SendTask(
 	for chunk := range manager.provider.Generate(
 		ctx, prvdrParams,
 	) {
-		if err := manager.handleUpdate(&task[0], chunk); err != nil {
+		if err := manager.handleUpdate(&task, chunk); err != nil {
 			log.Error("failed to handle update", "error", err)
-			return &task[0], err.(*errors.RpcError)
+			return &task, err.(*errors.RpcError)
 		}
 	}
 
-	return &task[0], nil
+	return &task, nil
 }
 
 /*
@@ -244,6 +252,22 @@ func (manager *TaskManager) GetTask(
 	if len(tasks) == 0 {
 		return nil, errors.ErrTaskNotFound
 	}
+
+	// If multiple task versions are returned, use the most recent one
+	if len(tasks) > 1 {
+		mostRecentTimestamp := time.Unix(0, 0).UTC()
+		mostRecentIdx := 0
+
+		for i, task := range tasks {
+			if task.Status.Timestamp.After(mostRecentTimestamp) || task.Status.Timestamp.Equal(mostRecentTimestamp) {
+				mostRecentTimestamp = task.Status.Timestamp
+				mostRecentIdx = i
+			}
+		}
+
+		return &tasks[mostRecentIdx], nil
+	}
+
 	return &tasks[0], nil
 }
 
