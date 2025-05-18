@@ -1,12 +1,14 @@
 package service
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
 
 	"github.com/charmbracelet/log"
 	"github.com/gofiber/fiber/v3"
+	fiberadaptor "github.com/gofiber/fiber/v3/middleware/adaptor"
 	"github.com/gofiber/fiber/v3/middleware/healthcheck"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/theapemachine/a2a-go/pkg/a2a"
@@ -14,7 +16,6 @@ import (
 	"github.com/theapemachine/a2a-go/pkg/errors"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
 	"github.com/theapemachine/a2a-go/pkg/service/sse"
-	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
 /*
@@ -67,8 +68,7 @@ func (srv *A2AServer) handleEvents(ctx fiber.Ctx) error {
 		w.Header().Set("Connection", "keep-alive")
 		srv.broker.Subscribe(w, r)
 	}
-	fasthttpadaptor.NewFastHTTPHandlerFunc(handler)(ctx.Context())
-	return nil
+	return fiberadaptor.HTTPHandler(http.HandlerFunc(handler))(ctx)
 }
 
 func (srv *A2AServer) parseParamsWithDecoding(params any) ([]byte, error) {
@@ -110,6 +110,66 @@ func (srv *A2AServer) forwardStream(ctx context.Context, stream <-chan any) {
 				}
 				if err := srv.broker.Broadcast(evt); err != nil {
 					log.Error("failed to broadcast event in forwardStream", "error", err)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+// forwardResponseStream handles streaming jsonrpc.Response objects
+func (srv *A2AServer) forwardResponseStream(ctx context.Context, stream chan jsonrpc.Response) {
+	go func() {
+		for {
+			select {
+			case evt, ok := <-stream:
+				if !ok {
+					return
+				}
+				if err := srv.broker.Broadcast(evt); err != nil {
+					log.Error("failed to broadcast event in forwardResponseStream", "error", err)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+}
+
+// forwardTaskStreamAdapter creates a channel adapter from <-chan a2a.Task to <-chan any
+func forwardTaskStreamAdapter(ctx context.Context, input <-chan a2a.Task) <-chan any {
+	output := make(chan any)
+
+	go func() {
+		defer close(output)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case task, ok := <-input:
+				if !ok {
+					return
+				}
+				output <- task
+			}
+		}
+	}()
+
+	return output
+}
+
+// forwardTaskStream handles streaming a2a.Task objects
+func (srv *A2AServer) forwardTaskStream(ctx context.Context, stream <-chan a2a.Task) {
+	go func() {
+		for {
+			select {
+			case evt, ok := <-stream:
+				if !ok {
+					return
+				}
+				if err := srv.broker.Broadcast(evt); err != nil {
+					log.Error("failed to broadcast event in forwardTaskStream", "error", err)
 				}
 			case <-ctx.Done():
 				return
@@ -195,7 +255,7 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 				first = nil
 			}
 
-			srv.forwardStream(ctx.Context(), stream)
+			srv.forwardResponseStream(ctx.Context(), stream)
 
 			return first, nil
 		})
@@ -262,7 +322,8 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 				first = nil
 			}
 
-			srv.forwardStream(ctx.Context(), stream)
+			taskStream := forwardTaskStreamAdapter(ctx.Context(), stream)
+			srv.forwardStream(ctx.Context(), taskStream)
 
 			return first, nil
 		})

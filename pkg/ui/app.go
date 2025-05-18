@@ -571,9 +571,13 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Reset the textarea after successful send
 				app.textarea.Reset()
 
-				// After sending, refresh the task list and subscribe to events
-				app.subscribeToEvents(app.selectedAgent.URL)()
-				return app.getTasksByAgent(app.selectedAgent.Name)
+				// After sending, return both commands to refresh task list and subscribe to events
+				return tea.Batch(
+					app.subscribeToEvents(app.selectedAgent.URL),
+					func() tea.Msg {
+						return app.getTasksByAgent(app.selectedAgent.Name)
+					},
+				)
 			})
 		}
 
@@ -870,14 +874,17 @@ func (app *App) getTasksByAgent(agentName string) tea.Msg {
 		return errorMsg{err: fmt.Errorf("failed to initialize store: %w", err)}
 	}
 
-	tasks, err := store.Get(context.Background(), agentName, 100)
-	if err != nil {
+	var tasks []a2a.Task
+	fetchedTasks, err := store.Get(context.Background(), agentName, 100)
+	if err.Error() != "RPC error: (nil RpcError)" {
 		log.Error("failed to get tasks", "error", err)
 		return errorMsg{err: fmt.Errorf("failed to get tasks: %w", err)}
 	}
 
-	// Return empty task list instead of nil if no tasks found
-	if tasks == nil {
+	// Use fetched tasks or empty slice
+	if fetchedTasks != nil && len(fetchedTasks) > 0 {
+		tasks = fetchedTasks
+	} else {
 		tasks = []a2a.Task{}
 	}
 
@@ -900,14 +907,17 @@ func (app *App) getTasksByID(
 		return errorMsg{err: fmt.Errorf("failed to initialize store: %w", err)}
 	}
 
-	tasks, err := store.Get(context.Background(), agentName+"/"+sessionID+"/"+taskID, 100)
-	if err != nil {
+	var tasks []a2a.Task
+	fetchedTasks, err := store.Get(context.Background(), agentName+"/"+sessionID+"/"+taskID, 100)
+	if err.Error() != "RPC error: (nil RpcError)" {
 		log.Error("failed to get tasks", "error", err)
 		return errorMsg{err: fmt.Errorf("failed to get tasks: %w", err)}
 	}
 
-	// Return empty task list instead of nil if no tasks found
-	if tasks == nil {
+	// Use fetched tasks or empty slice
+	if fetchedTasks != nil && len(fetchedTasks) > 0 {
+		tasks = fetchedTasks
+	} else {
 		tasks = []a2a.Task{}
 	}
 

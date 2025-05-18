@@ -168,9 +168,8 @@ func (client *Client) SendTaskStreaming(
 		return err
 	}
 
-	defer res.Body().Close()
-
-	decoder := json.NewDecoder(res.Body())
+	bodyReader := bytes.NewReader(res.Body())
+	decoder := json.NewDecoder(bodyReader)
 	ctx := context.Background()
 
 	for {
