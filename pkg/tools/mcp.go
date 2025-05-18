@@ -15,20 +15,31 @@ import (
 func Acquire(id string) (*mcp.Tool, error) {
 	log.Info("initializing MCP client")
 
-	switch id {
-	case "development":
-		return NewDockerTool(), nil
-	case "web-browsing":
-		return NewBrowserTool(), nil
-	}
+       switch id {
+       case "development":
+               return NewDockerTool(), nil
+       case "web-browsing":
+               return NewBrowserTool(), nil
+       case "catalog":
+               return NewCatalogTool(), nil
+       case "management":
+               return NewDelegateTool(), nil
+       }
 
 	return nil, fmt.Errorf("tool not found: %s", id)
 }
 
 func NewExecutor(
-	ctx context.Context, name, args string,
+        ctx context.Context, name, args string,
 ) (string, error) {
-	url := viper.GetViper().GetString("endpoints." + name)
+       switch name {
+       case "catalog":
+               return executeCatalog(ctx)
+       case "delegate_task":
+               return executeDelegate(ctx, args)
+       }
+
+       url := viper.GetViper().GetString("endpoints." + name)
 	sseTransport, err := transport.NewSSE(url + "/sse")
 
 	if err != nil {
