@@ -89,11 +89,13 @@ func (client *CatalogClient) GetAgents() ([]a2a.AgentCard, error) {
 
 // GetAgent retrieves a specific agent card by ID from the catalog.
 func (client *CatalogClient) GetAgent(id string) (*a2a.AgentCard, error) {
-	resp, err := client.conn.Get(fmt.Sprintf("%s/agent/%s", client.baseURL, id))
+	resp, err := client.conn.Get(fmt.Sprintf("/agent/%s", url.PathEscape(id)))
 
 	if err != nil {
 		return nil, &ConnectionError{Message: "failed to get agent", Err: err}
 	}
+	// …
+}
 
 	if resp.StatusCode() == http.StatusNotFound {
 		return nil, &NotFoundError{AgentID: id}
