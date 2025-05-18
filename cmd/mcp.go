@@ -26,7 +26,7 @@ var (
 
 			switch configFlag {
 			case "browser":
-				browserToolDefinition, err := tools.Aquire("web-browsing")
+				browserToolDefinition, err := tools.Acquire("web-browsing")
 				if err != nil {
 					return fmt.Errorf("failed to acquire browser tool definition: %w", err)
 				}
@@ -40,7 +40,7 @@ var (
 				log.Info("Registered 'browser' tool with MCP server", "hostname", hostname)
 
 			case "docker":
-				dockerToolDefinition, err := tools.Aquire("development")
+				dockerToolDefinition, err := tools.Acquire("development")
 				if err != nil {
 					return fmt.Errorf("failed to acquire docker tool definition: %w", err)
 				}

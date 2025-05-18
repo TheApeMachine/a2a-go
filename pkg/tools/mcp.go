@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func Aquire(id string) (*mcp.Tool, error) {
+func Acquire(id string) (*mcp.Tool, error) {
 	log.Info("initializing MCP client")
 
 	switch id {

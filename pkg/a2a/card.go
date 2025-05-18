@@ -56,7 +56,7 @@ type AgentSkill struct {
 }
 
 func (skill *AgentSkill) ToMCPTool() (*mcp.Tool, error) {
-	return tools.Aquire(skill.ID)
+	return tools.Acquire(skill.ID)
 }
 
 // AgentCard represents the metadata card for an agent
