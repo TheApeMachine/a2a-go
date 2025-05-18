@@ -266,7 +266,7 @@ func (prvdr *GoogleProvider) getSystemInstruction(task *a2a.Task) *genai.Content
 		if systemText != "" {
 			// For Gemini, system instructions are passed differently if using the specific SystemInstruction field.
 			// The convertMessages will handle user/model roles. This is specifically for the SystemInstruction part of the model.
-			return &genai.Content{Parts: []*genai.Part{&genai.Part{Text: systemText}}}
+			return &genai.Content{Parts: []*genai.Part{{Text: systemText}}}
 		}
 	}
 	return nil
