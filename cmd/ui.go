@@ -13,6 +13,15 @@ import (
 	"github.com/theapemachine/a2a-go/pkg/ui"
 )
 
+type logWriter struct {
+	ch chan string
+}
+
+func (w *logWriter) Write(p []byte) (n int, err error) {
+	w.ch <- string(p)
+	return len(p), nil
+}
+
 var (
 	uiCmd = &cobra.Command{
 		Use:   "ui",
@@ -27,18 +36,30 @@ var (
 			// }
 
 			// log.SetOutput(f)
-			log.SetOutput(bytes.NewBufferString(""))
+			logBuffer := bytes.NewBuffer([]byte{})
+			log.SetOutput(logBuffer)
 			log.SetLevel(log.DebugLevel)
 			log.SetReportCaller(true)
-			// defer f.Close()
 
 			v := viper.GetViper()
 			catalogURL := v.GetString("endpoints.catalog")
 
-			if _, err := tea.NewProgram(
-				safeApp{App: ui.NewApp(catalogURL)},
+			app := ui.NewApp(catalogURL)
+			prog := tea.NewProgram(
+				safeApp{App: app},
 				tea.WithAltScreen(),
-			).Run(); err != nil {
+			)
+
+			logCh := make(chan string, 64)
+			log.SetOutput(&logWriter{ch: logCh})
+
+			go func() {
+				for logLine := range logCh {
+					prog.Send(ui.LogMsg{Log: logLine})
+				}
+			}()
+
+			if _, err := prog.Run(); err != nil {
 				log.Error("failed to run program", "error", err)
 				return err
 			}

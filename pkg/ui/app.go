@@ -88,6 +88,7 @@ type fetchTasksMsg struct{ tasks []a2a.Task }
 type fetchTaskDetailMsg struct{ task a2a.Task }
 type errorMsg struct{ err error }
 type streamEventMsg struct{ event any }
+type LogMsg struct{ Log string }
 
 // Item implementations for the lists
 type agentItem struct {
@@ -633,6 +634,10 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Re-focus the active panel to refresh the styling
 		app.setFocus(app.focusedPanel)
 
+		return app, nil
+
+	case LogMsg:
+		app.appendToAgentDetail(msg.Log)
 		return app, nil
 
 	case fetchAgentsMsg:
