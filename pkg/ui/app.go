@@ -20,6 +20,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/theapemachine/a2a-go/pkg/a2a"
 	"github.com/theapemachine/a2a-go/pkg/catalog"
+	"github.com/theapemachine/a2a-go/pkg/sse"
 	"github.com/theapemachine/a2a-go/pkg/stores/s3"
 )
 
@@ -85,6 +86,7 @@ type fetchAgentDetailMsg struct{ agent a2a.AgentCard }
 type fetchTasksMsg struct{ tasks []a2a.Task }
 type fetchTaskDetailMsg struct{ task a2a.Task }
 type errorMsg struct{ err error }
+type streamEventMsg struct{ event any }
 
 // Item implementations for the lists
 type agentItem struct {
@@ -193,6 +195,7 @@ type App struct {
 	agents        []a2a.AgentCard
 	statusMessage string
 	errorMessage  string
+	sseClient     *sse.Client
 }
 
 // NewApp creates a new application with default state
@@ -566,6 +569,9 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Reset the textarea after successful send
 				app.textarea.Reset()
 
+				// Start SSE streaming for this agent
+				cmds = append(cmds, app.subscribeToEvents(app.selectedAgent.URL))
+
 				// After sending, refresh the task list
 				return app.getTasksByAgent(app.selectedAgent.Name)
 			})
@@ -626,6 +632,10 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		app.taskList.SetItems(items)
 		app.statusMessage = fmt.Sprintf("Loaded %d tasks", len(items))
+		return app, nil
+
+	case streamEventMsg:
+		app.statusMessage = fmt.Sprintf("stream event: %v", msg.event)
 		return app, nil
 
 	case TaskMessage:
@@ -839,6 +849,21 @@ func (app *App) getStore() (*s3.Store, error) {
 	)
 
 	return store, nil
+}
+
+// subscribeToEvents connects to the agent's /events SSE endpoint and forwards
+// events to the application as streamEventMsg.
+func (app *App) subscribeToEvents(url string) tea.Cmd {
+	return func() tea.Msg {
+		client := sse.NewClient(url + "/events")
+		app.sseClient = client
+		go func() {
+			_ = client.SubscribeWithContext(context.Background(), "", func(e *sse.Event) {
+				app.SafeUpdate(streamEventMsg{event: string(e.Data)})
+			})
+		}()
+		return nil
+	}
 }
 
 /*

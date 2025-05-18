@@ -95,6 +95,55 @@ func (client *Client) SendTask(params TaskSendParams) (jsonrpc.Response, error) 
 }
 
 /*
+SendTaskSubscribe sends a task message and returns the first streaming result.
+*/
+func (client *Client) SendTaskSubscribe(params TaskSendParams, eventChan chan<- any) (jsonrpc.Response, error) {
+	req := jsonrpc.Request{
+		Message: jsonrpc.Message{
+			JSONRPC: "2.0",
+		},
+		Method: "tasks/sendSubscribe",
+		Params: params,
+	}
+
+	res, err := client.conn.Post(
+		"/rpc",
+		fiberClient.Config{
+			Header: map[string]string{
+				"Content-Type": "application/json",
+				"Accept":       "text/event-stream",
+			},
+			Body: req,
+		},
+	)
+	if err != nil {
+		return jsonrpc.Response{}, err
+	}
+
+	var first jsonrpc.Response
+	decoder := json.NewDecoder(bytes.NewReader(res.Body()))
+	if err := decoder.Decode(&first); err != nil {
+		return jsonrpc.Response{}, err
+	}
+
+	go func() {
+		for {
+			var evt jsonrpc.Response
+			if err := decoder.Decode(&evt); err != nil {
+				if err == io.EOF {
+					return
+				}
+				log.Error("failed to decode stream event", "error", err)
+				return
+			}
+			eventChan <- evt.Result
+		}
+	}()
+
+	return first, nil
+}
+
+/*
 GetTask retrieves the status of a task.
 */
 func (client *Client) GetTask(params TaskQueryParams) (jsonrpc.Response, error) {
