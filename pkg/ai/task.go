@@ -234,9 +234,11 @@ func (manager *TaskManager) StreamTask(
 
 				if err := manager.handleUpdate(params, chunk); err != nil {
 					log.Error("failed to handle update during stream, stopping stream", "task_id", params.ID, "error", err)
-					// Error logged, goroutine will exit, and 'out' will be closed by defer.
-					// The client will see any chunks sent before this error, then the channel closes.
 					return
+				}
+
+				if updErr := manager.taskStore.Update(ctx, params, manager.agent.Name); updErr != nil {
+					log.Error("failed to persist streaming update", "task_id", params.ID, "error", updErr)
 				}
 
 				// Send the processed chunk to the output channel
