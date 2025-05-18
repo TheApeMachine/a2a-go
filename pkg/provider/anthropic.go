@@ -11,7 +11,6 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/a2a-go/pkg/a2a"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
-	"github.com/theapemachine/a2a-go/pkg/tools"
 )
 
 /*
@@ -57,6 +56,11 @@ func (prvdr *AnthropicProvider) Generate(
 ) chan jsonrpc.Response {
 	ch := make(chan jsonrpc.Response)
 
+	// Anthropic-specific LLM tool response generator function
+	anthropicToolResponseGenerator := func(toolCallID string, content string, isError bool) any {
+		return anthropic.NewUserMessage(anthropic.NewToolResultBlock(toolCallID, content, isError))
+	}
+
 	go func() {
 		defer close(ch)
 
@@ -76,128 +80,119 @@ func (prvdr *AnthropicProvider) Generate(
 		for !isDone {
 			if params.Stream {
 				stream := prvdr.client.Messages.NewStreaming(ctx, *prvdr.params)
-				message := anthropic.Message{}
+				message := anthropic.Message{} // Used by accumulator
 
 				for stream.Next() {
 					event := stream.Current()
-					err := message.Accumulate(event)
-					if err != nil {
-						log.Error("failed to accumulate message", "error", err)
+					if err := message.Accumulate(event); err != nil { // Accumulate first
+						log.Error("failed to accumulate message event", "error", err)
 						continue
 					}
 
-					switch event := event.AsAny().(type) {
+					switch event := event.AsAny().(type) { // then switch on the event type
 					case anthropic.ContentBlockDeltaEvent:
 						if event.Delta.Text != "" {
-							ch <- a2a.NewArtifactResult(
-								params.Task.ID,
-								a2a.NewTextPart(event.Delta.Text),
-							)
+							ch <- a2a.NewArtifactResult(params.Task.ID, a2a.NewTextPart(event.Delta.Text))
 						}
-					case anthropic.ToolUseBlock:
-						prvdr.params.Messages = append(
-							prvdr.params.Messages,
-							message.ToParam(),
-						)
+					case anthropic.ToolUseBlock: // This is a specific event type from Anthropic SDK when a tool is requested
+						// The message accumulator would have added the assistant's request for tool use.
+						// We now need to execute it.
+						prvdr.params.Messages = append(prvdr.params.Messages, message.ToParam()) // Add current assistant msg to history for LLM
 
-						err := prvdr.handleToolCall(ctx, event, ch, params.Task)
-						if err != nil {
-							log.Error("error handling tool call", "error", err)
-							continue
+						updatedTask, llmToolMsg, toolExecErr := ExecuteAndProcessToolCall(
+							ctx,
+							event.Name,          // ToolUseBlock has Name
+							string(event.Input), // ToolUseBlock has Input (json.RawMessage)
+							event.ID,            // ToolUseBlock has ID
+							params.Task,
+							anthropicToolResponseGenerator,
+						)
+						params.Task = updatedTask // Persist changes to task
+						prvdr.params.Messages = append(prvdr.params.Messages, llmToolMsg.(anthropic.MessageParam))
+
+						if toolExecErr != nil {
+							ch <- jsonrpc.Response{
+								Result: params.Task, // Send updated task with error artifact
+								Error:  &jsonrpc.Error{Code: int(a2a.ErrorCodeInternalError), Message: fmt.Sprintf("Error executing tool %s: %v", event.Name, toolExecErr)},
+							}
+						} else {
+							ch <- jsonrpc.Response{Result: params.Task} // Send updated task with success artifact
 						}
+						// Stream continues, LLM will get the tool response via updated prvdr.params.Messages
 					case anthropic.MessageStopEvent:
 						isDone = true
+						// Potentially send final task state if not already covered by other events
+						// For now, assume final content/artifacts are handled by ContentBlockDelta or completion.
+						ch <- jsonrpc.Response{Result: a2a.TaskStatusUpdateResult{ID: params.Task.ID, Status: params.Task.Status, Final: true}}
 					}
 				}
-
 				if stream.Err() != nil {
-					log.Error("stream error", "error", stream.Err())
-					ch <- jsonrpc.Response{
-						Error: &jsonrpc.Error{
-							Code:    int(a2a.ErrorCodeInternalError),
-							Message: stream.Err().Error(),
-						},
-					}
+					ch <- jsonrpc.Response{Error: &jsonrpc.Error{Code: int(a2a.ErrorCodeInternalError), Message: stream.Err().Error()}}
 				}
-			} else {
-				message, err := prvdr.client.Messages.New(ctx, *prvdr.params)
+				isDone = true // Ensure loop terminates after stream or if stream.Next() finishes
+
+			} else { // Non-streaming path
+				llmResponse, err := prvdr.client.Messages.New(ctx, *prvdr.params)
 				if err != nil {
-					log.Error("failed to generate message", "error", err)
-					ch <- jsonrpc.Response{
-						Error: &jsonrpc.Error{
-							Code:    int(a2a.ErrorCodeInternalError),
-							Message: err.Error(),
-						},
-					}
-					return
+					ch <- jsonrpc.Response{Error: &jsonrpc.Error{Code: int(a2a.ErrorCodeInternalError), Message: err.Error()}}
+					return // Use return for non-streaming fatal error
 				}
 
-				for _, block := range message.Content {
-					switch block := block.AsAny().(type) {
-					case anthropic.TextBlock:
-						ch <- a2a.NewArtifactResult(
-							params.Task.ID,
-							a2a.NewTextPart(block.Text),
-						)
-						params.Task.AddFinalPart(a2a.NewTextPart(block.Text))
-					case anthropic.ToolUseBlock:
-						prvdr.params.Messages = append(
-							prvdr.params.Messages,
-							message.ToParam(),
-						)
+				prvdr.params.Messages = append(prvdr.params.Messages, llmResponse.ToParam())
+				assistantCalledTool := false
+				var assistantTextResponse string // Accumulate text here
 
-						err := prvdr.handleToolCall(ctx, block, ch, params.Task)
-						if err != nil {
-							log.Error("error handling tool call", "error", err)
-							continue
+				for _, block := range llmResponse.Content {
+					switch contentBlock := block.AsAny().(type) {
+					case anthropic.TextBlock:
+						assistantTextResponse += contentBlock.Text // Accumulate text
+						// Only add text part and send artifact if no tool is being called in this turn by assistant.
+						// If a tool is called, the text is usually just a preamble to the tool call.
+						// The final text response will come after the tool results are processed by the LLM.
+						// We will check assistantCalledTool *after* processing all blocks.
+					case anthropic.ToolUseBlock:
+						assistantCalledTool = true
+						updatedTask, llmToolMsg, toolExecErr := ExecuteAndProcessToolCall(
+							ctx,
+							contentBlock.Name,
+							string(contentBlock.Input),
+							contentBlock.ID,
+							params.Task,
+							anthropicToolResponseGenerator,
+						)
+						params.Task = updatedTask
+						prvdr.params.Messages = append(prvdr.params.Messages, llmToolMsg.(anthropic.MessageParam))
+
+						if toolExecErr != nil {
+							ch <- jsonrpc.Response{
+								Result: params.Task,
+								Error:  &jsonrpc.Error{Code: int(a2a.ErrorCodeInternalError), Message: fmt.Sprintf("Error executing tool %s: %v", contentBlock.Name, toolExecErr)},
+							}
+						} else {
+							ch <- jsonrpc.Response{Result: params.Task}
 						}
 					}
 				}
 
-				isDone = true
+				if !assistantCalledTool {
+					// If no tools were called, then any accumulated text is the final response for this turn.
+					if assistantTextResponse != "" {
+						params.Task.AddFinalPart(a2a.NewTextPart(assistantTextResponse))
+						ch <- a2a.NewArtifactResult(params.Task.ID, a2a.NewTextPart(assistantTextResponse))
+					}
+					params.Task.ToStatus(a2a.TaskStateCompleted, a2a.NewTextMessage("assistant", assistantTextResponse))
+					ch <- jsonrpc.Response{Result: params.Task}
+					isDone = true
+				} else {
+					// Tools were called. The loop will continue to make another call to the LLM
+					// with the tool results included in prvdr.params.Messages.
+					isDone = false
+				}
 			}
 		}
 	}()
 
 	return ch
-}
-
-func (prvdr *AnthropicProvider) handleToolCall(
-	ctx context.Context,
-	toolCall anthropic.ToolUseBlock,
-	out chan jsonrpc.Response,
-	task *a2a.Task,
-) error {
-	results, err := tools.NewExecutor(
-		ctx, toolCall.Name, string(toolCall.Input),
-	)
-
-	if err != nil {
-		log.Error("error executing tool", "error", err)
-
-		prvdr.params.Messages = append(
-			prvdr.params.Messages,
-			anthropic.NewUserMessage(anthropic.NewToolResultBlock(toolCall.ID, err.Error(), true)),
-		)
-
-		return err
-	}
-
-	prvdr.params.Messages = append(
-		prvdr.params.Messages,
-		anthropic.NewUserMessage(anthropic.NewToolResultBlock(toolCall.ID, results, false)),
-	)
-
-	out <- jsonrpc.Response{
-		Result: a2a.TaskStatusUpdateResult{
-			ID:       task.ID,
-			Status:   a2a.TaskStatus{State: a2a.TaskStateWorking},
-			Final:    false,
-			Metadata: map[string]any{},
-		},
-	}
-
-	return nil
 }
 
 func (prvdr *AnthropicProvider) convertMessages(

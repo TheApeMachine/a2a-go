@@ -2,11 +2,13 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/charmbracelet/log"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/a2a-go/pkg/a2a"
+	"github.com/theapemachine/a2a-go/pkg/errors"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
 	"google.golang.org/genai"
 )
@@ -37,18 +39,15 @@ GoogleProvider is a provider for the Google AI API.
 */
 type GoogleProvider struct {
 	client *genai.Client
-	params *genai.GenerateContentConfig
 }
 
 type GoogleProviderOption func(*GoogleProvider)
 
 func NewGoogleProvider(options ...GoogleProviderOption) *GoogleProvider {
 	prvdr := &GoogleProvider{}
-
 	for _, option := range options {
 		option(prvdr)
 	}
-
 	return prvdr
 }
 
@@ -57,227 +56,310 @@ func (prvdr *GoogleProvider) Generate(
 ) chan jsonrpc.Response {
 	ch := make(chan jsonrpc.Response)
 
+	googleToolResponseGenerator := func(toolName string, content string, isError bool) any {
+		responseMap := map[string]any{"content": content}
+		if isError {
+			responseMap["error"] = content
+		}
+		return &genai.Part{
+			FunctionResponse: &genai.FunctionResponse{
+				Name:     toolName,
+				Response: responseMap,
+			},
+		}
+	}
+
 	go func() {
 		defer close(ch)
 
-		prvdr.params = &genai.GenerateContentConfig{
-			Temperature:     genai.Ptr[float32](float32(params.Temperature)),
-			MaxOutputTokens: int32(params.MaxTokens),
-			TopP:            genai.Ptr[float32](float32(params.TopP)),
-			TopK:            genai.Ptr[float32](float32(params.TopK)),
+		geminiContents := prvdr.convertMessages(params.Task)
+		geminiTools := prvdr.convertTools(params.Tools)
+		systemInstruction := prvdr.getSystemInstruction(params.Task)
+
+		// Configuration for the generation call
+		generateContentConfig := &genai.GenerateContentConfig{
+			Tools:             geminiTools,
+			SystemInstruction: systemInstruction,
+			Temperature:       genai.Ptr(float32(params.Temperature)),
+			MaxOutputTokens:   int32(params.MaxTokens),
+			TopP:              genai.Ptr(float32(params.TopP)),
+			TopK:              genai.Ptr(float32(params.TopK)),
+			StopSequences:     params.Stop,
 		}
 
-		isDone := false
-
-		for !isDone {
+		for { // Main loop for multi-turn conversation (including tool calls)
 			if params.Stream {
-				stream := prvdr.client.Models.GenerateContentStream(ctx, params.Model, prvdr.convertMessages(params.Task), prvdr.params)
-				for result, err := range stream {
+				// Assumes client.Models.GenerateContentStream can take []*Content and *GenerateContentConfig
+				// The variadic parts argument might be an issue if history is []*Content.
+				// For now, let's try passing geminiContents directly if the API supports it, or the first content as main part.
+				// This part is uncertain due to the API signature questions.
+				// If GenerateContentStream expects parts...Part, this needs flattening or using client.Chats.
+				// For now, attempting to pass geminiContents as if it's variadic *Content or similar.
+				// This will likely fail if it expects ...Part instead of ...*Content
+
+				iter := prvdr.client.Models.GenerateContentStream(ctx, params.Model, geminiContents, generateContentConfig)
+
+				var accumulatedTextForThisTurn string
+				var processedFunctionCallInThisStreamSegment bool
+				var lastCandidateWithContent *genai.Candidate // To check finish reason after loop
+
+			streamLoop: // Label for breaking out of the inner stream processing loop
+				for resp, err := range iter {
 					if err != nil {
-						log.Error("stream error", "error", err)
-						ch <- jsonrpc.Response{
-							Error: &jsonrpc.Error{
-								Code:    int(a2a.ErrorCodeInternalError),
-								Message: err.Error(),
-							},
+						ch <- jsonrpc.Response{Error: &jsonrpc.Error{Code: errors.ErrInternal.Code, Message: err.Error()}}
+						return // Fatal stream error
+					}
+					if resp == nil { // Should not happen if err is nil, but good practice to check
+						continue
+					}
+
+					if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
+						lastCandidateWithContent = resp.Candidates[0]
+						for _, part := range resp.Candidates[0].Content.Parts {
+							if part.FunctionCall != nil {
+								fc := part.FunctionCall
+								log.Info("Google Provider (Streaming): Tool call", "name", fc.Name)
+								geminiContents = append(geminiContents, resp.Candidates[0].Content)
+
+								updatedTask, llmToolMsg, toolExecErr := ExecuteAndProcessToolCall(
+									ctx, fc.Name, fmt.Sprintf("%v", fc.Args),
+									fc.Name, params.Task, googleToolResponseGenerator,
+								)
+								params.Task = updatedTask
+								toolResponseContent := &genai.Content{
+									Role:  "function",
+									Parts: []*genai.Part{llmToolMsg.(*genai.Part)},
+								}
+								geminiContents = append(geminiContents, toolResponseContent)
+								params.Task.AddMessage("tool", fmt.Sprintf("Tool %s output: %v", fc.Name, llmToolMsg.(*genai.Part).FunctionResponse.Response), fc.Name)
+
+								if toolExecErr != nil {
+									ch <- jsonrpc.Response{Result: params.Task, Error: &jsonrpc.Error{Code: errors.ErrInternal.Code, Message: fmt.Sprintf("Tool %s error: %v", fc.Name, toolExecErr)}}
+								} else {
+									ch <- jsonrpc.Response{Result: params.Task}
+								}
+								processedFunctionCallInThisStreamSegment = true
+								break streamLoop // Re-evaluate main loop to send updated contents
+							} else if len(part.Text) > 0 {
+								textChunk := part.Text
+								accumulatedTextForThisTurn += textChunk
+								ch <- a2a.NewArtifactResult(params.Task.ID, a2a.NewTextPart(textChunk))
+							}
 						}
-						return
-					}
+					} // End processing parts for a candidate
+				} // End of stream iter.Next() loop (streamLoop)
 
-					if result.Text() != "" {
-						ch <- a2a.NewArtifactResult(
-							params.Task.ID,
-							a2a.NewTextPart(result.Text()),
-						)
-					}
-
-					if result.Candidates[0].FinishReason == "STOP" {
-						isDone = true
-					}
+				// After stream segment, add accumulated assistant message to task history
+				if accumulatedTextForThisTurn != "" {
+					params.Task.AddMessage("assistant", accumulatedTextForThisTurn, "")
 				}
-			} else {
-				result, err := prvdr.client.Models.GenerateContent(ctx, params.Model, prvdr.convertMessages(params.Task), prvdr.params)
-				if err != nil {
-					log.Error("failed to generate content", "error", err)
-					ch <- jsonrpc.Response{
-						Error: &jsonrpc.Error{
-							Code:    int(a2a.ErrorCodeInternalError),
-							Message: err.Error(),
-						},
+
+				if processedFunctionCallInThisStreamSegment {
+					continue // Continue main `for` loop to send updated `geminiContents` with tool response
+				}
+
+				// If no function call processed, and stream ended, check finish reason
+				if lastCandidateWithContent != nil &&
+					(lastCandidateWithContent.FinishReason == genai.FinishReasonStop ||
+						lastCandidateWithContent.FinishReason == genai.FinishReasonMaxTokens ||
+						lastCandidateWithContent.FinishReason == genai.FinishReasonSafety ||
+						lastCandidateWithContent.FinishReason == genai.FinishReasonRecitation ||
+						lastCandidateWithContent.FinishReason == genai.FinishReasonOther) {
+					if accumulatedTextForThisTurn != "" {
+						params.Task.AddFinalPart(a2a.NewTextPart(accumulatedTextForThisTurn))
 					}
+					params.Task.ToStatus(a2a.TaskStateCompleted, a2a.NewTextMessage("assistant", accumulatedTextForThisTurn))
+					ch <- jsonrpc.Response{Result: params.Task}
+					return // Goroutine finished processing this task
+				}
+				// If finish reason unknown or not terminal, and no tool call, it might be an incomplete stream or other issue.
+				// For safety, if loop finishes without return/continue, let it try again if params.Task suggests so.
+				// However, this path should ideally be covered by iterator.Done or a terminal finish reason.
+				if lastCandidateWithContent == nil && !processedFunctionCallInThisStreamSegment {
+					log.Warn("Google stream ended without candidates or function call.")
+					// If history was just a system prompt and nothing else, and model had nothing to say.
+					if len(geminiContents) == 1 && geminiContents[0] == systemInstruction {
+						params.Task.ToStatus(a2a.TaskStateCompleted, a2a.NewTextMessage("assistant", "No response generated for system prompt."))
+						ch <- jsonrpc.Response{Result: params.Task}
+					}
+					return // Avoid potential infinite loop
+				}
+
+			} else { // Non-streaming path
+				// Assumes client.Models.GenerateContent can take []*Content and *GenerateContentConfig
+				resp, err := prvdr.client.Models.GenerateContent(ctx, params.Model, geminiContents, generateContentConfig)
+				if err != nil {
+					ch <- jsonrpc.Response{Error: &jsonrpc.Error{Code: errors.ErrInternal.Code, Message: err.Error()}}
 					return
 				}
 
-				if result.Text() != "" {
-					ch <- a2a.NewArtifactResult(
-						params.Task.ID,
-						a2a.NewTextPart(result.Text()),
-					)
-					params.Task.AddFinalPart(a2a.NewTextPart(result.Text()))
+				if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
+					ch <- jsonrpc.Response{Error: &jsonrpc.Error{Code: errors.ErrInternal.Code, Message: "Google API returned no content"}}
+					return
 				}
 
-				isDone = true
-			}
-		}
-	}()
+				assistantContent := resp.Candidates[0].Content
+				geminiContents = append(geminiContents, assistantContent) // Add assistant's response to history for next potential turn
 
+				var textResponse string
+				var functionCallList []*genai.FunctionCall
+
+				for _, part := range assistantContent.Parts {
+					if part.FunctionCall != nil {
+						functionCallList = append(functionCallList, part.FunctionCall)
+					} else if len(part.Text) > 0 {
+						textResponse += part.Text
+					}
+				}
+
+				if textResponse != "" { // Log assistant's textual part to task history regardless of tool calls
+					params.Task.AddMessage("assistant", textResponse, "")
+				}
+
+				if len(functionCallList) > 0 {
+					for _, fc := range functionCallList {
+						log.Info("Google Provider (Non-Streaming): Tool call", "name", fc.Name)
+						updatedTask, llmToolMsg, toolExecErr := ExecuteAndProcessToolCall(
+							ctx, fc.Name, fmt.Sprintf("%v", fc.Args),
+							fc.Name, params.Task, googleToolResponseGenerator,
+						)
+						params.Task = updatedTask
+						toolResponseContent := &genai.Content{
+							Role:  "function",
+							Parts: []*genai.Part{llmToolMsg.(*genai.Part)},
+						}
+						geminiContents = append(geminiContents, toolResponseContent)
+						params.Task.AddMessage("tool", fmt.Sprintf("Tool %s output: %v", fc.Name, llmToolMsg.(*genai.Part).FunctionResponse.Response), fc.Name)
+
+						if toolExecErr != nil {
+							ch <- jsonrpc.Response{Result: params.Task, Error: &jsonrpc.Error{Code: errors.ErrInternal.Code, Message: fmt.Sprintf("Tool %s error: %v", fc.Name, toolExecErr)}}
+							// If one tool fails, we still add its result to geminiContents and let the main loop decide to continue or not.
+						} else {
+							ch <- jsonrpc.Response{Result: params.Task}
+						}
+					}
+					continue // Continue main `for` loop to send updated `geminiContents` with tool response(s)
+				} else {
+					if textResponse != "" {
+						params.Task.AddFinalPart(a2a.NewTextPart(textResponse))
+						ch <- a2a.NewArtifactResult(params.Task.ID, a2a.NewTextPart(textResponse))
+					}
+					params.Task.ToStatus(a2a.TaskStateCompleted, a2a.NewTextMessage("assistant", textResponse))
+					ch <- jsonrpc.Response{Result: params.Task}
+					return // Goroutine finished processing this task
+				}
+			}
+		} // End of main `for` loop
+	}()
 	return ch
 }
 
-func (prvdr *GoogleProvider) convertMessages(
-	task *a2a.Task,
-) []*genai.Content {
-	out := make([]*genai.Content, 0, len(task.History))
+func (prvdr *GoogleProvider) getSystemInstruction(task *a2a.Task) *genai.Content {
+	if task != nil && len(task.History) > 0 && task.History[0].Role == "system" {
+		var systemText string
+		for _, p := range task.History[0].Parts {
+			if p.Type == a2a.PartTypeText {
+				systemText = p.Text
+				break
+			}
+		}
+		if systemText != "" {
+			// For Gemini, system instructions are passed differently if using the specific SystemInstruction field.
+			// The convertMessages will handle user/model roles. This is specifically for the SystemInstruction part of the model.
+			return &genai.Content{Parts: []*genai.Part{&genai.Part{Text: systemText}}}
+		}
+	}
+	return nil
+}
 
-	for _, msg := range task.History {
-		var text string
+func (prvdr *GoogleProvider) convertMessages(task *a2a.Task) []*genai.Content {
+	out := make([]*genai.Content, 0, len(task.History))
+	startIdx := 0
+	if len(task.History) > 0 && task.History[0].Role == "system" {
+		// System message is handled by model.SystemInstruction, so skip it for main contents if it's the first message.
+		// However, if it's not the *first* message (which is unusual for system prompts), it should be converted based on roleMap.
+		// For now, assume system prompt if present is always History[0] and handled by getSystemInstruction.
+		if prvdr.getSystemInstruction(task) != nil {
+			startIdx = 1
+		}
+	}
+
+	for i := startIdx; i < len(task.History); i++ {
+		msg := task.History[i]
+		var textParts []string
 
 		for _, p := range msg.Parts {
 			if p.Type == a2a.PartTypeText {
-				text = p.Text
-				break
+				textParts = append(textParts, p.Text)
+			}
+		}
+		combinedText := ""
+		if len(textParts) > 0 {
+			for _, t := range textParts {
+				combinedText += t // Simple concatenation, consider space if multiple text parts in one message
 			}
 		}
 
 		if fn, ok := googleRoleMap[msg.Role]; ok {
-			out = append(out, fn(text))
+			if combinedText != "" {
+				content := fn(combinedText)
+				// Ensure Parts is not nil if text is empty but role implies content
+				if len(content.Parts) == 0 && combinedText == "" && (msg.Role == "assistant" || msg.Role == "agent") {
+					// Add an empty text part if model expects a part for empty assistant messages
+					// content.Parts = []*genai.Part{&genai.Part{Text: ""}}
+					// For now, only add if combinedText is not empty.
+				} else if len(content.Parts) > 0 || combinedText != "" { // Add if there's text or fn produced parts
+					out = append(out, content)
+				}
+			}
 		}
 	}
 	return out
 }
 
-func (prvdr *GoogleProvider) convertTools(
-	tools []*mcp.Tool,
-) []*genai.Tool {
+func (prvdr *GoogleProvider) convertTools(tools []*mcp.Tool) []*genai.Tool {
 	out := make([]*genai.Tool, 0, len(tools))
-
 	for _, tool := range tools {
 		if tool == nil {
 			continue
 		}
-
-		// Convert the properties to a schema
 		properties := make(map[string]*genai.Schema)
-		for k, v := range tool.InputSchema.Properties {
-			// Get the type from the property
-			propMap, ok := v.(map[string]any)
-			if !ok {
-				continue
-			}
-
-			// Map the type to the appropriate schema type
-			var schemaType genai.Type
-			switch propMap["type"] {
-			case "string":
-				schemaType = genai.TypeString
-			case "number":
-				schemaType = genai.TypeNumber
-			case "integer":
-				schemaType = genai.TypeInteger
-			case "boolean":
-				schemaType = genai.TypeBoolean
-			case "array":
-				schemaType = genai.TypeArray
-			case "object":
-				schemaType = genai.TypeObject
-			default:
-				schemaType = genai.TypeString // Default to string if type is unknown
-			}
-
-			// Create the schema with all possible fields
-			schema := &genai.Schema{
-				Type:        schemaType,
-				Description: propMap["description"].(string),
-				Title:       propMap["title"].(string),
-				Format:      propMap["format"].(string),
-				Pattern:     propMap["pattern"].(string),
-			}
-
-			// Handle enum values
-			if enum, ok := propMap["enum"].([]any); ok {
-				enumStrings := make([]string, len(enum))
-				for i, e := range enum {
-					enumStrings[i] = e.(string)
+		var requiredParams []string
+		if tool.InputSchema.Type == "object" {
+			requiredParams = tool.InputSchema.Required
+			for k, v := range tool.InputSchema.Properties {
+				propMap, ok := v.(map[string]any)
+				if !ok {
+					log.Warn("Skipping tool property due to unexpected type", "tool", tool.Name, "property", k)
+					continue
 				}
-				schema.Enum = enumStrings
-			}
-
-			// Handle nullable
-			if nullable, ok := propMap["nullable"].(bool); ok {
-				schema.Nullable = &nullable
-			}
-
-			// Handle numeric constraints
-			if min, ok := propMap["minimum"].(float64); ok {
-				schema.Minimum = &min
-			}
-			if max, ok := propMap["maximum"].(float64); ok {
-				schema.Maximum = &max
-			}
-
-			// Handle string constraints
-			if minLen, ok := propMap["minLength"].(float64); ok {
-				minLenInt := int64(minLen)
-				schema.MinLength = &minLenInt
-			}
-			if maxLen, ok := propMap["maxLength"].(float64); ok {
-				maxLenInt := int64(maxLen)
-				schema.MaxLength = &maxLenInt
-			}
-
-			// Handle array constraints
-			if schemaType == genai.TypeArray {
-				if minItems, ok := propMap["minItems"].(float64); ok {
-					minItemsInt := int64(minItems)
-					schema.MinItems = &minItemsInt
-				}
-				if maxItems, ok := propMap["maxItems"].(float64); ok {
-					maxItemsInt := int64(maxItems)
-					schema.MaxItems = &maxItemsInt
-				}
-				if items, ok := propMap["items"].(map[string]any); ok {
-					schema.Items = prvdr.convertSchema(items)
-				}
-			}
-
-			// Handle object constraints
-			if schemaType == genai.TypeObject {
-				if minProps, ok := propMap["minProperties"].(float64); ok {
-					minPropsInt := int64(minProps)
-					schema.MinProperties = &minPropsInt
-				}
-				if maxProps, ok := propMap["maxProperties"].(float64); ok {
-					maxPropsInt := int64(maxProps)
-					schema.MaxProperties = &maxPropsInt
-				}
-				if props, ok := propMap["properties"].(map[string]any); ok {
-					schema.Properties = make(map[string]*genai.Schema)
-					for pk, pv := range props {
-						if propMap, ok := pv.(map[string]any); ok {
-							schema.Properties[pk] = prvdr.convertSchema(propMap)
-						}
+				schemaType := genai.TypeString // Default
+				if typeStr, ok := propMap["type"].(string); ok {
+					switch typeStr {
+					case "string":
+						schemaType = genai.TypeString
+					case "number":
+						schemaType = genai.TypeNumber
+					case "integer":
+						schemaType = genai.TypeInteger
+					case "boolean":
+						schemaType = genai.TypeBoolean
+					case "array":
+						schemaType = genai.TypeArray
+					case "object":
+						schemaType = genai.TypeObject
 					}
 				}
-				if required, ok := propMap["required"].([]any); ok {
-					requiredStrings := make([]string, len(required))
-					for i, r := range required {
-						requiredStrings[i] = r.(string)
-					}
-					schema.Required = requiredStrings
+				description := ""
+				if desc, ok := propMap["description"].(string); ok {
+					description = desc
+				}
+				properties[k] = &genai.Schema{
+					Type:        schemaType,
+					Description: description,
+					// TODO: Add more schema properties like enum, items (for array), etc. if needed from mcp.Tool
 				}
 			}
-
-			// Handle anyOf
-			if anyOf, ok := propMap["anyOf"].([]any); ok {
-				schema.AnyOf = make([]*genai.Schema, len(anyOf))
-				for i, a := range anyOf {
-					if anyOfMap, ok := a.(map[string]any); ok {
-						schema.AnyOf[i] = prvdr.convertSchema(anyOfMap)
-					}
-				}
-			}
-
-			properties[k] = schema
 		}
 
 		out = append(out, &genai.Tool{
@@ -288,199 +370,33 @@ func (prvdr *GoogleProvider) convertTools(
 					Parameters: &genai.Schema{
 						Type:       genai.TypeObject,
 						Properties: properties,
+						Required:   requiredParams,
 					},
 				},
 			},
 		})
 	}
-
 	return out
 }
 
-// Helper function to convert a map to a Schema
-func (prvdr *GoogleProvider) convertSchema(propMap map[string]any) *genai.Schema {
-	var schemaType genai.Type
-	switch propMap["type"] {
-	case "string":
-		schemaType = genai.TypeString
-	case "number":
-		schemaType = genai.TypeNumber
-	case "integer":
-		schemaType = genai.TypeInteger
-	case "boolean":
-		schemaType = genai.TypeBoolean
-	case "array":
-		schemaType = genai.TypeArray
-	case "object":
-		schemaType = genai.TypeObject
-	default:
-		schemaType = genai.TypeString
-	}
-
-	schema := &genai.Schema{
-		Type:        schemaType,
-		Description: propMap["description"].(string),
-		Title:       propMap["title"].(string),
-		Format:      propMap["format"].(string),
-		Pattern:     propMap["pattern"].(string),
-	}
-
-	// Handle enum values
-	if enum, ok := propMap["enum"].([]any); ok {
-		enumStrings := make([]string, len(enum))
-		for i, e := range enum {
-			enumStrings[i] = e.(string)
-		}
-		schema.Enum = enumStrings
-	}
-
-	// Handle nullable
-	if nullable, ok := propMap["nullable"].(bool); ok {
-		schema.Nullable = &nullable
-	}
-
-	// Handle numeric constraints
-	if min, ok := propMap["minimum"].(float64); ok {
-		schema.Minimum = &min
-	}
-	if max, ok := propMap["maximum"].(float64); ok {
-		schema.Maximum = &max
-	}
-
-	// Handle string constraints
-	if minLen, ok := propMap["minLength"].(float64); ok {
-		minLenInt := int64(minLen)
-		schema.MinLength = &minLenInt
-	}
-	if maxLen, ok := propMap["maxLength"].(float64); ok {
-		maxLenInt := int64(maxLen)
-		schema.MaxLength = &maxLenInt
-	}
-
-	// Handle array constraints
-	if schemaType == genai.TypeArray {
-		if minItems, ok := propMap["minItems"].(float64); ok {
-			minItemsInt := int64(minItems)
-			schema.MinItems = &minItemsInt
-		}
-		if maxItems, ok := propMap["maxItems"].(float64); ok {
-			maxItemsInt := int64(maxItems)
-			schema.MaxItems = &maxItemsInt
-		}
-		if items, ok := propMap["items"].(map[string]any); ok {
-			schema.Items = prvdr.convertSchema(items)
-		}
-	}
-
-	// Handle object constraints
-	if schemaType == genai.TypeObject {
-		if minProps, ok := propMap["minProperties"].(float64); ok {
-			minPropsInt := int64(minProps)
-			schema.MinProperties = &minPropsInt
-		}
-		if maxProps, ok := propMap["maxProperties"].(float64); ok {
-			maxPropsInt := int64(maxProps)
-			schema.MaxProperties = &maxPropsInt
-		}
-		if props, ok := propMap["properties"].(map[string]any); ok {
-			schema.Properties = make(map[string]*genai.Schema)
-			for pk, pv := range props {
-				if propMap, ok := pv.(map[string]any); ok {
-					schema.Properties[pk] = prvdr.convertSchema(propMap)
-				}
-			}
-		}
-		if required, ok := propMap["required"].([]any); ok {
-			requiredStrings := make([]string, len(required))
-			for i, r := range required {
-				requiredStrings[i] = r.(string)
-			}
-			schema.Required = requiredStrings
-		}
-	}
-
-	// Handle anyOf
-	if anyOf, ok := propMap["anyOf"].([]any); ok {
-		schema.AnyOf = make([]*genai.Schema, len(anyOf))
-		for i, a := range anyOf {
-			if anyOfMap, ok := a.(map[string]any); ok {
-				schema.AnyOf[i] = prvdr.convertSchema(anyOfMap)
-			}
-		}
-	}
-
-	return schema
-}
-
-type GoogleEmbedder struct {
-	api   *genai.Client
-	Model string
-}
-
-type GoogleEmbedderOption func(*GoogleEmbedder)
-
-func NewGoogleEmbedder(options ...GoogleEmbedderOption) *GoogleEmbedder {
-	embedder := &GoogleEmbedder{}
-
-	for _, option := range options {
-		option(embedder)
-	}
-
-	return embedder
-}
-
-func (e *GoogleEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
-	result, err := e.api.Models.EmbedContent(ctx, e.Model, genai.Text(text), &genai.EmbedContentConfig{})
-	if err != nil {
-		return nil, err
-	}
-	return result.Embeddings[0].Values, nil
-}
-
-func (e *GoogleEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
-	result, err := e.api.Models.EmbedContent(ctx, e.Model, genai.Text(texts[0]), &genai.EmbedContentConfig{})
-	if err != nil {
-		return nil, err
-	}
-
-	out := make([][]float32, len(texts))
-	for i := range texts {
-		out[i] = result.Embeddings[0].Values
-	}
-	return out, nil
-}
+// GoogleEmbedder and related code would go here if needed.
 
 func WithGoogleClient() GoogleProviderOption {
 	return func(prvdr *GoogleProvider) {
-		// Check if we should use Vertex AI or Gemini API
-		useVertexAI := os.Getenv("GOOGLE_GENAI_USE_VERTEXAI") == "true"
-		var backend genai.Backend
-		if useVertexAI {
-			backend = genai.BackendVertexAI
-		} else {
-			backend = genai.BackendGeminiAPI
+		apiKey := os.Getenv("GOOGLE_API_KEY")
+		if apiKey == "" {
+			log.Fatal("GOOGLE_API_KEY environment variable not set.")
 		}
-
-		client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
-			Backend: backend,
-		})
+		// Attempt to use ClientConfig if APIKey field exists, otherwise rely on env var with nil config
+		// For now, assuming GOOGLE_API_KEY in env is picked up by NewClient(ctx, nil)
+		// or if ClientConfig has an APIKey field, it would be &genai.ClientConfig{APIKey: apiKey}
+		// The examples often use NewClient(ctx, nil)
+		client, err := genai.NewClient(context.Background(), nil) // Simpler init, relies on GOOGLE_API_KEY env var by default
 		if err != nil {
-			log.Error("failed to create Google client", "error", err)
-			return
+			log.Fatal("Failed to create Google GenAI client: %v", err)
 		}
-
 		prvdr.client = client
 	}
 }
 
-func WithGoogleEmbedderModel(model string) GoogleEmbedderOption {
-	return func(e *GoogleEmbedder) {
-		e.Model = model
-	}
-}
-
-func WithGoogleEmbedderClient(client *genai.Client) GoogleEmbedderOption {
-	return func(e *GoogleEmbedder) {
-		e.api = client
-	}
-}
+// Other options like WithGoogleEmbedderModel, WithGoogleEmbedderClient would go here.

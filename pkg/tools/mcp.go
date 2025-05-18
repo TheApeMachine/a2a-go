@@ -20,6 +20,10 @@ func Acquire(id string) (*mcp.Tool, error) {
 		return NewDockerTool(), nil
 	case "web-browsing":
 		return NewBrowserTool(), nil
+	case "catalog":
+		return NewCatalogTool(), nil
+	case "management":
+		return NewDelegateTool(), nil
 	}
 
 	return nil, fmt.Errorf("tool not found: %s", id)
@@ -28,16 +32,16 @@ func Acquire(id string) (*mcp.Tool, error) {
 func NewExecutor(
 	ctx context.Context, name, args string,
 ) (string, error) {
-	url := viper.GetViper().GetString("endpoints." + name)
+	url := viper.GetViper().GetString("endpoints." + name + "tool")
 	sseTransport, err := transport.NewSSE(url + "/sse")
 
 	if err != nil {
-		log.Error("failed to create SSE transport", "error", err)
+		log.Error("failed to create SSE transport", "error", err, "url", url)
 		return "", fmt.Errorf("failed to create SSE transport: %w", err)
 	}
 
 	if err := sseTransport.Start(ctx); err != nil {
-		log.Error("failed to start SSE transport", "error", err)
+		log.Error("failed to start SSE transport", "error", err, "url", url)
 		return "", fmt.Errorf("failed to start SSE transport: %w", err)
 	}
 

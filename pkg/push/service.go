@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
-	"github.com/theapemachine/a2a-go/pkg/types"
+	"github.com/theapemachine/a2a-go/pkg/a2a"
 )
 
 // Service represents a push notification service
 type Service struct {
 	mu            sync.RWMutex
-	configs       map[string]*types.TaskPushNotificationConfig
+	configs       map[string]*a2a.TaskPushNotificationConfig
 	clients       map[string]*http.Client
 	retryQueue    chan *notificationRequest
 	maxRetries    int
@@ -34,7 +34,7 @@ type notificationRequest struct {
 // NewService creates a new push notification service
 func NewService() *Service {
 	service := &Service{
-		configs:       make(map[string]*types.TaskPushNotificationConfig),
+		configs:       make(map[string]*a2a.TaskPushNotificationConfig),
 		clients:       make(map[string]*http.Client),
 		retryQueue:    make(chan *notificationRequest, 1000),
 		maxRetries:    3,
@@ -48,7 +48,7 @@ func NewService() *Service {
 }
 
 // SetConfig sets or updates the push notification configuration for a task
-func (s *Service) SetConfig(config *types.TaskPushNotificationConfig) {
+func (s *Service) SetConfig(config *a2a.TaskPushNotificationConfig) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -59,7 +59,7 @@ func (s *Service) SetConfig(config *types.TaskPushNotificationConfig) {
 }
 
 // GetConfig retrieves the push notification configuration for a task
-func (s *Service) GetConfig(taskID string) (*types.TaskPushNotificationConfig, bool) {
+func (s *Service) GetConfig(taskID string) (*a2a.TaskPushNotificationConfig, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

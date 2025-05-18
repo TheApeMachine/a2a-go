@@ -3,15 +3,14 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 
-	"github.com/charmbracelet/log"
 	cohere "github.com/cohere-ai/cohere-go/v2"
 	cohereclient "github.com/cohere-ai/cohere-go/v2/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/theapemachine/a2a-go/pkg/a2a"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
-	"github.com/theapemachine/a2a-go/pkg/tools"
 	"github.com/theapemachine/a2a-go/pkg/utils"
 )
 
@@ -51,6 +50,13 @@ func (prvdr *CohereProvider) Generate(
 ) chan jsonrpc.Response {
 	ch := make(chan jsonrpc.Response)
 
+	// Cohere-specific LLM tool response generator function
+	cohereToolResponseGenerator := func(toolCallID string, content string, isError bool) any {
+		// For Cohere, the tool result (or error string) is directly appended to the chat history/message.
+		// The toolCallID and isError are implicitly part of the `content` string if formatted that way.
+		return content
+	}
+
 	go func() {
 		defer close(ch)
 
@@ -58,22 +64,25 @@ func (prvdr *CohereProvider) Generate(
 		maxTokens := int(params.MaxTokens)
 		temperature := params.Temperature
 
-		prvdr.params = &cohere.ChatRequest{
-			Model:         &model,
-			Message:       prvdr.convertMessages(params.Task),
-			Tools:         prvdr.convertTools(params.Tools),
-			MaxTokens:     &maxTokens,
-			Temperature:   &temperature,
-			StopSequences: params.Stop,
-		}
+		// Initialize prvdr.params for the first call, or if it doesn't persist across tool calls.
+		// Cohere's ChatRequest takes the whole message string, so it's built up.
+		currentMessage := prvdr.convertMessages(params.Task) // Start with history
 
 		isDone := false
-
 		for !isDone {
+			prvdr.params = &cohere.ChatRequest{
+				Model:         &model,
+				Message:       currentMessage, // Built-up message string
+				Tools:         prvdr.convertTools(params.Tools),
+				MaxTokens:     &maxTokens,
+				Temperature:   &temperature,
+				StopSequences: params.Stop,
+			}
+
 			if params.Stream {
 				streamParams := &cohere.ChatStreamRequest{
 					Model:         prvdr.params.Model,
-					Message:       prvdr.params.Message,
+					Message:       prvdr.params.Message, // Use current built-up message
 					Tools:         prvdr.params.Tools,
 					MaxTokens:     prvdr.params.MaxTokens,
 					Temperature:   prvdr.params.Temperature,
@@ -82,123 +91,122 @@ func (prvdr *CohereProvider) Generate(
 
 				stream, err := prvdr.client.ChatStream(ctx, streamParams)
 				if err != nil {
-					log.Error("failed to create chat stream", "error", err)
-					ch <- jsonrpc.Response{
-						Error: &jsonrpc.Error{
-							Code:    int(a2a.ErrorCodeInternalError),
-							Message: err.Error(),
-						},
-					}
-					return
+					ch <- jsonrpc.Response{Error: &jsonrpc.Error{Code: int(a2a.ErrorCodeInternalError), Message: err.Error()}}
+					return // Fatal error for stream setup
 				}
+
+				var streamTextResponse string
+				var streamCalledTools []*cohere.ToolCall
 
 				for {
-					message, err := stream.Recv()
-					if err != nil {
-						if err.Error() == "EOF" {
-							break
+					streamEvent, recvErr := stream.Recv()
+					if recvErr != nil {
+						if recvErr.Error() == "EOF" {
+							break // End of stream
 						}
-						log.Error("stream error", "error", err)
-						ch <- jsonrpc.Response{
-							Error: &jsonrpc.Error{
-								Code:    int(a2a.ErrorCodeInternalError),
-								Message: err.Error(),
-							},
-						}
-						return
+						ch <- jsonrpc.Response{Error: &jsonrpc.Error{Code: int(a2a.ErrorCodeInternalError), Message: recvErr.Error()}}
+						streamTextResponse = ""
+						streamCalledTools = nil
+						break
 					}
 
-					if message.GetTextGeneration() != nil {
-						ch <- a2a.NewArtifactResult(
-							params.Task.ID,
-							a2a.NewTextPart(message.GetTextGeneration().GetText()),
-						)
+					if tg := streamEvent.GetTextGeneration(); tg != nil {
+						textChunk := tg.GetText()
+						streamTextResponse += textChunk
+						ch <- a2a.NewArtifactResult(params.Task.ID, a2a.NewTextPart(textChunk))
 					}
 
-					if message.GetToolCallsGeneration() != nil {
-						for _, toolCall := range message.GetToolCallsGeneration().ToolCalls {
-							err := prvdr.handleToolCall(ctx, toolCall, ch, params.Task)
-							if err != nil {
-								log.Error("error handling tool call", "error", err)
-								continue
-							}
-						}
+					if tcg := streamEvent.GetToolCallsGeneration(); tcg != nil {
+						streamCalledTools = append(streamCalledTools, tcg.GetToolCalls()...)
+					}
+
+					if streamEvent.EventType == "stream-end" {
+						break // StreamEnd event signals the end of the current LLM turn's stream.
 					}
 				}
-			} else {
+				// Stream finished for this turn. Process collected tool calls.
+				currentMessage += streamTextResponse // Add assistant's text to overall message for next turn
+				params.Task.AddMessage("assistant", streamTextResponse, "")
+
+				if len(streamCalledTools) > 0 {
+					for _, toolCall := range streamCalledTools {
+						toolParamsJSON, _ := json.Marshal(toolCall.Parameters)
+						updatedTask, llmToolResultStr, toolExecErr := ExecuteAndProcessToolCall(
+							ctx,
+							toolCall.Name,
+							string(toolParamsJSON),
+							"", // Cohere doesn't use tool_call_id in its response like OpenAI
+							params.Task,
+							cohereToolResponseGenerator,
+						)
+						params.Task = updatedTask
+						currentMessage += "\n" + llmToolResultStr.(string)                       // Append tool result to message for next LLM call
+						params.Task.AddMessage("tool", llmToolResultStr.(string), toolCall.Name) // Log tool interaction in task history
+
+						if toolExecErr != nil {
+							ch <- jsonrpc.Response{Result: params.Task, Error: &jsonrpc.Error{Code: int(a2a.ErrorCodeInternalError), Message: fmt.Sprintf("Error executing tool %s: %v", toolCall.Name, toolExecErr)}}
+						} else {
+							ch <- jsonrpc.Response{Result: params.Task}
+						}
+					}
+					isDone = false // Need to make another call to LLM with tool results
+				} else {
+					if streamTextResponse != "" { // Final text from stream if no tools were called
+						params.Task.AddFinalPart(a2a.NewTextPart(streamTextResponse))
+						params.Task.ToStatus(a2a.TaskStateCompleted, a2a.NewTextMessage("assistant", streamTextResponse))
+						ch <- jsonrpc.Response{Result: params.Task}
+					}
+					isDone = true
+				}
+
+			} else { // Non-streaming path
 				response, err := prvdr.client.Chat(ctx, prvdr.params)
 				if err != nil {
-					log.Error("failed to generate chat response", "error", err)
-					ch <- jsonrpc.Response{
-						Error: &jsonrpc.Error{
-							Code:    int(a2a.ErrorCodeInternalError),
-							Message: err.Error(),
-						},
-					}
-					return
+					ch <- jsonrpc.Response{Error: &jsonrpc.Error{Code: int(a2a.ErrorCodeInternalError), Message: err.Error()}}
+					return // Fatal error
 				}
 
-				if response.GetText() != "" {
-					ch <- a2a.NewArtifactResult(
-						params.Task.ID,
-						a2a.NewTextPart(response.GetText()),
-					)
-					params.Task.AddFinalPart(a2a.NewTextPart(response.GetText()))
-				}
+				assistantResponseText := response.GetText()
+				currentMessage += "\n" + assistantResponseText // Add assistant's text to overall message
+				params.Task.AddMessage("assistant", assistantResponseText, "")
 
-				if response.GetToolCalls() != nil {
-					for _, toolCall := range response.GetToolCalls() {
-						err := prvdr.handleToolCall(ctx, toolCall, ch, params.Task)
-						if err != nil {
-							log.Error("error handling tool call", "error", err)
-							continue
+				llmToolCalls := response.GetToolCalls()
+				if len(llmToolCalls) > 0 {
+					for _, toolCall := range llmToolCalls {
+						toolParamsJSON, _ := json.Marshal(toolCall.Parameters)
+						updatedTask, llmToolResultStr, toolExecErr := ExecuteAndProcessToolCall(
+							ctx,
+							toolCall.Name,
+							string(toolParamsJSON),
+							"",
+							params.Task,
+							cohereToolResponseGenerator,
+						)
+						params.Task = updatedTask
+						currentMessage += "\n" + llmToolResultStr.(string)                       // Append tool result for next LLM call
+						params.Task.AddMessage("tool", llmToolResultStr.(string), toolCall.Name) // Log tool interaction
+
+						if toolExecErr != nil {
+							ch <- jsonrpc.Response{Result: params.Task, Error: &jsonrpc.Error{Code: int(a2a.ErrorCodeInternalError), Message: fmt.Sprintf("Error executing tool %s: %v", toolCall.Name, toolExecErr)}}
+						} else {
+							ch <- jsonrpc.Response{Result: params.Task}
 						}
 					}
+					isDone = false // Loop again to send tool results to Cohere
+				} else {
+					if assistantResponseText != "" { // Final text response if no tools
+						params.Task.AddFinalPart(a2a.NewTextPart(assistantResponseText))
+						ch <- a2a.NewArtifactResult(params.Task.ID, a2a.NewTextPart(assistantResponseText))
+					}
+					params.Task.ToStatus(a2a.TaskStateCompleted, a2a.NewTextMessage("assistant", assistantResponseText))
+					ch <- jsonrpc.Response{Result: params.Task}
+					isDone = true
 				}
-
-				isDone = true
 			}
 		}
 	}()
 
 	return ch
-}
-
-func (prvdr *CohereProvider) handleToolCall(
-	ctx context.Context,
-	toolCall *cohere.ToolCall,
-	out chan jsonrpc.Response,
-	task *a2a.Task,
-) error {
-	params, err := json.Marshal(toolCall.Parameters)
-	if err != nil {
-		return err
-	}
-
-	results, err := tools.NewExecutor(
-		ctx, toolCall.Name, string(params),
-	)
-
-	if err != nil {
-		log.Error("error executing tool", "error", err)
-
-		prvdr.params.Message = prvdr.params.Message + "\n" + err.Error()
-
-		return err
-	}
-
-	prvdr.params.Message = prvdr.params.Message + "\n" + results
-
-	out <- jsonrpc.Response{
-		Result: a2a.TaskStatusUpdateResult{
-			ID:       task.ID,
-			Status:   a2a.TaskStatus{State: a2a.TaskStateWorking},
-			Final:    false,
-			Metadata: map[string]any{},
-		},
-	}
-
-	return nil
 }
 
 func (prvdr *CohereProvider) convertMessages(

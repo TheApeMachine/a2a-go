@@ -12,7 +12,6 @@ import (
 	"github.com/ollama/ollama/api"
 	"github.com/theapemachine/a2a-go/pkg/a2a"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
-	"github.com/theapemachine/a2a-go/pkg/tools"
 )
 
 /*
@@ -88,6 +87,16 @@ func (prvdr *OllamaProvider) Generate(
 ) chan jsonrpc.Response {
 	ch := make(chan jsonrpc.Response)
 
+	// Ollama-specific LLM tool response generator function
+	ollamaToolResponseGenerator := func(toolCallID string, content string, isError bool) any {
+		// toolCallID is not directly used by Ollama's api.Message for tool results in current setup.
+		// The content itself will contain the tool name and result/error.
+		return api.Message{
+			Role:    "system", // Or "tool" if Ollama adds more direct support for tool roles.
+			Content: content,
+		}
+	}
+
 	go func() {
 		defer close(ch)
 
@@ -154,55 +163,95 @@ func (prvdr *OllamaProvider) Generate(
 				isDone = true
 			} else {
 				// For non-streaming with tool support, use ChatRequest
+				// Note: prvdr.params is set inside handleToolCall for Ollama, which is not ideal.
+				// We should prepare messages before the call to prvdr.client.Chat
+				currentMessages := prvdr.convertMessages(params.Task)
+
 				req := &api.ChatRequest{
 					Model:    params.Model,
-					Messages: prvdr.convertMessages(params.Task),
+					Messages: currentMessages, // Use current messages
 					Tools:    prvdr.convertTools(params.Tools),
 					Options:  opts,
 				}
 
-				// Apply schema if present
 				if schema := prvdr.applySchema(params.Task); schema != nil {
 					req.Options["format"] = schema["format"]
 					req.Options["schema"] = schema["schema"]
 				}
 
-				var fullMessage string
+				var fullMessageText string
+				var calledToolNames []string // To keep track of tools called in this iteration
+
 				respFunc := func(resp api.ChatResponse) error {
 					if resp.Message.ToolCalls != nil {
-						for _, toolCall := range resp.Message.ToolCalls {
-							err := prvdr.handleToolCall(ctx, toolCall, ch, params.Task)
-							if err != nil {
-								return err
+						// This part will be tricky as handleToolCall used to modify prvdr.params.Messages directly.
+						// We now need to collect tool calls, execute them, get LLM messages, and then make a new Chat call.
+						// This requires restructuring the non-streaming loop for Ollama if it needs multi-turn tool use.
+						// For now, let's assume a single round of tool calls per explicit Chat call based on current structure.
+
+						// Store assistant's message that requests tool calls.
+						// This message itself might not be added to `currentMessages` if Ollama expects only User/System/Tool messages after tool calls.
+						// For now, we add it to task history if it has content.
+						if resp.Message.Content != "" {
+							params.Task.AddMessage("assistant", resp.Message.Content, "")
+						}
+
+						for _, ollamaToolCall := range resp.Message.ToolCalls {
+							calledToolNames = append(calledToolNames, ollamaToolCall.Function.Name)
+							updatedTask, llmToolMsg, toolExecErr := ExecuteAndProcessToolCall(
+								ctx,
+								ollamaToolCall.Function.Name,
+								ollamaToolCall.Function.Arguments.String(), // Arguments is json.RawMessage
+								"", // Ollama doesn't seem to use a tool_call_id in its response message structure for tools.
+								params.Task,
+								ollamaToolResponseGenerator,
+							)
+							params.Task = updatedTask
+							// The llmToolMsg for Ollama is an api.Message, needs to be added to the *next* Chat request's Messages.
+							// This is where the loop structure of Ollama non-streaming needs careful thought for multi-turn.
+							// For now, we'll send the task update. The next call to Chat will need these tool responses.
+							// We are modifying `req.Messages` for the *next* iteration of the `for !isDone` loop implicitly
+							// by relying on `prvdr.convertMessages(params.Task)` which reads from updated task history.
+							// And by adding the LLM response message (tool result) to task history.
+							llmMessageForHistory := llmToolMsg.(api.Message)
+							params.Task.AddMessage(llmMessageForHistory.Role, llmMessageForHistory.Content, "")
+
+							if toolExecErr != nil {
+								ch <- jsonrpc.Response{
+									Result: params.Task, // Send updated task with error artifact
+									Error:  &jsonrpc.Error{Code: int(a2a.ErrorCodeInternalError), Message: fmt.Sprintf("Error executing tool %s: %v", ollamaToolCall.Function.Name, toolExecErr)},
+								}
+							} else {
+								ch <- jsonrpc.Response{Result: params.Task} // Send updated task with success artifact
 							}
 						}
 					} else {
-						fullMessage += resp.Message.Content
+						fullMessageText += resp.Message.Content
 					}
 					return nil
 				}
 
 				err := prvdr.client.Chat(ctx, req, respFunc)
 				if err != nil {
-					log.Error("failed to generate completion", "error", err)
-					ch <- jsonrpc.Response{
-						Error: &jsonrpc.Error{
-							Code:    int(a2a.ErrorCodeInternalError),
-							Message: err.Error(),
-						},
-					}
-					return
+					ch <- jsonrpc.Response{Error: &jsonrpc.Error{Code: int(a2a.ErrorCodeInternalError), Message: err.Error()}}
+					return // fatal error for this call
 				}
 
-				if fullMessage != "" {
-					ch <- a2a.NewArtifactResult(
-						params.Task.ID,
-						a2a.NewTextPart(fullMessage),
-					)
-					params.Task.AddFinalPart(a2a.NewTextPart(fullMessage))
+				if len(calledToolNames) > 0 {
+					// Tools were called. The next iteration of `for !isDone` will pick up messages from task.History
+					// which now includes the tool results, and make a new call to prvdr.client.Chat.
+					isDone = false
+				} else if fullMessageText != "" {
+					params.Task.AddFinalPart(a2a.NewTextPart(fullMessageText))
+					ch <- a2a.NewArtifactResult(params.Task.ID, a2a.NewTextPart(fullMessageText))
+					params.Task.ToStatus(a2a.TaskStateCompleted, a2a.NewTextMessage("assistant", fullMessageText))
+					ch <- jsonrpc.Response{Result: params.Task} // Send final task state
+					isDone = true
+				} else {
+					// No tools called, no text response, could be an empty response or an error not caught by `err` above.
+					log.Warn("Ollama non-streaming call resulted in no tool calls and no text response.")
+					isDone = true // Avoid infinite loop
 				}
-
-				isDone = true
 			}
 		}
 	}()
@@ -230,52 +279,6 @@ func (prvdr *OllamaProvider) convertMessages(
 		}
 	}
 	return out
-}
-
-func (prvdr *OllamaProvider) handleToolCall(
-	ctx context.Context,
-	toolCall api.ToolCall,
-	out chan jsonrpc.Response,
-	task *a2a.Task,
-) error {
-	results, err := tools.NewExecutor(
-		ctx, toolCall.Function.Name, toolCall.Function.Arguments.String(),
-	)
-
-	if err != nil {
-		log.Error("error executing tool", "error", err)
-
-		// Add error message to conversation
-		prvdr.params.Messages = append(
-			prvdr.params.Messages,
-			api.Message{
-				Role:    "system",
-				Content: fmt.Sprintf("Error executing tool %s: %s", toolCall.Function.Name, err.Error()),
-			},
-		)
-
-		return err
-	}
-
-	// Add tool result to conversation
-	prvdr.params.Messages = append(
-		prvdr.params.Messages,
-		api.Message{
-			Role:    "system",
-			Content: fmt.Sprintf("Tool %s result: %s", toolCall.Function.Name, results),
-		},
-	)
-
-	out <- jsonrpc.Response{
-		Result: a2a.TaskStatusUpdateResult{
-			ID:       task.ID,
-			Status:   a2a.TaskStatus{State: a2a.TaskStateWorking},
-			Final:    false,
-			Metadata: map[string]any{},
-		},
-	}
-
-	return nil
 }
 
 func (prvdr *OllamaProvider) convertTools(

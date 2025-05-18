@@ -11,6 +11,7 @@ import (
 	"github.com/theapemachine/a2a-go/pkg/memory"
 	"github.com/theapemachine/a2a-go/pkg/provider"
 	"github.com/theapemachine/a2a-go/pkg/stores"
+	"github.com/theapemachine/a2a-go/pkg/types"
 )
 
 type TaskManager struct {
@@ -165,7 +166,7 @@ func (manager *TaskManager) SendTask(
 	}
 
 	prvdrParams := provider.NewProviderParams(
-		&task, provider.WithTools(manager.agent.Tools()...),
+		&task, provider.WithTools(types.SkillsToTools(manager.agent.Skills)...),
 	)
 
 	prvdrParams.Stream = false
@@ -197,50 +198,69 @@ Returns:
 */
 func (manager *TaskManager) StreamTask(
 	ctx context.Context,
-	params *a2a.Task,
+	task *a2a.Task,
 ) (chan jsonrpc.Response, *errors.RpcError) {
-	params.ToStatus(
-		a2a.TaskStateWorking,
-		a2a.NewTextMessage(manager.agent.Name, "starting task"),
+	task.ToStatus(a2a.TaskStateWorking,
+		a2a.NewTextMessage(
+			manager.agent.Name,
+			"starting task",
+		),
 	)
 
 	if manager.memory != nil {
-		if err := manager.memory.InjectMemories(ctx, params); err != nil {
-			log.Error("failed to inject memories", "task_id", params.ID, "error", err)
+		if err := manager.memory.InjectMemories(ctx, task); err != nil {
+			log.Error("failed to inject memories", "task_id", task.ID, "error", err)
 		}
 	}
 
-	if createErr := manager.taskStore.Create(ctx, params); createErr != nil {
-		log.Error("failed to create task in store for streaming", "task_id", params.ID, "error", createErr)
-		return nil, createErr
-	}
+	prvdrParams := provider.NewProviderParams(
+		task, provider.WithTools(types.SkillsToTools(manager.agent.Skills)...),
+	)
+
+	prvdrParams.Stream = true
 
 	out := make(chan jsonrpc.Response)
 
 	go func() {
 		defer close(out) // Ensure out is closed when this goroutine exits
 
-		providerChan := manager.provider.Generate(ctx, provider.NewProviderParams(params))
+		// Send the initial task state as the first response
+		initialResponse := jsonrpc.Response{
+			Message: jsonrpc.Message{
+				JSONRPC:           "2.0",
+				MessageIdentifier: jsonrpc.MessageIdentifier{ID: task.ID}, // Use task ID for the stream's initial message ID
+			},
+			Result: task, // params is the *a2a.Task
+		}
+		select {
+		case out <- initialResponse:
+			// Initial task sent
+		case <-ctx.Done():
+			log.Info("StreamTask context done before sending initial task response.", "task_id", task.ID)
+			return
+		}
+
+		providerChan := manager.provider.Generate(ctx, prvdrParams)
 	Loop:
 		for {
 			select {
 			case <-ctx.Done(): // If the overall context for StreamTask is done/cancelled
-				log.Info("StreamTask context done, exiting stream processing.", "task_id", params.ID)
+				log.Info("StreamTask context done, exiting stream processing.", "task_id", task.ID)
 				return
 			case chunk, ok := <-providerChan:
 				if !ok { // providerChan was closed, normal completion of provider stream
 					break Loop
 				}
 
-				if err := manager.handleUpdate(params, chunk); err != nil {
-					log.Error("failed to handle update during stream, stopping stream", "task_id", params.ID, "error", err)
+				if err := manager.handleUpdate(task, chunk); err != nil {
+					log.Error("failed to handle update during stream, stopping stream", "task_id", task.ID, "error", err)
 					// Error logged, goroutine will exit, and 'out' will be closed by defer.
 					// The client will see any chunks sent before this error, then the channel closes.
 					return
 				}
 
-				if updErr := manager.taskStore.Update(ctx, params, manager.agent.Name); updErr != nil {
-					log.Error("failed to persist streaming update", "task_id", params.ID, "error", updErr)
+				if updErr := manager.taskStore.Update(ctx, task, manager.agent.Name); updErr != nil {
+					log.Error("failed to persist streaming update", "task_id", task.ID, "error", updErr)
 				}
 
 				// Send the processed chunk to the output channel
@@ -248,15 +268,15 @@ func (manager *TaskManager) StreamTask(
 				case out <- chunk:
 					// Chunk sent successfully
 				case <-ctx.Done():
-					log.Info("StreamTask context done while sending chunk to output, exiting stream processing.", "task_id", params.ID)
+					log.Info("StreamTask context done while sending chunk to output, exiting stream processing.", "task_id", task.ID)
 					return
 				}
 			}
 		}
 
 		if manager.memory != nil {
-			if err := manager.memory.ExtractMemories(ctx, params); err != nil {
-				log.Error("failed to extract memories for streaming task", "task_id", params.ID, "error", err)
+			if err := manager.memory.ExtractMemories(ctx, task); err != nil {
+				log.Error("failed to extract memories for streaming task", "task_id", task.ID, "error", err)
 			}
 		}
 	}()
