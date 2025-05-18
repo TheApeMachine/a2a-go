@@ -18,12 +18,15 @@ type Client struct {
 
 // Get retrieves a document by ID including its payload.
 func (client *Client) Get(ctx context.Context, id string) (*Document, error) {
-	req, _ := http.NewRequestWithContext(
+	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
 		fmt.Sprintf("%s/collections/%s/points/%s", client.Endpoint, client.Collection, id),
 		nil,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
 
 	resp, err := client.httpClient.Do(req)
 
