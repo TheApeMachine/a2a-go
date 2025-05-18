@@ -64,6 +64,14 @@ func (m *StreamingMetrics) GetMetrics() map[string]any {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	avgEventLatency := 0.0
+	avgProcessingTime := 0.0
+
+	if m.TotalEvents > 0 {
+		avgEventLatency = m.EventLatency.Seconds() / float64(m.TotalEvents)
+		avgProcessingTime = m.ProcessingTime.Seconds() / float64(m.TotalEvents)
+	}
+
 	return map[string]any{
 		"total_connections":   m.TotalConnections,
 		"failed_connections":  m.FailedConnections,
@@ -71,7 +79,7 @@ func (m *StreamingMetrics) GetMetrics() map[string]any {
 		"connection_duration": m.ConnectionDuration.Seconds(),
 		"total_events":        m.TotalEvents,
 		"dropped_events":      m.DroppedEvents,
-		"avg_event_latency":   m.EventLatency.Seconds() / float64(m.TotalEvents),
-		"avg_processing_time": m.ProcessingTime.Seconds() / float64(m.TotalEvents),
+		"avg_event_latency":   avgEventLatency,
+		"avg_processing_time": avgProcessingTime,
 	}
 }
