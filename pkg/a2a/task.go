@@ -78,13 +78,14 @@ the following reasons:
   - Timestamp: makes it easy to get the latest version of a task, since updates do not overwrite,
     but instead follow an append only strategy.
 */
-func (task *Task) Prefix() string {
-	builder := []string{
+func (task *Task) Prefix(optionals ...string) string {
+	builder := optionals
+	builder = append(builder, []string{
 		string(task.Status.State),
 		task.SessionID,
 		task.ID,
 		strconv.FormatInt(time.Now().UnixNano(), 10),
-	}
+	}...)
 
 	return strings.Join(builder, "/")
 }

@@ -22,16 +22,20 @@ import (
 // mockTaskStore is a mock implementation of stores.TaskStore
 type mockTaskStore struct{}
 
-func (m *mockTaskStore) Get(ctx context.Context, s string, i int) (*a2a.Task, *errors.RpcError) {
+func (m *mockTaskStore) Get(ctx context.Context, s string, i int) ([]a2a.Task, *errors.RpcError) {
 	return nil, nil
 }
 func (m *mockTaskStore) Subscribe(ctx context.Context, s string, tasks chan a2a.Task) *errors.RpcError {
 	return nil
 }
-func (m *mockTaskStore) Create(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil }
-func (m *mockTaskStore) Update(ctx context.Context, task *a2a.Task) *errors.RpcError { return nil }
-func (m *mockTaskStore) Delete(ctx context.Context, s string) *errors.RpcError       { return nil }
-func (m *mockTaskStore) Cancel(ctx context.Context, s string) *errors.RpcError       { return nil }
+func (m *mockTaskStore) Create(ctx context.Context, task *a2a.Task, optionals ...string) *errors.RpcError {
+	return nil
+}
+func (m *mockTaskStore) Update(ctx context.Context, task *a2a.Task, optionals ...string) *errors.RpcError {
+	return nil
+}
+func (m *mockTaskStore) Delete(ctx context.Context, s string) *errors.RpcError { return nil }
+func (m *mockTaskStore) Cancel(ctx context.Context, s string) *errors.RpcError { return nil }
 
 // setupAgentDependenciesForTest provides common setup for agent tests.
 // It returns an AgentCard, a configured TaskManager, a CatalogClient pointing to a test server,

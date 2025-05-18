@@ -81,7 +81,7 @@ func (manager *TaskManager) createNewTask(ctx context.Context, params a2a.TaskSe
 	newTask.ToStatus(a2a.TaskStateSubmitted,
 		a2a.NewTextMessage(manager.agent.Name, "task created and submitted"),
 	)
-	if createErr := manager.taskStore.Create(ctx, newTask); createErr != nil {
+	if createErr := manager.taskStore.Create(ctx, newTask, manager.agent.Name); createErr != nil {
 		log.Error("failed to create new task in store", "task_id", params.ID, "error", createErr)
 		return nil, createErr
 	}
@@ -92,29 +92,31 @@ func (manager *TaskManager) createNewTask(ctx context.Context, params a2a.TaskSe
 func (manager *TaskManager) selectTask(
 	ctx context.Context,
 	params a2a.TaskSendParams,
-) (*a2a.Task, *errors.RpcError) {
-	existingTask, getErr := manager.taskStore.Get(ctx, params.ID, 0)
+) ([]a2a.Task, *errors.RpcError) {
+	existingTask, getErr := manager.taskStore.Get(ctx, manager.agent.Name+"/"+params.ID, 0)
 
 	if getErr != nil {
 		if getErr == errors.ErrTaskNotFound {
-			return manager.createNewTask(ctx, params)
+			task, err := manager.createNewTask(ctx, params)
+			return []a2a.Task{*task}, err
 		}
 		log.Error("error getting task from store (not ErrTaskNotFound)", "task_id", params.ID, "error", getErr)
 		return nil, getErr
 	}
 
 	if existingTask == nil {
-		return manager.createNewTask(ctx, params)
+		task, err := manager.createNewTask(ctx, params)
+		return []a2a.Task{*task}, err
 	}
 
-	log.Info("existing task found, appending new message", "task_id", existingTask.ID, "current_status", existingTask.Status.State)
-	existingTask.History = append(existingTask.History, params.Message)
+	log.Info("existing task found, appending new message", "task_id", existingTask[0].ID, "current_status", existingTask[0].Status.State)
+	existingTask[0].History = append(existingTask[0].History, params.Message)
 
-	if updateErr := manager.taskStore.Update(ctx, existingTask); updateErr != nil {
-		log.Error("failed to update existing task in store after appending message", "task_id", existingTask.ID, "error", updateErr)
+	if updateErr := manager.taskStore.Update(ctx, &existingTask[0]); updateErr != nil {
+		log.Error("failed to update existing task in store after appending message", "task_id", existingTask[0].ID, "error", updateErr)
 		return nil, updateErr
 	}
-	log.Info("existing task updated in store", "task_id", existingTask.ID)
+	log.Info("existing task updated in store", "task_id", existingTask[0].ID)
 	return existingTask, nil
 }
 
@@ -128,7 +130,7 @@ func (manager *TaskManager) SendTask(
 		return nil, err
 	}
 
-	task.ToStatus(a2a.TaskStateWorking,
+	task[0].ToStatus(a2a.TaskStateWorking,
 		a2a.NewTextMessage(
 			manager.agent.Name,
 			"starting task",
@@ -136,7 +138,7 @@ func (manager *TaskManager) SendTask(
 	)
 
 	prvdrParams := provider.NewProviderParams(
-		task, provider.WithTools(manager.agent.Tools()...),
+		&task[0], provider.WithTools(manager.agent.Tools()...),
 	)
 
 	prvdrParams.Stream = false
@@ -144,13 +146,13 @@ func (manager *TaskManager) SendTask(
 	for chunk := range manager.provider.Generate(
 		ctx, prvdrParams,
 	) {
-		if err := manager.handleUpdate(task, chunk); err != nil {
+		if err := manager.handleUpdate(&task[0], chunk); err != nil {
 			log.Error("failed to handle update", "error", err)
-			return task, err.(*errors.RpcError)
+			return &task[0], err.(*errors.RpcError)
 		}
 	}
 
-	return task, nil
+	return &task[0], nil
 }
 
 /*
@@ -224,7 +226,11 @@ func (manager *TaskManager) GetTask(
 	id string,
 	historyLength int,
 ) (*a2a.Task, *errors.RpcError) {
-	return manager.taskStore.Get(ctx, id, historyLength)
+	tasks, err := manager.taskStore.Get(ctx, id, historyLength)
+	if err != nil {
+		return nil, err
+	}
+	return &tasks[0], nil
 }
 
 /*

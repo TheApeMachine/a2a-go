@@ -34,7 +34,7 @@ Get retrieves a task by its ID from S3 storage.
 */
 func (store *Store) Get(
 	ctx context.Context, prefix string, historyLength int,
-) (*a2a.Task, *errors.RpcError) {
+) ([]a2a.Task, *errors.RpcError) {
 	buf, err := store.conn.Get(ctx, "tasks", prefix)
 
 	if err != nil {
@@ -42,14 +42,14 @@ func (store *Store) Get(
 		return nil, errors.ErrTaskNotFound
 	}
 
-	var task a2a.Task
+	var tasks []a2a.Task
 
-	if err := json.Unmarshal(buf.Bytes(), &task); err != nil {
+	if err := json.Unmarshal(buf.Bytes(), &tasks); err != nil {
 		log.Error("failed to unmarshal task", "error", err)
 		return nil, errors.ErrInternal.WithMessagef("failed to unmarshal task: %v", err)
 	}
 
-	return &task, nil
+	return tasks, nil
 }
 
 /*
@@ -72,7 +72,7 @@ func (store *Store) Subscribe(
 /*
 Create stores a new task in S3.
 */
-func (store *Store) Create(ctx context.Context, task *a2a.Task) *errors.RpcError {
+func (store *Store) Create(ctx context.Context, task *a2a.Task, optionals ...string) *errors.RpcError {
 	data, err := json.Marshal(task)
 
 	if err != nil {
@@ -80,7 +80,7 @@ func (store *Store) Create(ctx context.Context, task *a2a.Task) *errors.RpcError
 		return errors.ErrInternal.WithMessagef("failed to marshal task: %v", err)
 	}
 
-	if err := store.conn.Put(ctx, "tasks", task.Prefix(), bytes.NewReader(data)); err != nil {
+	if err := store.conn.Put(ctx, "tasks", task.Prefix(optionals...), bytes.NewReader(data)); err != nil {
 		log.Error("failed to store task", "error", err, "task", task)
 		return errors.ErrInternal.WithMessagef("failed to store task: %v", err)
 	}
@@ -91,14 +91,14 @@ func (store *Store) Create(ctx context.Context, task *a2a.Task) *errors.RpcError
 /*
 Update modifies an existing task in S3.
 */
-func (store *Store) Update(ctx context.Context, task *a2a.Task) *errors.RpcError {
+func (store *Store) Update(ctx context.Context, task *a2a.Task, optionals ...string) *errors.RpcError {
 	data, err := json.Marshal(task)
 	if err != nil {
 		log.Error("failed to marshal task", "error", err)
 		return errors.ErrInternal.WithMessagef("failed to marshal task: %v", err)
 	}
 
-	if err := store.conn.Put(ctx, "tasks", task.Prefix(), bytes.NewReader(data)); err != nil {
+	if err := store.conn.Put(ctx, "tasks", task.Prefix(optionals...), bytes.NewReader(data)); err != nil {
 		log.Error("failed to update task", "error", err)
 		return errors.ErrInternal.WithMessagef("failed to update task: %v", err)
 	}
@@ -137,6 +137,10 @@ func (store *Store) Cancel(ctx context.Context, prefix string) *errors.RpcError 
 		return rpcErr
 	}
 
-	task.Status.State = a2a.TaskStateCanceled
-	return store.Update(ctx, task)
+	for _, t := range task {
+		t.Status.State = a2a.TaskStateCanceled
+		store.Update(ctx, &t)
+	}
+
+	return nil
 }

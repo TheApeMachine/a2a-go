@@ -3,6 +3,7 @@ package catalog
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/charmbracelet/log"
 	fiberClient "github.com/gofiber/fiber/v3/client"
@@ -26,7 +27,7 @@ NewCatalogClient creates a new catalog client with the given base URL.
 func NewCatalogClient(baseURL string, opts ...CatalogClientOption) *CatalogClient {
 	client := &CatalogClient{
 		baseURL: baseURL,
-		conn:    fiberClient.New().SetBaseURL(baseURL),
+		conn:    fiberClient.New().SetBaseURL(baseURL).SetTimeout(5 * time.Second),
 	}
 
 	for _, opt := range opts {

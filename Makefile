@@ -30,6 +30,7 @@ server:
 	docker compose logs -f catalog dockertool browsertool ui manager planner researcher developer
 	
 client:
+	docker build -t theapemachine/a2a-go:latest .
 	docker run -it --rm \
 		--name a2a-go-client \
 		--network a2a-go_a2a-network \
