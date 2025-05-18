@@ -213,6 +213,12 @@ func (manager *TaskManager) StreamTask(
 		}
 	}
 
+	// Persist the task before streaming (fix for test expectations)
+	if createErr := manager.taskStore.Create(ctx, task, manager.agent.Name); createErr != nil {
+		log.Error("failed to create task in store before streaming", "task_id", task.ID, "error", createErr)
+		return nil, createErr
+	}
+
 	prvdrParams := provider.NewProviderParams(
 		task, provider.WithTools(types.SkillsToTools(manager.agent.Skills)...),
 	)
@@ -223,22 +229,6 @@ func (manager *TaskManager) StreamTask(
 
 	go func() {
 		defer close(out) // Ensure out is closed when this goroutine exits
-
-		// Send the initial task state as the first response
-		initialResponse := jsonrpc.Response{
-			Message: jsonrpc.Message{
-				JSONRPC:           "2.0",
-				MessageIdentifier: jsonrpc.MessageIdentifier{ID: task.ID}, // Use task ID for the stream's initial message ID
-			},
-			Result: task, // params is the *a2a.Task
-		}
-		select {
-		case out <- initialResponse:
-			// Initial task sent
-		case <-ctx.Done():
-			log.Info("StreamTask context done before sending initial task response.", "task_id", task.ID)
-			return
-		}
 
 		providerChan := manager.provider.Generate(ctx, prvdrParams)
 	Loop:

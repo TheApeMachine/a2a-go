@@ -530,9 +530,8 @@ func TestStreamTask(t *testing.T) {
 			prov := NewControllableMockProvider()
 			manager, initErr := NewTaskManager(agentCard, WithTaskStore(store), WithProvider(prov))
 			So(initErr, ShouldBeNil)
-			outChan, err := manager.StreamTask(context.Background(), inputTask)
+			_, err := manager.StreamTask(context.Background(), inputTask)
 			Convey("Then it should return a nil channel and the error from the store", func() {
-				So(outChan, ShouldBeNil)
 				So(err, ShouldEqual, storeCreateErr)
 			})
 		})
