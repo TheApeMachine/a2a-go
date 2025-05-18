@@ -92,7 +92,7 @@ func (prvdr *OllamaProvider) Generate(
 		// toolCallID is not directly used by Ollama's api.Message for tool results in current setup.
 		// The content itself will contain the tool name and result/error.
 		return api.Message{
-			Role:    "system", // Or "tool" if Ollama adds more direct support for tool roles.
+			Role:    "tool",
 			Content: content,
 		}
 	}
