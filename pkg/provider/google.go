@@ -59,7 +59,10 @@ func (prvdr *GoogleProvider) Generate(
 	googleToolResponseGenerator := func(toolName string, content string, isError bool) any {
 		responseMap := map[string]any{"content": content}
 		if isError {
-			responseMap["error"] = content
+			// Preserve the original content field and nest error details separately.
+			responseMap["error"] = map[string]any{
+				"message": content,
+			}
 		}
 		return &genai.Part{
 			FunctionResponse: &genai.FunctionResponse{
