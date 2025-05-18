@@ -68,12 +68,15 @@ func (client *Client) Get(ctx context.Context, id string) (*Document, error) {
 
 // Delete removes a document by ID.
 func (client *Client) Delete(ctx context.Context, id string) error {
-	req, _ := http.NewRequestWithContext(
+	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodDelete,
 		fmt.Sprintf("%s/collections/%s/points/%s", client.Endpoint, client.Collection, id),
 		nil,
 	)
+	if err != nil {
+		return fmt.Errorf("failed to create delete request: %w", err)
+	}
 
 	resp, err := client.httpClient.Do(req)
 
