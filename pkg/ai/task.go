@@ -7,6 +7,7 @@ import (
 	"github.com/theapemachine/a2a-go/pkg/a2a"
 	"github.com/theapemachine/a2a-go/pkg/errors"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
+	"github.com/theapemachine/a2a-go/pkg/memory"
 	"github.com/theapemachine/a2a-go/pkg/provider"
 	"github.com/theapemachine/a2a-go/pkg/stores"
 )
@@ -15,6 +16,7 @@ type TaskManager struct {
 	agent     *a2a.AgentCard
 	taskStore stores.TaskStore
 	provider  provider.Interface
+	memory    memory.UnifiedStore
 }
 
 type TaskManagerOption func(*TaskManager)
@@ -135,6 +137,10 @@ func (manager *TaskManager) SendTask(
 		),
 	)
 
+	if manager.memory != nil {
+		_ = manager.memory.InjectMemories(ctx, task)
+	}
+
 	prvdrParams := provider.NewProviderParams(
 		task, provider.WithTools(manager.agent.Tools()...),
 	)
@@ -148,6 +154,10 @@ func (manager *TaskManager) SendTask(
 			log.Error("failed to handle update", "error", err)
 			return task, err.(*errors.RpcError)
 		}
+	}
+
+	if manager.memory != nil {
+		_ = manager.memory.ExtractMemories(ctx, task)
 	}
 
 	return task, nil
@@ -169,6 +179,10 @@ func (manager *TaskManager) StreamTask(
 		a2a.NewTextMessage(manager.agent.Name, "starting task"),
 	)
 
+	if manager.memory != nil {
+		_ = manager.memory.InjectMemories(ctx, params)
+	}
+
 	if createErr := manager.taskStore.Create(ctx, params); createErr != nil {
 		log.Error("failed to create task in store for streaming", "task_id", params.ID, "error", createErr)
 		return nil, createErr
@@ -180,6 +194,7 @@ func (manager *TaskManager) StreamTask(
 		defer close(out) // Ensure out is closed when this goroutine exits
 
 		providerChan := manager.provider.Generate(ctx, provider.NewProviderParams(params))
+	Loop:
 		for {
 			select {
 			case <-ctx.Done(): // If the overall context for StreamTask is done/cancelled
@@ -187,7 +202,7 @@ func (manager *TaskManager) StreamTask(
 				return
 			case chunk, ok := <-providerChan:
 				if !ok { // providerChan was closed, normal completion of provider stream
-					return // Goroutine finishes, out will be closed by defer
+					break Loop
 				}
 
 				if err := manager.handleUpdate(params, chunk); err != nil {
@@ -206,6 +221,10 @@ func (manager *TaskManager) StreamTask(
 					return
 				}
 			}
+		}
+
+		if manager.memory != nil {
+			_ = manager.memory.ExtractMemories(ctx, params)
 		}
 	}()
 
@@ -269,5 +288,11 @@ func WithTaskStore(taskStore stores.TaskStore) TaskManagerOption {
 func WithProvider(p provider.Interface) TaskManagerOption {
 	return func(t *TaskManager) {
 		t.provider = p
+	}
+}
+
+func WithMemoryStore(m memory.UnifiedStore) TaskManagerOption {
+	return func(t *TaskManager) {
+		t.memory = m
 	}
 }
