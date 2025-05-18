@@ -18,7 +18,13 @@ var (
 		Short: "Run an A2A UI",
 		Long:  longUI,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			f, _ := os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			f, err := os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+
+			if err != nil {
+				log.Error("failed to open debug log file", "error", err)
+				return err
+			}
+
 			log.SetOutput(f)
 			log.SetLevel(log.DebugLevel)
 			log.SetReportCaller(true)
