@@ -713,7 +713,7 @@ func TestGetTask(t *testing.T) {
 			expectedTask := &a2a.Task{ID: taskID, Status: a2a.TaskStatus{State: a2a.TaskStateWorking}}
 			store := &taskStoreMockForTesting{
 				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
-					So(id, ShouldEqual, taskID)
+					So(id, ShouldEqual, agentCard.Name+"/"+taskID)
 					So(hl, ShouldEqual, historyLength)
 					return []a2a.Task{*expectedTask}, nil
 				},
@@ -735,7 +735,7 @@ func TestGetTask(t *testing.T) {
 			expectedErr := &errors.RpcError{Code: 9001, Message: "store.Get failed"}
 			store := &taskStoreMockForTesting{
 				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
-					So(id, ShouldEqual, taskID)
+					So(id, ShouldEqual, agentCard.Name+"/"+taskID)
 					So(hl, ShouldEqual, historyLength)
 					return nil, expectedErr
 				},
@@ -754,7 +754,7 @@ func TestGetTask(t *testing.T) {
 		Convey("When taskStore.Get returns an empty slice (task not found, no error)", func() {
 			store := &taskStoreMockForTesting{
 				getFunc: func(ctx context.Context, id string, hl int) ([]a2a.Task, *errors.RpcError) {
-					So(id, ShouldEqual, taskID)
+					So(id, ShouldEqual, agentCard.Name+"/"+taskID)
 					So(hl, ShouldEqual, historyLength)
 					return []a2a.Task{}, nil
 				},
@@ -781,7 +781,7 @@ func TestCancelTask(t *testing.T) {
 		Convey("When taskStore.Cancel succeeds", func() {
 			store := &taskStoreMockForTesting{
 				cancelFunc: func(ctx context.Context, id string) *errors.RpcError {
-					So(id, ShouldEqual, taskID)
+					So(id, ShouldEqual, agentCard.Name+"/"+taskID)
 					return nil // Success
 				},
 			}
@@ -799,7 +799,7 @@ func TestCancelTask(t *testing.T) {
 			expectedErr := &errors.RpcError{Code: 9002, Message: "store.Cancel failed"}
 			store := &taskStoreMockForTesting{
 				cancelFunc: func(ctx context.Context, id string) *errors.RpcError {
-					So(id, ShouldEqual, taskID)
+					So(id, ShouldEqual, agentCard.Name+"/"+taskID)
 					return expectedErr
 				},
 			}
@@ -827,7 +827,7 @@ func TestResubscribeTask(t *testing.T) {
 			expectedErr := &errors.RpcError{Code: 9003, Message: "store.Subscribe failed"}
 			store := &taskStoreMockForTesting{
 				subscribeFunc: func(ctx context.Context, id string, ch chan a2a.Task) *errors.RpcError {
-					So(id, ShouldEqual, taskID)
+					So(id, ShouldEqual, agentCard.Name+"/"+taskID)
 					// ch is not closed or used by the mock in this error case
 					return expectedErr
 				},
@@ -850,7 +850,7 @@ func TestResubscribeTask(t *testing.T) {
 
 			store := &taskStoreMockForTesting{
 				subscribeFunc: func(ctx context.Context, id string, ch chan a2a.Task) *errors.RpcError {
-					So(id, ShouldEqual, taskID)
+					So(id, ShouldEqual, agentCard.Name+"/"+taskID)
 					capturedChan = ch // Capture the channel
 
 					// Simulate the store sending some tasks to the channel asynchronously

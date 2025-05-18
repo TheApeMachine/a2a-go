@@ -245,7 +245,7 @@ func (manager *TaskManager) GetTask(
 	id string,
 	historyLength int,
 ) (*a2a.Task, *errors.RpcError) {
-	tasks, err := manager.taskStore.Get(ctx, id, historyLength)
+	tasks, err := manager.taskStore.Get(ctx, manager.agent.Name+"/"+id, historyLength)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +281,7 @@ Returns:
 func (manager *TaskManager) CancelTask(
 	ctx context.Context, id string,
 ) *errors.RpcError {
-	return manager.taskStore.Cancel(ctx, id)
+	return manager.taskStore.Cancel(ctx, manager.agent.Name+"/"+id)
 }
 
 /*
@@ -296,7 +296,7 @@ func (manager *TaskManager) ResubscribeTask(
 ) (<-chan a2a.Task, *errors.RpcError) {
 	ch := make(chan a2a.Task)
 
-	if err := manager.taskStore.Subscribe(ctx, id, ch); err != nil {
+	if err := manager.taskStore.Subscribe(ctx, manager.agent.Name+"/"+id, ch); err != nil {
 		log.Error("failed to subscribe to task", "error", err)
 		return nil, err
 	}
