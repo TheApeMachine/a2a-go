@@ -148,8 +148,22 @@ func TestRegistryGetAgents(t *testing.T) {
 
 			Convey("It should return all registered agents", func() {
 				So(len(agents), ShouldEqual, 2)
-				So(agents[0].Name, ShouldEqual, "agent1")
-				So(agents[1].Name, ShouldEqual, "agent2")
+
+				// Check that both agents are in the result without assuming order
+				foundAgent1 := false
+				foundAgent2 := false
+
+				for _, agent := range agents {
+					if agent.Name == "agent1" {
+						foundAgent1 = true
+					}
+					if agent.Name == "agent2" {
+						foundAgent2 = true
+					}
+				}
+
+				So(foundAgent1, ShouldBeTrue)
+				So(foundAgent2, ShouldBeTrue)
 			})
 		})
 	})
