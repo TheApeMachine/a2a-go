@@ -23,36 +23,25 @@ var (
 			hostname := configFlag + "tool"
 			broker := sse.NewMCPBroker(hostname)
 			stdio, sseSrv := broker.MCPServer()
+			toolDefinition, err := tools.Acquire(configFlag)
+
+			if err != nil {
+				return fmt.Errorf("failed to acquire tool definition: %w", err)
+			}
 
 			switch configFlag {
 			case "browser":
-				browserToolDefinition, err := tools.Acquire("web-browsing")
-				if err != nil {
-					return fmt.Errorf("failed to acquire browser tool definition: %w", err)
-				}
-				if browserToolDefinition.Name != configFlag {
-					return fmt.Errorf("acquired tool for 'web-browsing' skill is not named '%s', got: %s", configFlag, browserToolDefinition.Name)
-				}
-
 				browserToolHandlerInstance := &tools.BrowserTool{}
-
-				stdio.AddTool(*browserToolDefinition, browserToolHandlerInstance.Handle)
-				log.Info("Registered 'browser' tool with MCP server", "hostname", hostname)
-
+				stdio.AddTool(*toolDefinition, browserToolHandlerInstance.Handle)
 			case "docker":
-				dockerToolDefinition, err := tools.Acquire("development")
-				if err != nil {
-					return fmt.Errorf("failed to acquire docker tool definition: %w", err)
-				}
-
-				if dockerToolDefinition.Name != configFlag {
-					return fmt.Errorf("acquired tool for 'development' skill is not named '%s', got: %s", configFlag, dockerToolDefinition.Name)
-				}
-
 				dockerToolHandlerInstance := &tools.DockerTool{}
-
-				stdio.AddTool(*dockerToolDefinition, dockerToolHandlerInstance.Handle)
-				log.Info("Registered 'docker' tool with MCP server", "hostname", hostname)
+				stdio.AddTool(*toolDefinition, dockerToolHandlerInstance.Handle)
+			case "catalog":
+				catalogToolHandlerInstance := &tools.CatalogTool{}
+				stdio.AddTool(*toolDefinition, catalogToolHandlerInstance.Handle)
+			case "management":
+				managementToolHandlerInstance := &tools.DelegateTool{}
+				stdio.AddTool(*toolDefinition, managementToolHandlerInstance.Handle)
 			default:
 				return fmt.Errorf("unsupported tool config for mcp command: %s", configFlag)
 			}

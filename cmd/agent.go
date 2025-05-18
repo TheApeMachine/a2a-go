@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/minio/minio-go/v7"
@@ -17,7 +18,6 @@ import (
 	"github.com/theapemachine/a2a-go/pkg/provider"
 	"github.com/theapemachine/a2a-go/pkg/service"
 	"github.com/theapemachine/a2a-go/pkg/stores/s3"
-	"github.com/theapemachine/a2a-go/pkg/types"
 )
 
 var (
@@ -36,12 +36,12 @@ var (
 
 			v := viper.GetViper()
 
-			skills := make([]types.AgentSkill, 0)
+			skills := make([]a2a.AgentSkill, 0)
 
 			for _, skill := range v.GetStringSlice(
 				fmt.Sprintf("agent.%s.skills", configFlag),
 			) {
-				skills = append(skills, types.NewSkillFromConfig(skill))
+				skills = append(skills, a2a.NewSkillFromConfig(skill))
 			}
 
 			minioClient, err := minio.New("minio:9000", &minio.Options{
@@ -59,20 +59,33 @@ var (
 				return err
 			}
 
-			// Ensure the tasks bucket exists
-			ctx := context.Background()
-			exists, err := minioClient.BucketExists(ctx, "tasks")
-			if err != nil {
-				log.Error("failed to check if tasks bucket exists", "error", err)
-				return err
-			}
+			try := 0
 
-			if !exists {
-				log.Info("creating tasks bucket")
-				if err := minioClient.MakeBucket(ctx, "tasks", minio.MakeBucketOptions{}); err != nil {
-					log.Error("failed to create tasks bucket", "error", err)
-					return err
+			// Ensure the tasks bucket exists
+			for try != 10 {
+				ctx := context.Background()
+				exists, err := minioClient.BucketExists(ctx, "tasks")
+				if err != nil {
+					log.Error("failed to check if tasks bucket exists", "error", err)
 				}
+
+				if exists {
+					break
+				}
+
+				if !exists {
+					log.Info("creating tasks bucket")
+					if err := minioClient.MakeBucket(
+						ctx, "tasks", minio.MakeBucketOptions{},
+					); err != nil {
+						log.Error("failed to create tasks bucket", "error", err)
+					}
+
+					break
+				}
+
+				time.Sleep(time.Second * time.Duration(try*2))
+				try++
 			}
 
 			card := a2a.NewAgentCardFromConfig(configFlag)

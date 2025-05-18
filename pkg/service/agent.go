@@ -44,7 +44,12 @@ func NewAgentServer(agent *ai.Agent) *A2AServer {
 }
 
 func (srv *A2AServer) Start() error {
-	srv.app.Use(logger.New(), healthcheck.NewHealthChecker())
+	srv.app.Use(logger.New(logger.Config{
+		// Skip logging for the /events endpoint to reduce noise
+		Next: func(c fiber.Ctx) bool {
+			return c.Path() == "/events"
+		},
+	}), healthcheck.NewHealthChecker())
 	srv.app.Get("/", srv.handleRoot)
 	srv.app.Get("/.well-known/agent.json", srv.handleAgentCard)
 	srv.app.Get("/events", srv.handleEvents)
@@ -98,9 +103,23 @@ func (srv *A2AServer) parseParamsWithDecoding(params any) ([]byte, error) {
 	return paramsBytes, nil
 }
 
-// forwardStream reads from a channel until closed or the context is done
+// parseAndUnmarshalParams handles decoding and unmarshalling of RPC parameters.
+func (srv *A2AServer) parseAndUnmarshalParams(rawParams any, out any) *errors.RpcError {
+	paramsBytes, err := srv.parseParamsWithDecoding(rawParams)
+	if err != nil {
+		return errors.ErrInvalidParams.WithMessagef("failed to parse params: %v", err)
+	}
+
+	if err := json.Unmarshal(paramsBytes, out); err != nil {
+		log.Error("failed to unmarshal params", "error", err, "params", string(paramsBytes))
+		return errors.ErrInvalidParams.WithMessagef("failed to unmarshal params: %v", err)
+	}
+	return nil
+}
+
+// forwardEventsToBroker reads from a channel until closed or the context is done
 // and broadcasts each event on the SSE broker.
-func (srv *A2AServer) forwardStream(ctx context.Context, stream <-chan any) {
+func (srv *A2AServer) forwardEventsToBroker(ctx context.Context, stream <-chan any) {
 	go func() {
 		for {
 			select {
@@ -109,7 +128,7 @@ func (srv *A2AServer) forwardStream(ctx context.Context, stream <-chan any) {
 					return
 				}
 				if err := srv.broker.Broadcast(evt); err != nil {
-					log.Error("failed to broadcast event in forwardStream", "error", err)
+					log.Error("failed to broadcast event in forwardEventsToBroker", "error", err)
 				}
 			case <-ctx.Done():
 				return
@@ -118,23 +137,24 @@ func (srv *A2AServer) forwardStream(ctx context.Context, stream <-chan any) {
 	}()
 }
 
-// forwardResponseStream handles streaming jsonrpc.Response objects
-func (srv *A2AServer) forwardResponseStream(ctx context.Context, stream chan jsonrpc.Response) {
+// forwardResponseChannelToAnyChannel creates a channel adapter from chan jsonrpc.Response to <-chan any
+func forwardResponseChannelToAnyChannel(ctx context.Context, input chan jsonrpc.Response) <-chan any {
+	output := make(chan any)
 	go func() {
+		defer close(output)
 		for {
 			select {
-			case evt, ok := <-stream:
+			case <-ctx.Done():
+				return
+			case item, ok := <-input:
 				if !ok {
 					return
 				}
-				if err := srv.broker.Broadcast(evt); err != nil {
-					log.Error("failed to broadcast event in forwardResponseStream", "error", err)
-				}
-			case <-ctx.Done():
-				return
+				output <- item
 			}
 		}
 	}()
+	return output
 }
 
 // forwardTaskStreamAdapter creates a channel adapter from <-chan a2a.Task to <-chan any
@@ -157,25 +177,6 @@ func forwardTaskStreamAdapter(ctx context.Context, input <-chan a2a.Task) <-chan
 	}()
 
 	return output
-}
-
-// forwardTaskStream handles streaming a2a.Task objects
-func (srv *A2AServer) forwardTaskStream(ctx context.Context, stream <-chan a2a.Task) {
-	go func() {
-		for {
-			select {
-			case evt, ok := <-stream:
-				if !ok {
-					return
-				}
-				if err := srv.broker.Broadcast(evt); err != nil {
-					log.Error("failed to broadcast event in forwardTaskStream", "error", err)
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
 }
 
 /*
@@ -206,16 +207,8 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 		return srv.handleTaskOperation(ctx, request.ID, func() (any, error) {
 			var params a2a.TaskSendParams
 
-			paramsBytes, err := srv.parseParamsWithDecoding(request.Params)
-			if err != nil {
-				// This error occurs before the main operation, might not fit RpcError perfectly
-				// but we should return an RpcError style if possible.
-				return nil, errors.ErrInvalidParams.WithMessagef("failed to parse params: %v", err)
-			}
-
-			if err := json.Unmarshal(paramsBytes, &params); err != nil {
-				log.Error("failed to unmarshal params", "error", err, "params", string(paramsBytes))
-				return nil, errors.ErrInvalidParams.WithMessagef("failed to unmarshal params: %v", err)
+			if rpcErr := srv.parseAndUnmarshalParams(request.Params, &params); rpcErr != nil {
+				return nil, rpcErr
 			}
 
 			return srv.agent.SendTask(ctx.Context(), params)
@@ -224,14 +217,8 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 		return srv.handleTaskOperation(ctx, request.ID, func() (any, error) {
 			var params a2a.TaskSendParams
 
-			paramsBytes, err := srv.parseParamsWithDecoding(request.Params)
-			if err != nil {
-				return nil, errors.ErrInvalidParams.WithMessagef("failed to parse params: %v", err)
-			}
-
-			if err := json.Unmarshal(paramsBytes, &params); err != nil {
-				log.Error("failed to unmarshal params", "error", err, "params", string(paramsBytes))
-				return nil, errors.ErrInvalidParams.WithMessagef("failed to unmarshal params: %v", err)
+			if rpcErr := srv.parseAndUnmarshalParams(request.Params, &params); rpcErr != nil {
+				return nil, rpcErr
 			}
 
 			// Convert send parameters into a task for streaming
@@ -248,29 +235,29 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 				return nil, rpcErr
 			}
 
-			var first any
-			select {
-			case first = <-stream:
-			default:
-				first = nil
+			var firstResultPayload any
+			// Wait for the first response from the stream.
+			// This response is a jsonrpc.Response, and we are interested in its Result field.
+			firstStreamResponse, ok := <-stream
+			if ok {
+				firstResultPayload = firstStreamResponse.Result // Extract the actual payload (the task)
+			} else {
+				// Stream closed before sending the first item.
+				log.Warn("tasks/sendSubscribe: stream closed before the first item (initial task data) could be read", "taskID", task.ID)
+				firstResultPayload = nil
 			}
 
-			srv.forwardResponseStream(ctx.Context(), stream)
+			adaptedResponseStream := forwardResponseChannelToAnyChannel(ctx.Context(), stream)
+			srv.forwardEventsToBroker(ctx.Context(), adaptedResponseStream)
 
-			return first, nil
+			return firstResultPayload, nil // Return the payload of the first stream message
 		})
 	case "tasks/get":
 		return srv.handleTaskOperation(ctx, request.ID, func() (any, error) {
 			var params a2a.TaskQueryParams
 
-			paramsBytes, err := srv.parseParamsWithDecoding(request.Params)
-			if err != nil {
-				return nil, errors.ErrInvalidParams.WithMessagef("failed to parse params: %v", err)
-			}
-
-			if err := json.Unmarshal(paramsBytes, &params); err != nil {
-				log.Error("failed to unmarshal params", "error", err, "params", string(paramsBytes))
-				return nil, errors.ErrInvalidParams.WithMessagef("failed to unmarshal params: %v", err)
+			if rpcErr := srv.parseAndUnmarshalParams(request.Params, &params); rpcErr != nil {
+				return nil, rpcErr
 			}
 
 			return srv.agent.GetTask(ctx.Context(), params.ID, *params.HistoryLength)
@@ -279,14 +266,8 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 		return srv.handleTaskOperation(ctx, request.ID, func() (any, error) {
 			var params a2a.TaskIDParams
 
-			paramsBytes, err := srv.parseParamsWithDecoding(request.Params)
-			if err != nil {
-				return nil, errors.ErrInvalidParams.WithMessagef("failed to parse params: %v", err)
-			}
-
-			if err := json.Unmarshal(paramsBytes, &params); err != nil {
-				log.Error("failed to unmarshal params", "error", err, "params", string(paramsBytes))
-				return nil, errors.ErrInvalidParams.WithMessagef("failed to unmarshal params: %v", err)
+			if rpcErr := srv.parseAndUnmarshalParams(request.Params, &params); rpcErr != nil {
+				return nil, rpcErr
 			}
 			// CancelTask specifically returns nil result on success, and an error on failure.
 			// The handleTaskOperation will correctly wrap this in a JSON-RPC response.
@@ -296,14 +277,8 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 		return srv.handleTaskOperation(ctx, request.ID, func() (any, error) {
 			var params a2a.TaskQueryParams
 
-			paramsBytes, err := srv.parseParamsWithDecoding(request.Params)
-			if err != nil {
-				return nil, errors.ErrInvalidParams.WithMessagef("failed to parse params: %v", err)
-			}
-
-			if err := json.Unmarshal(paramsBytes, &params); err != nil {
-				log.Error("failed to unmarshal params", "error", err, "params", string(paramsBytes))
-				return nil, errors.ErrInvalidParams.WithMessagef("failed to unmarshal params: %v", err)
+			if rpcErr := srv.parseAndUnmarshalParams(request.Params, &params); rpcErr != nil {
+				return nil, rpcErr
 			}
 
 			hl := 0
@@ -322,8 +297,8 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 				first = nil
 			}
 
-			taskStream := forwardTaskStreamAdapter(ctx.Context(), stream)
-			srv.forwardStream(ctx.Context(), taskStream)
+			taskStreamAdapter := forwardTaskStreamAdapter(ctx.Context(), stream)
+			srv.forwardEventsToBroker(ctx.Context(), taskStreamAdapter)
 
 			return first, nil
 		})

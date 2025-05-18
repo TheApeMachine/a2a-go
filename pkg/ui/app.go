@@ -20,6 +20,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/theapemachine/a2a-go/pkg/a2a"
 	"github.com/theapemachine/a2a-go/pkg/catalog"
+	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
 	"github.com/theapemachine/a2a-go/pkg/sse"
 	"github.com/theapemachine/a2a-go/pkg/stores/s3"
 )
@@ -87,6 +88,7 @@ type fetchTasksMsg struct{ tasks []a2a.Task }
 type fetchTaskDetailMsg struct{ task a2a.Task }
 type errorMsg struct{ err error }
 type streamEventMsg struct{ event any }
+type LogMsg struct{ Log string }
 
 // Item implementations for the lists
 type agentItem struct {
@@ -176,16 +178,17 @@ func newKeymap() keymap {
 // App represents the main application state
 type App struct {
 	// UI components
-	keymap       keymap
-	help         help.Model
-	width        int
-	height       int
-	agentList    list.Model
-	taskList     list.Model
-	agentDetail  viewport.Model
-	textarea     textarea.Model
-	focusedPanel panel
-	showHelp     bool
+	keymap             keymap
+	help               help.Model
+	width              int
+	height             int
+	agentList          list.Model
+	taskList           list.Model
+	agentDetail        viewport.Model
+	agentDetailContent string // Stores the raw content for the agent detail viewport
+	textarea           textarea.Model
+	focusedPanel       panel
+	showHelp           bool
 
 	// Application state
 	catalogClient *catalog.CatalogClient
@@ -263,15 +266,16 @@ func NewApp(catalogURL string) *App {
 
 	// Return the app
 	return &App{
-		keymap:        keys,
-		agentList:     agentList,
-		taskList:      taskList,
-		agentDetail:   agentDetail,
-		textarea:      ta,
-		focusedPanel:  agentListPanel,
-		catalogClient: client,
-		showHelp:      false,
-		help:          help.New(),
+		keymap:             keys,
+		agentList:          agentList,
+		taskList:           taskList,
+		agentDetail:        agentDetail,
+		textarea:           ta,
+		focusedPanel:       agentListPanel,
+		catalogClient:      client,
+		showHelp:           false,
+		help:               help.New(),
+		agentDetailContent: "Select an agent to see details and output.", // Initial content
 	}
 }
 
@@ -445,7 +449,7 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					agentDetailText += fmt.Sprintf("- Push Notifications: %v\n", app.selectedAgent.Capabilities.PushNotifications)
 					agentDetailText += fmt.Sprintf("- State Transition History: %v\n", app.selectedAgent.Capabilities.StateTransitionHistory)
 
-					if app.selectedAgent.Authentication != nil {
+					if app.selectedAgent.Authentication != nil && app.selectedAgent.Authentication.Schemes != nil && len(app.selectedAgent.Authentication.Schemes) > 0 {
 						agentDetailText += fmt.Sprintf("\nAuthentication Schemes: %s\n", strings.Join(app.selectedAgent.Authentication.Schemes, ", "))
 					}
 
@@ -459,7 +463,9 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					}
 
-					app.agentDetail.SetContent(agentDetailText)
+					app.agentDetailContent = agentDetailText // Set base content
+					app.agentDetail.SetContent(app.agentDetailContent)
+					app.agentDetail.YPosition = 0 // Reset scroll to top
 					app.setFocus(agentDetailPanel)
 
 					// Fetch tasks for this agent when selected
@@ -469,6 +475,11 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					cmds = append(cmds, app.subscribeToEvents(app.selectedAgent.URL))
 
 					app.statusMessage = fmt.Sprintf("Selected agent: %s", i.agent.Name)
+
+					// Ensure word wrap works by resetting content at the current size
+					// When window resizes, re-apply the stored content to the viewport
+					// to ensure it reflows correctly.
+					app.agentDetail.SetContent(app.agentDetailContent) // Re-set content after resize, using the stored raw content
 				}
 			case taskListPanel:
 				selected := app.taskList.SelectedItem()
@@ -534,7 +545,8 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// If response.Error is nil, then response.Result should contain the actual result.
 				if response.Result == nil {
-					return errorMsg{err: fmt.Errorf("server returned success but with a nil result")}
+					app.appendToAgentDetail(errorStyle.Render("Server returned success but with a nil result for send operation."))
+					return errorMsg{err: fmt.Errorf("server returned success but with a nil result")} // Propagate as error to log it
 				}
 
 				var resultBytes []byte
@@ -556,8 +568,13 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Convert the response result to a Task
 				task := &a2a.Task{}
 				if err := json.Unmarshal(resultBytes, task); err != nil {
+					app.appendToAgentDetail(errorStyle.Render(fmt.Sprintf("Failed to unmarshal task from send response: %s", err.Error())))
 					return errorMsg{err: fmt.Errorf("failed to unmarshal task response: %w", err)}
 				}
+
+				// Add/Update task in local list and refresh UI task list
+				app.upsertTaskInList(*task)
+				app.appendToAgentDetail(fmt.Sprintf("Task %s submitted. Initial response received.", task.ID))
 
 				// Print the task history for debugging
 				if task.History != nil {
@@ -607,10 +624,9 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		app.agentDetail.Width = centerWidth - 4 // Account for borders
 		app.agentDetail.Height = detailHeight - 4
 		// Ensure word wrap works by resetting content at the current size
-		if app.selectedAgent != nil {
-			content := app.agentDetail.View()
-			app.agentDetail.SetContent(content)
-		}
+		// When window resizes, re-apply the stored content to the viewport
+		// to ensure it reflows correctly.
+		app.agentDetail.SetContent(app.agentDetailContent) // Re-set content after resize, using the stored raw content
 
 		app.textarea.SetWidth(centerWidth - 6) // Account for borders and inner padding
 		app.textarea.SetHeight(inputHeight - 2)
@@ -618,6 +634,10 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Re-focus the active panel to refresh the styling
 		app.setFocus(app.focusedPanel)
 
+		return app, nil
+
+	case LogMsg:
+		app.appendToAgentDetail(msg.Log)
 		return app, nil
 
 	case fetchAgentsMsg:
@@ -659,11 +679,61 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return app, nil
 
 	case streamEventMsg:
-		app.statusMessage = fmt.Sprintf("stream event: %v", msg.event)
+		var taskUpdate a2a.Task
+		// msg.event is string, convert to []byte for unmarshalling
+		eventData := []byte(msg.event.(string))
+
+		// Attempt 1: Try to unmarshal directly into a2a.Task
+		if err := json.Unmarshal(eventData, &taskUpdate); err == nil {
+			app.upsertTaskInList(taskUpdate)
+			app.appendToAgentDetail(fmt.Sprintf("Task Event (%s): Status: %s, Message: %s",
+				taskUpdate.ID, taskUpdate.Status.State, taskUpdate.Status.Message))
+			return app, nil
+		}
+
+		// Attempt 2: Try to unmarshal into jsonrpc.Response
+		var rpcResp jsonrpc.Response
+		if err := json.Unmarshal(eventData, &rpcResp); err == nil {
+			if rpcResp.Error != nil {
+				app.appendToAgentDetail(errorStyle.Render(
+					fmt.Sprintf("Stream Error: %s (Code: %d)", rpcResp.Error.Message, rpcResp.Error.Code),
+				))
+				return app, nil
+			}
+
+			if rpcResp.Result != nil {
+				resultBytes, marshalErr := json.Marshal(rpcResp.Result)
+				if marshalErr != nil {
+					app.appendToAgentDetail(errorStyle.Render(
+						fmt.Sprintf("Stream Event: Could not marshal rpcResp.Result: %v", marshalErr),
+					))
+					return app, nil
+				}
+
+				// Try to unmarshal rpcResp.Result into a2a.Task
+				if err := json.Unmarshal(resultBytes, &taskUpdate); err == nil {
+					app.upsertTaskInList(taskUpdate)
+					app.appendToAgentDetail(fmt.Sprintf("Task Update via RPC Event (%s): Status: %s, Message: %s",
+						taskUpdate.ID, taskUpdate.Status.State, taskUpdate.Status.Message))
+					return app, nil
+				}
+
+				// If rpcResp.Result is not a task, append its string representation
+				app.appendToAgentDetail(fmt.Sprintf("Stream Event (RPC Result): %s", string(resultBytes)))
+				return app, nil
+			}
+
+			app.appendToAgentDetail(fmt.Sprintf("Stream Event (RPC): %s", msg.event)) // Should have Result or Error
+			return app, nil
+		}
+
+		// If all unmarshalling fails, append the raw event string
+		app.appendToAgentDetail(fmt.Sprintf("Stream Event (Raw): %s", msg.event))
 		return app, nil
 
 	case errorMsg:
-		app.errorMessage = msg.err.Error()
+		// app.errorMessage = msg.err.Error()
+		app.appendToAgentDetail(errorStyle.Render(fmt.Sprintf("Error: %s", msg.err.Error())))
 		log.Error("UI error", "error", msg.err)
 		// Return with no commands - this prevents crashing on error
 		return app, nil
@@ -717,14 +787,17 @@ func (app *App) View() string {
 	// If there's an error, show it in a non-blocking way
 	if app.errorMessage != "" {
 		// Create a styled error bar at the bottom of the screen
-		errorBar := errorStyle.Render(fmt.Sprintf("Error: %s", app.errorMessage))
+		// errorBar := errorStyle.Render(fmt.Sprintf("Error: %s", app.errorMessage))
 
 		// Return normal UI with error bar at bottom
-		return lipgloss.JoinVertical(
-			lipgloss.Left,
-			app.renderMainUI(),
-			errorBar,
-		)
+		// return lipgloss.JoinVertical(
+		// 	lipgloss.Left,
+		// 	app.renderMainUI(),
+		// 	errorBar,
+		// )
+		// Error is now handled by appending to agentDetailContent, so this explicit block can be simplified or removed.
+		// For now, we'll just fall through to renderMainUI which will include the error in agentDetail.
+		app.errorMessage = "" // Clear it as it's now in agentDetailContent
 	}
 
 	return app.renderMainUI()
@@ -767,33 +840,22 @@ func (app *App) renderMainUI() string {
 	agentListView := agentListStyle.Render(app.agentList.View())
 
 	// Agent detail view
-	var agentDetailContent string
+	var agentDetailRenderedBox string
 	if app.selectedAgent != nil {
-		// Create a borderless container for the content
-		headerContent := headerStyle.Render(fmt.Sprintf("AGENT: %s", app.selectedAgent.Name))
-
-		// Create a clean content section without any borders
-		contentStyle := lipgloss.NewStyle().
-			Width(centerWidth - 6). // Account for outer border padding
-			PaddingLeft(1).
-			PaddingRight(1)
-
-		// Format the agent information without any borders
-		formattedContent := contentStyle.Render(app.agentDetail.View())
-
-		// Combine header and content without adding any borders
-		agentDetailContent = lipgloss.JoinVertical(
+		header := headerStyle.Render(fmt.Sprintf("AGENT: %s", app.selectedAgent.Name))
+		// app.agentDetail already contains app.agentDetailContent due to SetContent calls
+		// So, app.agentDetail.View() will render the scrollable content.
+		contentForPanel := lipgloss.JoinVertical(
 			lipgloss.Left,
-			headerContent,
-			"", // Empty line for spacing
-			formattedContent,
+			header,
+			app.agentDetail.View(), // This renders the viewport's current content
 		)
+		agentDetailRenderedBox = agentDetailStyle.Render(contentForPanel)
 	} else {
-		agentDetailContent = "Select an agent from the list"
+		// If no agent is selected, render the placeholder content (already in app.agentDetail viewport)
+		// inside the styled box.
+		agentDetailRenderedBox = agentDetailStyle.Render(app.agentDetail.View())
 	}
-
-	// Only apply the border to the outer container
-	agentDetailView := agentDetailStyle.Render(agentDetailContent)
 
 	// Input panel view
 	var inputTitle string
@@ -810,7 +872,7 @@ func (app *App) renderMainUI() string {
 	// Combine center panels vertically
 	centerView := lipgloss.JoinVertical(
 		lipgloss.Left,
-		agentDetailView,
+		agentDetailRenderedBox, // Use the fully rendered box for the agent detail
 		inputView,
 	)
 
@@ -874,21 +936,22 @@ func (app *App) getTasksByAgent(agentName string) tea.Msg {
 		return errorMsg{err: fmt.Errorf("failed to initialize store: %w", err)}
 	}
 
-	var tasks []a2a.Task
-	fetchedTasks, err := store.Get(context.Background(), agentName, 100)
-	if err.Error() != "RPC error: (nil RpcError)" {
-		log.Error("failed to get tasks", "error", err)
-		return errorMsg{err: fmt.Errorf("failed to get tasks: %w", err)}
+	fetchedTasks, rpcErr := store.Get(context.Background(), agentName, 100)
+	if rpcErr != nil {
+		// Log the actual error, and then return it as a UI error message.
+		log.Error("failed to get tasks from store", "agent", agentName, "error", rpcErr)
+		return errorMsg{err: fmt.Errorf("failed to get tasks for agent %s: %w", agentName, rpcErr)}
 	}
 
 	// Use fetched tasks or empty slice
+	var tasksToUpdate []a2a.Task
 	if fetchedTasks != nil && len(fetchedTasks) > 0 {
-		tasks = fetchedTasks
+		tasksToUpdate = fetchedTasks
 	} else {
-		tasks = []a2a.Task{}
+		tasksToUpdate = []a2a.Task{}
 	}
 
-	return TaskMessage{Tasks: tasks}
+	return TaskMessage{Tasks: tasksToUpdate}
 }
 
 /*
@@ -946,4 +1009,40 @@ func (app *App) subscribeToEvents(url string) tea.Cmd {
 
 type TaskMessage struct {
 	Tasks []a2a.Task
+}
+
+// appendToAgentDetail adds new text to the agent detail viewport and scrolls to the bottom.
+func (app *App) appendToAgentDetail(newText string) {
+	if strings.TrimSpace(app.agentDetailContent) == strings.TrimSpace("Select an agent to see details and output.") || app.agentDetailContent == "" {
+		// If it's the initial message or empty, replace it
+		app.agentDetailContent = newText
+	} else {
+		// Otherwise, append
+		app.agentDetailContent += "\n" + newText
+	}
+	app.agentDetail.SetContent(app.agentDetailContent)
+	app.agentDetail.GotoBottom()
+}
+
+// upsertTaskInList adds or updates a task in the app.tasks slice and refreshes the list.Model
+func (app *App) upsertTaskInList(taskToUpdate a2a.Task) {
+	found := false
+	for i, t := range app.tasks {
+		if t.ID == taskToUpdate.ID {
+			app.tasks[i] = taskToUpdate
+			found = true
+			break
+		}
+	}
+	if !found {
+		app.tasks = append(app.tasks, taskToUpdate)
+	}
+
+	// Rebuild items for the list model
+	items := make([]list.Item, len(app.tasks))
+	for i, t := range app.tasks {
+		taskCopy := t // Avoid pointer issues with loop variable
+		items[i] = taskItem{task: taskCopy}
+	}
+	app.taskList.SetItems(items)
 }

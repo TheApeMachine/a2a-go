@@ -6,9 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
-	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/spf13/viper"
-	"github.com/theapemachine/a2a-go/pkg/tools"
 	"github.com/theapemachine/a2a-go/pkg/utils"
 )
 
@@ -55,10 +53,6 @@ type AgentSkill struct {
 	OutputModes []string `json:"outputModes,omitempty"`
 }
 
-func (skill *AgentSkill) ToMCPTool() (*mcp.Tool, error) {
-	return tools.Acquire(skill.ID)
-}
-
 // AgentCard represents the metadata card for an agent
 type AgentCard struct {
 	// Name is the name of the agent
@@ -83,28 +77,6 @@ type AgentCard struct {
 	DefaultOutputModes []string `json:"defaultOutputModes,omitempty"`
 	// Skills is the list of specific skills offered by the agent
 	Skills []AgentSkill `json:"skills"`
-}
-
-func (card *AgentCard) Tools() []*mcp.Tool {
-	// Initialize an empty slice with a capacity if desired, or just empty.
-	mcpTools := make([]*mcp.Tool, 0, len(card.Skills))
-
-	for _, skill := range card.Skills {
-		tool, err := skill.ToMCPTool()
-
-		if err != nil {
-			log.Error("failed to acquire tool", "error", err, "skill_id", skill.ID)
-			// Decide if a nil tool should be added or if the loop should just skip this tool
-			// For now, skipping seems more appropriate than adding a nil.
-			continue
-		}
-
-		if tool != nil { // Ensure the acquired tool is not nil before appending
-			mcpTools = append(mcpTools, tool)
-		}
-	}
-
-	return mcpTools
 }
 
 func NewAgentCardFromConfig(key string) *AgentCard {

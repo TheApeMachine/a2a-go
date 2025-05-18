@@ -1,16 +1,23 @@
 package cmd
 
 import (
-
-	// Import standard log for fallback if charmbracelet/log setup fails for file.
-
-	"os"
+	"bytes"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/log" // This is the charmbracelet logger
+	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/theapemachine/a2a-go/pkg/ui"
 )
+
+type logWriter struct {
+	ch chan string
+}
+
+func (w *logWriter) Write(p []byte) (n int, err error) {
+	w.ch <- string(p)
+	return len(p), nil
+}
 
 var (
 	uiCmd = &cobra.Command{
@@ -18,22 +25,30 @@ var (
 		Short: "Run an A2A UI",
 		Long:  longUI,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			f, err := os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-
-			if err != nil {
-				log.Error("failed to open debug log file", "error", err)
-				return err
-			}
-
-			log.SetOutput(f)
+			logBuffer := bytes.NewBuffer([]byte{})
+			log.SetOutput(logBuffer)
 			log.SetLevel(log.DebugLevel)
 			log.SetReportCaller(true)
-			defer f.Close()
 
-			if _, err := tea.NewProgram(
-				safeApp{App: ui.NewApp("http://localhost:3210")},
+			v := viper.GetViper()
+			catalogURL := v.GetString("endpoints.catalog")
+
+			app := ui.NewApp(catalogURL)
+			prog := tea.NewProgram(
+				safeApp{App: app},
 				tea.WithAltScreen(),
-			).Run(); err != nil {
+			)
+
+			logCh := make(chan string, 64)
+			log.SetOutput(&logWriter{ch: logCh})
+
+			go func() {
+				for logLine := range logCh {
+					prog.Send(ui.LogMsg{Log: logLine})
+				}
+			}()
+
+			if _, err := prog.Run(); err != nil {
 				log.Error("failed to run program", "error", err)
 				return err
 			}

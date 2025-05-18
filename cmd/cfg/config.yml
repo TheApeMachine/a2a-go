@@ -8,13 +8,13 @@ server:
   port: 3210
   defaultRPCPath: "/rpc"
   defaultSSEPath: "/events"
-  defaultCatalogPath: "/.well-known/catalog.json"
-  catalog: "http://catalog:3210"
 
 endpoints:
-  browser: "http://browsertool:3210"
-  docker: "http://dockertool:3210"
-  catalog: "http://localhost:3210"
+  browsertool: "http://browsertool:3210"
+  dockertool: "http://dockertool:3210"
+  catalogtool: "http://catalogtool:3210"
+  managertool: "http://managertool:3210"
+  catalog: "http://catalog:3210"
   catalogPath: "/.well-known/catalog.json"
 
 agent:
@@ -42,6 +42,8 @@ agent:
       - You should never try to directly respond to the user's request, only relay messages.
     skills:
       - communication
+      - catalog
+      - management
   manager:
     name: "Manager Agent"
     version: "0.1.0"
@@ -243,6 +245,19 @@ skills:
       - "Test the security of the provided server."
       - "Identify the vulnerabilities in the provided code."
       - "Test the code for SQL injection vulnerabilities."
+    input_modes:
+      - "text/plain"
+    output_modes:
+      - "text/plain"
+  catalog:
+    id: "catalog"
+    name: "catalog"
+    description: "Inspect the catalog and list available agents and tasks."
+    tags:
+      - "catalog"
+      - "agents"
+    examples:
+      - "List all available agents."
     input_modes:
       - "text/plain"
     output_modes:
