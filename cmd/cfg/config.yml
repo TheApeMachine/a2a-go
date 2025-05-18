@@ -42,6 +42,8 @@ agent:
       - You should never try to directly respond to the user's request, only relay messages.
     skills:
       - communication
+      - catalog
+      - management
   manager:
     name: "Manager Agent"
     version: "0.1.0"
@@ -243,6 +245,19 @@ skills:
       - "Test the security of the provided server."
       - "Identify the vulnerabilities in the provided code."
       - "Test the code for SQL injection vulnerabilities."
+    input_modes:
+      - "text/plain"
+    output_modes:
+      - "text/plain"
+  catalog:
+    id: "catalog"
+    name: "catalog"
+    description: "Inspect the catalog and list available agents."
+    tags:
+      - "catalog"
+      - "agents"
+    examples:
+      - "List all available agents."
     input_modes:
       - "text/plain"
     output_modes:
