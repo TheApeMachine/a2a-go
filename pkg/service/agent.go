@@ -108,7 +108,9 @@ func (srv *A2AServer) forwardStream(ctx context.Context, stream <-chan any) {
 				if !ok {
 					return
 				}
-				_ = srv.broker.Broadcast(evt)
+				if err := srv.broker.Broadcast(evt); err != nil {
+					log.Error("failed to broadcast event in forwardStream", "error", err)
+				}
 			case <-ctx.Done():
 				return
 			}
