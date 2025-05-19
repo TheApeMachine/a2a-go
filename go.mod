@@ -1,6 +1,6 @@
 module github.com/theapemachine/a2a-go
 
-go 1.24.2
+go 1.23
 
 require (
 	github.com/anthropics/anthropic-sdk-go v0.2.0-beta.3
