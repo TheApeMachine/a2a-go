@@ -576,15 +576,6 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				app.upsertTaskInList(*task)
 				app.appendToAgentDetail(fmt.Sprintf("Task %s submitted. Initial response received.", task.ID))
 
-				// Print the task history for debugging
-				if task.History != nil {
-					for _, message := range task.History {
-						if message.String() != "" {
-							fmt.Println(message.String())
-						}
-					}
-				}
-
 				// Reset the textarea after successful send
 				app.textarea.Reset()
 
