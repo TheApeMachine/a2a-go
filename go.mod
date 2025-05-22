@@ -19,6 +19,7 @@ require (
 	github.com/minio/minio-go/v7 v7.0.91
 	github.com/ollama/ollama v0.7.0
 	github.com/openai/openai-go v0.1.0-beta.10
+	github.com/slack-go/slack v0.16.0
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1

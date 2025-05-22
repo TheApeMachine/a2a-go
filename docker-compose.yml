@@ -15,6 +15,33 @@ services:
       neo4j:
         condition: service_started
 
+  webhook:
+    image: theapemachine/a2a-go:latest
+    command: ["webhook"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+    ports:
+      - "3211:3210"
+    depends_on:
+      catalog:
+        condition: service_started
+
+  slack:
+    image: theapemachine/a2a-go:latest
+    command: ["slack"]
+    env_file:
+      - .env
+    environment:
+      - SLACK_APP_TOKEN=${MARVIN_APP_TOKEN}
+      - SLACK_BOT_TOKEN=${MARVIN_BOT_TOKEN}
+    networks:
+      - a2a-network
+    depends_on:
+      catalog:
+        condition: service_started
+
   dockertool:
     image: theapemachine/a2a-go:latest
     command: ["mcp", "-c", "docker"]
