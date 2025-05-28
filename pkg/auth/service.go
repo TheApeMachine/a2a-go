@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 // Service handles authentication and token management
@@ -83,6 +84,9 @@ func (s *Service) GenerateToken(scheme string, claims jwt.MapClaims) (*TokenInfo
 	if _, ok := claims["iat"]; !ok {
 		claims["iat"] = now.Unix()
 	}
+	if _, ok := claims["jti"]; !ok {
+		claims["jti"] = uuid.NewString()
+	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenStr, err := token.SignedString(s.signingKey)
 	if err != nil {
@@ -94,6 +98,7 @@ func (s *Service) GenerateToken(scheme string, claims jwt.MapClaims) (*TokenInfo
 		"sub": claims["sub"],
 		"exp": time.Now().Add(24 * time.Hour).Unix(),
 		"iat": now.Unix(),
+		"jti": uuid.NewString(),
 	})
 	refreshTokenStr, err := refreshToken.SignedString(s.signingKey)
 	if err != nil {
@@ -136,8 +141,32 @@ func (s *Service) RefreshToken(refreshToken string) (*TokenInfo, error) {
 		return nil, fmt.Errorf("invalid token claims")
 	}
 
-	// Generate new token with same claims
-	return s.GenerateToken("Bearer", claims)
+	// Remove old timing claims so new values are generated
+	delete(claims, "exp")
+	delete(claims, "iat")
+	delete(claims, "jti")
+
+	// Generate new token with updated claims
+	newTokenInfo, newErr := s.GenerateToken("Bearer", claims)
+	if newErr != nil {
+		// It's good practice to wrap errors to provide context
+		return nil, fmt.Errorf("failed to generate new token during refresh: %w", newErr)
+	}
+
+	// Invalidate the old refresh token to prevent its reuse.
+	// This is a crucial step for security (refresh token rotation).
+	s.mu.Lock()
+	delete(s.refreshTokens, refreshToken) // 'refreshToken' is the one originally passed to this function.
+	
+	// Optionally, also invalidate the old access token associated with the used refresh token.
+	// This ensures the entire old session is cleaned up from the service's perspective.
+	// The 'oldToken' variable (fetched on line 126) holds the string of the old access token.
+	// if oldToken != "" { 
+	// 	delete(s.tokens, oldToken)
+	// }
+	s.mu.Unlock()
+
+	return newTokenInfo, nil
 }
 
 // RevokeToken revokes a token and its associated refresh token
