@@ -81,7 +81,7 @@ func (s *Service) GenerateToken(scheme string, claims jwt.MapClaims) (*TokenInfo
 		claims["exp"] = now.Add(time.Hour).Unix()
 	}
 	if _, ok := claims["iat"]; !ok {
-		claims["iat"] = now.UnixNano()
+		claims["iat"] = now.Unix()
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenStr, err := token.SignedString(s.signingKey)
