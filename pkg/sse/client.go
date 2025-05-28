@@ -258,6 +258,7 @@ func (c *Client) Close() error {
 
 // Reconnect triggers a reconnection
 func (c *Client) Reconnect() {
+	c.Metrics.RecordReconnection()
 	select {
 	case c.reconnectChan <- struct{}{}:
 	default:

@@ -320,6 +320,53 @@ func (prvdr *GoogleProvider) convertMessages(task *a2a.Task) []*genai.Content {
 	return out
 }
 
+/*
+convertSchema maps a generic map to a genai.Schema.
+*/
+func (prvdr *GoogleProvider) convertSchema(m map[string]any) *genai.Schema {
+	schema := &genai.Schema{Type: genai.TypeString}
+
+	if typeStr, ok := m["type"].(string); ok {
+		switch typeStr {
+		case "string":
+			schema.Type = genai.TypeString
+		case "number":
+			schema.Type = genai.TypeNumber
+		case "integer":
+			schema.Type = genai.TypeInteger
+		case "boolean":
+			schema.Type = genai.TypeBoolean
+		case "array":
+			schema.Type = genai.TypeArray
+		case "object":
+			schema.Type = genai.TypeObject
+		}
+	}
+
+	if desc, ok := m["description"].(string); ok {
+		schema.Description = desc
+	}
+
+	if enumVals, ok := m["enum"].([]any); ok {
+		enums := make([]string, 0, len(enumVals))
+		for _, v := range enumVals {
+			if s, ok := v.(string); ok {
+				enums = append(enums, s)
+			}
+		}
+		schema.Enum = enums
+	}
+
+	if itemsMap, ok := m["items"].(map[string]any); ok {
+		schema.Items = prvdr.convertSchema(itemsMap)
+	}
+
+	return schema
+}
+
+/*
+convertTools converts MCP tools into Gemini tool declarations.
+*/
 func (prvdr *GoogleProvider) convertTools(tools []*mcp.Tool) []*genai.Tool {
 	out := make([]*genai.Tool, 0, len(tools))
 	for _, tool := range tools {
@@ -336,32 +383,7 @@ func (prvdr *GoogleProvider) convertTools(tools []*mcp.Tool) []*genai.Tool {
 					log.Warn("Skipping tool property due to unexpected type", "tool", tool.Name, "property", k)
 					continue
 				}
-				schemaType := genai.TypeString // Default
-				if typeStr, ok := propMap["type"].(string); ok {
-					switch typeStr {
-					case "string":
-						schemaType = genai.TypeString
-					case "number":
-						schemaType = genai.TypeNumber
-					case "integer":
-						schemaType = genai.TypeInteger
-					case "boolean":
-						schemaType = genai.TypeBoolean
-					case "array":
-						schemaType = genai.TypeArray
-					case "object":
-						schemaType = genai.TypeObject
-					}
-				}
-				description := ""
-				if desc, ok := propMap["description"].(string); ok {
-					description = desc
-				}
-				properties[k] = &genai.Schema{
-					Type:        schemaType,
-					Description: description,
-					// TODO: Add more schema properties like enum, items (for array), etc. if needed from mcp.Tool
-				}
+				properties[k] = prvdr.convertSchema(propMap)
 			}
 		}
 
