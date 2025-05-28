@@ -37,6 +37,29 @@ func TestAuthenticateRequest(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 	})
+
+	Convey("Given a request without authorization header", t, func() {
+		svc := NewService()
+		req := httptest.NewRequest("GET", "/", nil)
+		err := svc.AuthenticateRequest(req)
+
+		Convey("Then authentication fails", func() {
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "missing authorization header")
+		})
+	})
+
+	Convey("Given a request with invalid token", t, func() {
+		svc := NewService()
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("Authorization", "Bearer invalid-token")
+		err := svc.AuthenticateRequest(req)
+
+		Convey("Then authentication fails", func() {
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "invalid token")
+		})
+	})
 }
 
 func TestRefreshToken(t *testing.T) {
