@@ -1,0 +1,3626 @@
+Directory Structure:
+
+└── ./
+    └── pkg
+        ├── memory
+        │   └── store.go
+        ├── stores
+        │   ├── neo4j
+        │   │   └── neo4j.go
+        │   └── qdrant
+        │       └── qdrant.go
+        └── tools
+            ├── browser
+            │   ├── eval.go
+            │   ├── instance.go
+            │   ├── manager.go
+            │   └── utils.go
+            ├── environment
+            │   ├── builder.go
+            │   ├── container.go
+            │   ├── docker.go
+            │   ├── environment.go
+            │   └── runner.go
+            ├── github
+            │   ├── client.go
+            │   ├── issues.go
+            │   ├── pr.go
+            │   └── repository.go
+            ├── browser.go
+            ├── environment.go
+            ├── github.go
+            └── memory.go
+
+
+
+---
+File: /pkg/memory/store.go
+---
+
+package memory
+
+import (
+	"fmt"
+
+	"github.com/gofiber/fiber/v3"
+	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/provider"
+	"github.com/theapemachine/caramba/pkg/stores/neo4j"
+	"github.com/theapemachine/caramba/pkg/stores/qdrant"
+)
+
+// MemoryQuery represents a unified query structure for both vector and graph stores
+type MemoryQuery struct {
+	// Question for semantic search in vector store
+	Question string `json:"question,omitempty"`
+	// Cypher query for graph database
+	Cypher string `json:"cypher,omitempty"`
+	// Keywords for filtering in both stores
+	Keywords map[string]string `json:"keywords,omitempty"`
+	// Additional parameters for graph queries
+	Params map[string]any `json:"params,omitempty"`
+}
+
+// Store provides a unified interface for agent memory operations
+type Store struct {
+	vectorStore *qdrant.Qdrant
+	graphStore  *neo4j.Neo4j
+	embedder    provider.EmbedderType
+}
+
+// StoreOption defines a functional option pattern for Store configuration
+type StoreOption func(*Store)
+
+// NewStore creates a new memory store instance with the provided options
+func NewStore(opts ...StoreOption) *Store {
+	store := &Store{}
+
+	// Apply all provided options
+	for _, opt := range opts {
+		opt(store)
+	}
+
+	return store
+}
+
+// WithVectorStore sets the vector store for the memory store
+func WithVectorStore(vectorStore *qdrant.Qdrant) StoreOption {
+	return func(s *Store) {
+		s.vectorStore = vectorStore
+	}
+}
+
+// WithGraphStore sets the graph store for the memory store
+func WithGraphStore(graphStore *neo4j.Neo4j) StoreOption {
+	return func(s *Store) {
+		s.graphStore = graphStore
+	}
+}
+
+// WithEmbedder sets the embedder for vector operations
+func WithEmbedder(embedder provider.EmbedderType) StoreOption {
+	return func(s *Store) {
+		s.embedder = embedder
+	}
+}
+
+// Query performs a unified query across both vector and graph stores
+func (s *Store) Query(ctx fiber.Ctx, query *MemoryQuery) (string, error) {
+	var results []string
+
+	// Query vector store if question is provided
+	if query.Question != "" {
+		if s.vectorStore == nil {
+			return "", errnie.New(errnie.WithMessage("vector store not configured"))
+		}
+
+		vectorResult, err := s.vectorStore.Get(ctx, &qdrant.QdrantQuery{
+			Question: query.Question,
+			Keywords: query.Keywords,
+		})
+		if err != nil {
+			return "", errnie.New(errnie.WithError(err))
+		}
+		if vectorResult != "" {
+			results = append(results, fmt.Sprintf("Vector Store Results:\n%s", vectorResult))
+		}
+	}
+
+	// Query graph store if cypher query is provided
+	if query.Cypher != "" {
+		if s.graphStore == nil {
+			return "", errnie.New(errnie.WithMessage("graph store not configured"))
+		}
+
+		graphResult, err := s.graphStore.Put(ctx, neo4j.N4jQuery{
+			Cypher:   query.Cypher,
+			Keywords: query.Keywords,
+			Params:   query.Params,
+		})
+		if err != nil {
+			return "", errnie.New(errnie.WithError(err))
+		}
+		if graphResult != "" {
+			results = append(results, fmt.Sprintf("Graph Store Results:\n%s", graphResult))
+		}
+	}
+
+	// Return combined results
+	if len(results) == 0 {
+		return "No results found", nil
+	}
+
+	return fmt.Sprintf("%s\n", results), nil
+}
+
+// Store stores a document in both vector and graph stores as appropriate
+func (s *Store) Store(ctx fiber.Ctx, docs []*qdrant.Document) error {
+	// Store in vector store
+	if s.vectorStore != nil {
+		if err := s.vectorStore.Put(ctx, docs); err != nil {
+			return errnie.New(errnie.WithError(err))
+		}
+	}
+
+	// Store in graph store if metadata contains relationships
+	if s.graphStore != nil {
+		for _, doc := range docs {
+			// Convert document to graph structure if it contains relationship metadata
+			if relationships, ok := doc.Metadata["relationships"].(map[string]any); ok {
+				cypher, params := s.buildGraphQuery(doc, relationships)
+				if cypher != "" {
+					_, err := s.graphStore.Put(ctx, neo4j.N4jQuery{
+						Cypher: cypher,
+						Params: params,
+					})
+					if err != nil {
+						return errnie.New(errnie.WithError(err))
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// buildGraphQuery constructs a Cypher query from document metadata
+func (s *Store) buildGraphQuery(doc *qdrant.Document, relationships map[string]any) (string, map[string]any) {
+	// This is a simplified example - expand based on your needs
+	params := map[string]any{
+		"docId":    doc.ID,
+		"content":  doc.Content,
+		"metadata": doc.Metadata,
+	}
+
+	// Build CREATE query for the document node
+	cypher := `
+		MERGE (d:Document {id: $docId})
+		SET d.content = $content
+		SET d.metadata = $metadata
+	`
+
+	// Add relationship creation based on metadata
+	for relType, target := range relationships {
+		targetID, ok := target.(string)
+		if !ok {
+			continue
+		}
+
+		relParam := fmt.Sprintf("rel_%s", relType)
+		params[relParam] = targetID
+
+		cypher += fmt.Sprintf(`
+			MERGE (t:Document {id: $%s})
+			MERGE (d)-[:%s]->(t)
+		`, relParam, relType)
+	}
+
+	return cypher, params
+}
+
+
+
+---
+File: /pkg/stores/neo4j/neo4j.go
+---
+
+package neo4j
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/gofiber/fiber/v3"
+	sdk "github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"github.com/theapemachine/caramba/pkg/errnie"
+)
+
+type N4jQuery struct {
+	Cypher   string
+	Keywords map[string]string
+	Params   map[string]any
+}
+
+type Neo4j struct {
+	client sdk.DriverWithContext
+}
+
+func NewNeo4j(collection string) *Neo4j {
+	errnie.Debug("NewNeo4j")
+
+	driver, err := sdk.NewDriverWithContext(
+		os.Getenv("NEO4J_URL"),
+		sdk.BasicAuth(
+			os.Getenv("NEO4J_USERNAME"),
+			os.Getenv("NEO4J_PASSWORD"),
+			"",
+		),
+	)
+	if err != nil {
+		return nil
+	}
+
+	neo4j := &Neo4j{
+		client: driver,
+	}
+
+	return neo4j
+}
+
+func (neo4j *Neo4j) findRelationships(ctx fiber.Ctx, session sdk.SessionWithContext, keyword string) (string, error) {
+	var results strings.Builder
+
+	result, err := session.Run(
+		ctx.Context(),
+		`
+		MATCH p=(a)-[r]->(b)
+		WHERE a.name CONTAINS $term OR b.name CONTAINS $term
+		RETURN a.name as source, labels(a)[0] as sourceLabel,
+			type(r) as relationship,
+			b.name as target, labels(b)[0] as targetLabel
+		LIMIT 20
+		`,
+		map[string]any{
+			"term": keyword,
+		},
+	)
+
+	if err != nil {
+		return "", errnie.New(errnie.WithError(err))
+	}
+
+	for result.Next(ctx.Context()) {
+		record := result.Record()
+		asmap := record.AsMap()
+		results.WriteString(
+			fmt.Sprintf("%v:%v -[%v]-> %v:%v\n",
+				asmap["sourceLabel"],
+				asmap["source"],
+				asmap["relationship"],
+				asmap["targetLabel"],
+				asmap["target"],
+			),
+		)
+	}
+
+	if err := result.Err(); err != nil {
+		return "", errnie.New(errnie.WithError(err))
+	}
+
+	if results.Len() == 0 {
+		return fmt.Sprintf("No relationships found for: %s\n", keyword), nil
+	}
+
+	return results.String(), nil
+}
+
+func (neo4j *Neo4j) executeQuery(ctx fiber.Ctx, query N4jQuery) (string, error) {
+	session := neo4j.client.NewSession(ctx.Context(), sdk.SessionConfig{
+		DatabaseName: "neo4j",
+		AccessMode:   sdk.AccessModeWrite,
+	})
+	defer session.Close(ctx.Context())
+
+	var results strings.Builder
+
+	for _, keyword := range query.Keywords {
+		result, err := neo4j.findRelationships(ctx, session, keyword)
+		if err != nil {
+			return "", err
+		}
+		results.WriteString(result)
+	}
+
+	if query.Cypher != "" {
+		result, err := session.Run(ctx.Context(), query.Cypher, query.Params)
+		if err != nil {
+			return "", errnie.New(errnie.WithError(err))
+		}
+
+		for result.Next(ctx.Context()) {
+			results.WriteString(fmt.Sprintf("%v\n", result.Record().AsMap()))
+		}
+
+		if err := result.Err(); err != nil {
+			return "", errnie.New(errnie.WithError(err))
+		}
+	}
+
+	return results.String(), nil
+}
+
+func (neo4j *Neo4j) Get() (err error) {
+	neo4j.client.Close(context.Background())
+	return nil
+}
+
+func (neo4j *Neo4j) Put(ctx fiber.Ctx, n4jQuery N4jQuery) (string, error) {
+	results, err := neo4j.executeQuery(ctx, n4jQuery)
+	if err != nil {
+		return "", err
+	}
+	return results, nil
+}
+
+
+
+---
+File: /pkg/stores/qdrant/qdrant.go
+---
+
+package qdrant
+
+import (
+	"context"
+
+	"slices"
+
+	"github.com/gofiber/fiber/v3"
+	sdk "github.com/qdrant/go-client/qdrant"
+	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/provider"
+	"github.com/theapemachine/caramba/pkg/task"
+	"github.com/theapemachine/caramba/pkg/tweaker"
+)
+
+type Document struct {
+	ID       string         `json:"id"`
+	Content  string         `json:"content"`
+	Metadata map[string]any `json:"metadata"`
+}
+
+type QdrantQuery struct {
+	Question string            `json:"question"`
+	Keywords map[string]string `json:"keywords"`
+}
+
+type Qdrant struct {
+	client     *sdk.Client
+	collection string
+	embedder   provider.EmbedderType
+}
+
+// QdrantOption defines a functional option pattern for Qdrant
+type QdrantOption func(*Qdrant)
+
+func NewQdrant(opts ...QdrantOption) *Qdrant {
+	errnie.Debug("memory.NewQdrant")
+
+	client, err := sdk.NewClient(&sdk.Config{
+		Host:                   tweaker.GetQdrantHost(),
+		Port:                   tweaker.GetQdrantPort(),
+		APIKey:                 tweaker.GetQdrantAPIKey(),
+		UseTLS:                 false,
+		SkipCompatibilityCheck: true,
+	})
+
+	if err != nil {
+		errnie.New(errnie.WithError(err))
+		return nil
+	}
+
+	// Check if collection exists, if not create it
+	collections, err := client.ListCollections(context.Background())
+	if err != nil {
+		errnie.New(errnie.WithError(err))
+		return nil
+	}
+
+	collectionExists := slices.Contains(collections, tweaker.GetQdrantCollection())
+
+	if !collectionExists {
+		vectorSize := uint64(tweaker.GetQdrantDimension())
+		distance := sdk.Distance_Cosine
+
+		err = client.CreateCollection(context.Background(), &sdk.CreateCollection{
+			CollectionName: tweaker.GetQdrantCollection(),
+			VectorsConfig: &sdk.VectorsConfig{
+				Config: &sdk.VectorsConfig_Params{
+					Params: &sdk.VectorParams{
+						Size:     vectorSize,
+						Distance: distance,
+					},
+				},
+			},
+		})
+		if err != nil {
+			errnie.New(errnie.WithError(err))
+			return nil
+		}
+	}
+
+	qdrant := &Qdrant{
+		client:     client,
+		collection: tweaker.GetQdrantCollection(),
+	}
+
+	// Apply all provided options
+	for _, opt := range opts {
+		opt(qdrant)
+	}
+
+	return qdrant
+}
+
+func (qdrant *Qdrant) getEmbedding(
+	ctx fiber.Ctx,
+	query *QdrantQuery,
+) ([]float64, error) {
+	embedding, err := qdrant.embedder.Embed(ctx, &task.TaskRequest{
+		Params: task.NewTask(task.WithMessages(
+			task.NewAssistantMessage(query.Question),
+		)),
+	})
+
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+
+	return embedding, nil
+}
+
+func (qdrant *Qdrant) search(
+	ctx fiber.Ctx,
+	embedding []float64,
+	filter *sdk.Filter,
+) ([]*sdk.ScoredPoint, error) {
+	limit := uint64(10)
+
+	queryVector := make([]float32, len(embedding))
+
+	for i, v := range embedding {
+		queryVector[i] = float32(v)
+	}
+
+	searchedPoints, err := qdrant.client.Query(ctx.Context(), &sdk.QueryPoints{
+		CollectionName: qdrant.collection,
+		Limit:          &limit,
+		WithPayload:    sdk.NewWithPayloadInclude("content"),
+		Query:          sdk.NewQuery(queryVector...),
+		Filter:         filter,
+	})
+
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+
+	if len(searchedPoints) == 0 {
+		return nil, nil
+	}
+
+	return searchedPoints, nil
+}
+
+func (qdrant *Qdrant) Get(ctx fiber.Ctx, query *QdrantQuery) (value string, err error) {
+	if query.Question == "" && len(query.Keywords) == 0 {
+		return "", errnie.New(
+			errnie.WithError(&MissingRequirementsError{}),
+		)
+	}
+
+	if len(query.Keywords) > 0 {
+		// Handle keyword-based filtering
+		var should []*sdk.Condition
+		for k, v := range query.Keywords {
+			should = append(should, sdk.NewMatchKeyword(k, v))
+		}
+
+		filteredPoints, err := qdrant.search(ctx, nil, &sdk.Filter{
+			Should: should,
+		})
+
+		if err != nil {
+			return "", errnie.New(errnie.WithError(err))
+		}
+
+		if len(filteredPoints) > 0 {
+			if contentVal, ok := filteredPoints[0].Payload["content"]; ok {
+				if strVal, ok := contentVal.Kind.(*sdk.Value_StringValue); ok {
+					return strVal.StringValue, nil
+				}
+			}
+		}
+
+		return "", nil
+	}
+
+	embedding, err := qdrant.getEmbedding(ctx, query)
+
+	if err != nil {
+		return "", errnie.New(errnie.WithError(err))
+	}
+
+	searchedPoints, err := qdrant.search(ctx, embedding, nil)
+
+	if err != nil {
+		return "", errnie.New(errnie.WithError(err))
+	}
+
+	// Return the content of the most similar point
+	if contentVal, ok := searchedPoints[0].Payload["content"]; ok {
+		if strVal, ok := contentVal.Kind.(*sdk.Value_StringValue); ok {
+			return strVal.StringValue, nil
+		}
+	}
+
+	return "", nil
+}
+
+func (qdrant *Qdrant) Put(ctx fiber.Ctx, docs []*Document) (err error) {
+	if qdrant.embedder == nil {
+		return errnie.New(errnie.WithMessage("embedder not configured"))
+	}
+
+	for _, doc := range docs {
+		embedding, err := qdrant.embedder.Embed(ctx, &task.TaskRequest{
+			Params: task.NewTask(task.WithMessages(
+				task.NewAssistantMessage(doc.Content),
+			)),
+		})
+
+		if err != nil {
+			return errnie.New(errnie.WithError(err))
+		}
+
+		// Convert []float64 to []float32
+		vector := make([]float32, len(embedding))
+
+		for i, v := range embedding {
+			vector[i] = float32(v)
+		}
+
+		// Create point with embedding and payload
+		_, err = qdrant.client.Upsert(ctx.Context(), &sdk.UpsertPoints{
+			CollectionName: qdrant.collection,
+			Points: []*sdk.PointStruct{
+				{
+					Id:      sdk.NewID(doc.ID),
+					Vectors: sdk.NewVectors(vector...),
+					Payload: map[string]*sdk.Value{
+						"content": {
+							Kind: &sdk.Value_StringValue{
+								StringValue: doc.Content,
+							},
+						},
+					},
+				},
+			},
+		})
+
+		if err != nil {
+			return errnie.New(errnie.WithError(err))
+		}
+
+	}
+
+	return nil
+}
+
+// WithEmbedder sets the embedder for the Qdrant instance
+func WithEmbedder(embedder provider.EmbedderType) QdrantOption {
+	return func(q *Qdrant) {
+		q.embedder = embedder
+	}
+}
+
+type MissingRequirementsError struct{}
+
+func (e *MissingRequirementsError) Error() string {
+	return "question or keywords are required"
+}
+
+
+
+---
+File: /pkg/tools/browser/eval.go
+---
+
+package browser
+
+import (
+	"fmt"
+	"io"
+
+	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/proto"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/caramba/pkg/errnie"
+	fs "github.com/theapemachine/caramba/pkg/stores/fs"
+)
+
+type Eval struct {
+	page     *rod.Page
+	op       string
+	fsStore  *fs.Store
+	toolcall mcp.CallToolRequest
+}
+
+func NewEval(page *rod.Page, fsStore *fs.Store, toolcall mcp.CallToolRequest) *Eval {
+	op := toolcall.Request.Method
+	return &Eval{
+		page:     page,
+		op:       op,
+		fsStore:  fsStore,
+		toolcall: toolcall,
+	}
+}
+
+func (eval *Eval) Run() (result string, err error) {
+	var (
+		runtime *proto.RuntimeRemoteObject
+	)
+
+	scriptPath := fmt.Sprintf("scripts/%s.js", eval.op)
+
+	scriptFile, err := eval.fsStore.Get(scriptPath)
+	if err != nil {
+		return "", errnie.New(errnie.WithError(err))
+	}
+	defer scriptFile.Close()
+
+	scriptContentBytes, err := io.ReadAll(scriptFile)
+	if err != nil {
+		return "", errnie.New(errnie.WithError(err))
+	}
+	scriptContent := string(scriptContentBytes)
+
+	if runtime, err = eval.page.Eval(scriptContent); err != nil {
+		return "", errnie.New(errnie.WithError(err))
+	}
+
+	val := runtime.Value.Get("val").Str()
+	errnie.Debug("browser.Eval.Run", "val", val)
+
+	return val, nil
+}
+
+
+
+---
+File: /pkg/tools/browser/instance.go
+---
+
+package browser
+
+import (
+	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/caramba/pkg/errnie"
+	fs "github.com/theapemachine/caramba/pkg/stores/fs"
+)
+
+// BrowserGenerator implements the stream.Generator interface for browser operations
+type BrowserGenerator struct {
+	fsStore *fs.Store
+}
+
+// Generate processes browser operations
+func (bg *BrowserGenerator) Do(toolcall mcp.CallToolRequest) mcp.CallToolResult {
+	errnie.Debug("browser.Instance.buffer.fn")
+
+	manager, err := NewManager(toolcall).Initialize()
+
+	if errnie.New(errnie.WithError(err)) != nil {
+		return mcp.CallToolResult{
+			Content: []mcp.Content{
+				mcp.TextContent{
+					Type: "text",
+					Text: errnie.New(errnie.WithError(err)).Error(),
+				},
+			},
+		}
+	}
+
+	defer manager.Close()
+
+	op := toolcall.Params.Arguments["operation"].(string)
+
+	switch op {
+	case "get_content":
+		var (
+			content  string
+			markdown string
+		)
+
+		if content, err = manager.GetPage().HTML(); errnie.New(errnie.WithError(err)) != nil {
+			return mcp.CallToolResult{
+				Content: []mcp.Content{
+					mcp.TextContent{
+						Type: "text",
+						Text: errnie.New(errnie.WithError(err)).Error(),
+					},
+				},
+			}
+		}
+
+		if markdown, err = htmltomarkdown.ConvertString(content); errnie.New(errnie.WithError(err)) != nil {
+			return mcp.CallToolResult{
+				Content: []mcp.Content{
+					mcp.TextContent{
+						Type: "text",
+						Text: errnie.New(errnie.WithError(err)).Error(),
+					},
+				},
+			}
+		}
+
+		return mcp.CallToolResult{
+			Content: []mcp.Content{
+				mcp.TextContent{
+					Type: "text",
+					Text: markdown,
+				},
+			},
+		}
+	}
+
+	return mcp.CallToolResult{
+		Content: []mcp.Content{
+			mcp.TextContent{
+				Type: "text",
+				Text: "Operation not found",
+			},
+		},
+	}
+}
+
+
+
+---
+File: /pkg/tools/browser/manager.go
+---
+
+package browser
+
+import (
+	"errors"
+
+	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/launcher"
+	"github.com/go-rod/stealth"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/caramba/pkg/errnie"
+)
+
+type Manager struct {
+	launch   *launcher.Launcher
+	browser  *rod.Browser
+	page     *rod.Page
+	toolcall mcp.CallToolRequest
+}
+
+func NewManager(toolcall mcp.CallToolRequest) *Manager {
+	return &Manager{toolcall: toolcall}
+}
+
+func (manager *Manager) Initialize() (*Manager, error) {
+	// fp := gogetfp.New(gogetfp.FreeProxyConfig{
+	// 	Timeout: 10000,
+	// 	Google:  true,
+	// })
+
+	// proxy, err := fp.GetWorkingProxy()
+
+	// if err != nil || proxy == "" {
+	// 	errnie.New(errnie.WithError(err)
+	// 	errnie.Info("continuing without proxy")
+	manager.launch = launcher.New().Headless(false)
+	// } else {
+	// 	errnie.Info("using proxy", "addr", proxy)
+	// 	launch = launcher.New().Headless(false).Set(flags.ProxyServer, proxy)
+	// }
+
+	url, err := manager.launch.Launch()
+
+	if err != nil {
+		return manager, errnie.New(errnie.WithError(err))
+	}
+
+	if manager.browser = rod.New().ControlURL(url); manager.browser == nil {
+		return manager, errnie.New(errnie.WithError(errors.New("failed to create browser")))
+	}
+
+	if err = manager.browser.Connect(); err != nil {
+		return manager, errnie.New(errnie.WithError(err))
+	}
+
+	if manager.page, err = stealth.Page(manager.browser); err != nil {
+		return manager, errnie.New(errnie.WithError(err))
+	}
+
+	navurl := manager.toolcall.Params.Arguments["url"].(string)
+	errnie.Debug("browser.Instance.buffer.fn", "navurl", navurl)
+
+	if err = manager.page.Navigate(navurl); err != nil {
+		return manager, errnie.New(errnie.WithError(err))
+	}
+
+	// Wait for the page to be fully loaded
+	if err = manager.page.WaitLoad(); err != nil {
+		return manager, errnie.New(errnie.WithError(err))
+	}
+
+	return manager, nil
+}
+
+func (manager *Manager) Close() (err error) {
+	manager.launch.Cleanup()
+	return manager.browser.Close()
+}
+
+// GetPage returns the page instance
+func (manager *Manager) GetPage() *rod.Page {
+	return manager.page
+}
+
+
+
+---
+File: /pkg/tools/browser/utils.go
+---
+
+package browser
+
+import (
+	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
+	"github.com/theapemachine/caramba/pkg/errnie"
+)
+
+// ConvertToMarkdown converts HTML content to markdown format
+func ConvertToMarkdown(htmlContent string) (string, error) {
+	markdown, err := htmltomarkdown.ConvertString(htmlContent)
+	if err != nil {
+		return "", errnie.New(errnie.WithError(err))
+	}
+	return markdown, nil
+}
+
+
+
+---
+File: /pkg/tools/environment/builder.go
+---
+
+package environment
+
+import (
+	"context"
+
+	"github.com/theapemachine/caramba/pkg/errnie"
+)
+
+/*
+Builder manages the creation and initialization of container environments.
+It handles container runtime setup and provides a buffered interface for
+environment operations.
+*/
+type Builder struct {
+	Runtime Runtime
+}
+
+/*
+NewBuilder creates a new Builder instance.
+
+It initializes a container runtime (defaulting to Docker) and creates a new
+container instance. The container is started automatically after creation.
+Returns nil if runtime creation, container creation, or container start fails.
+*/
+func NewBuilder() *Builder {
+	errnie.Debug("environment.NewBuilder")
+
+	runtime, err := NewRuntime(Config{
+		RuntimeType: "docker", // default to Docker for now
+	})
+	if err != nil {
+		errnie.New(errnie.WithError(err))
+		return nil
+	}
+
+	// Create and start the container
+	ctx := context.Background()
+	if err := runtime.CreateContainer(ctx); err != nil {
+		errnie.New(errnie.WithError(err))
+		return nil
+	}
+
+	if err := runtime.StartContainer(ctx); err != nil {
+		errnie.New(errnie.WithError(err))
+		return nil
+	}
+
+	return &Builder{
+		Runtime: runtime,
+	}
+}
+
+
+
+---
+File: /pkg/tools/environment/container.go
+---
+
+package environment
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/containerd/containerd/v2/client"
+	"github.com/google/go-containerregistry/pkg/crane"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	"github.com/theapemachine/caramba/pkg/errnie"
+	"github.com/theapemachine/caramba/pkg/tweaker"
+)
+
+/*
+Container manages containerd container instances.
+
+It provides functionality for creating, configuring, and managing containers
+using the containerd runtime. Each container instance maintains its own client
+connection and image reference.
+*/
+type Container struct {
+	conn      *client.Client
+	container client.Container
+	image     client.Image
+}
+
+/*
+NewContainer creates a new Container instance.
+
+It initializes a container manager with the provided containerd client connection.
+Returns nil if the client connection is invalid.
+*/
+func NewContainer(conn *client.Client) *Container {
+	if conn == nil {
+		errnie.New(errnie.WithError(fmt.Errorf("client is nil")))
+		return nil
+	}
+
+	return &Container{
+		conn: conn,
+	}
+}
+
+/*
+Load prepares and loads a container image from a Dockerfile.
+
+It performs the following steps:
+1. Reads the Dockerfile from the filesystem
+2. Pulls the base Ubuntu image with appropriate platform settings
+3. Creates a new layer with the Dockerfile contents
+4. Builds and imports the final image into containerd
+5. Sets up necessary snapshot directories with proper permissions
+
+Returns an error if any step in the process fails.
+*/
+func (container *Container) Load() (err error) {
+	var (
+		payload []byte
+	)
+
+	// Create a unique reference for the image
+	imageName := "caramba-env:" + time.Now().Format("20060102-150405")
+
+	// Pull base image with platform specification
+	platform := &v1.Platform{
+		OS:           tweaker.GetOS(),
+		Architecture: tweaker.GetArch(),
+		Variant:      tweaker.GetVariant(),
+	}
+
+	baseImg, err := crane.Pull(
+		"ubuntu:latest", // Ubuntu has good ARM64 support
+		crane.WithPlatform(platform),
+	)
+
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	// Create layer with our Dockerfile contents
+	files := map[string][]byte{
+		"Dockerfile": payload,
+	}
+
+	layer, err := crane.Layer(files)
+
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	// Append our layer to base image
+	newImg, err := mutate.AppendLayers(baseImg, layer)
+
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	// Save image to a temporary tarball in OCI format
+	tempTar := fmt.Sprintf("/tmp/caramba-env-%s.tar", time.Now().Format("20060102-150405"))
+
+	if err := crane.Save(newImg, imageName, tempTar); err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	// Read the tarball
+	imgBytes, err := os.ReadFile(tempTar)
+
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	defer os.Remove(tempTar)
+
+	// Import the image into containerd using OCI format
+	images, err := container.conn.Import(
+		context.Background(),
+		bytes.NewReader(imgBytes),
+		client.WithAllPlatforms(true),
+		client.WithIndexName(imageName),
+	)
+
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	if len(images) == 0 {
+		return errnie.New(errnie.WithError(fmt.Errorf("no images imported")))
+	}
+
+	// Get the actual client.Image type
+	if container.image, err = container.conn.GetImage(
+		context.Background(), images[0].Name,
+	); err != nil {
+		return errnie.New(errnie.WithError(fmt.Errorf("failed to get image: %w", err)))
+	}
+
+	// Prepare snapshot directories with proper permissions
+	snapshotDir := filepath.Join(os.Getenv("CONTAINERD_ROOT"), "snapshots")
+	snapshotSubDirs := []string{
+		filepath.Join(snapshotDir, "snapshots"),
+		filepath.Join(snapshotDir, "metadata"),
+		filepath.Join(snapshotDir, "committed"),
+		filepath.Join(snapshotDir, "active"),
+	}
+
+	// Create all necessary snapshot directories with proper permissions
+	for _, dir := range snapshotSubDirs {
+		if err := os.MkdirAll(dir, 0777); err != nil {
+			return errnie.New(errnie.WithError(fmt.Errorf("failed to create snapshot directory %s: %w", dir, err)))
+		}
+		if err := os.Chown(dir, os.Getuid(), os.Getgid()); err != nil {
+			return errnie.New(errnie.WithError(fmt.Errorf("failed to chown snapshot directory %s: %w", dir, err)))
+		}
+	}
+
+	// Ensure image is unpacked before creating container
+	if err = container.image.Unpack(context.Background(), "native"); err != nil {
+		return errnie.New(errnie.WithError(fmt.Errorf("failed to unpack image: %w", err)))
+	}
+
+	// Try to load existing container first
+	if container.container, err = container.conn.LoadContainer(
+		context.Background(), "caramba",
+	); err == nil {
+		return nil
+	}
+
+	// If container doesn't exist, create it
+	if container.container, err = container.conn.NewContainer(
+		context.Background(),
+		"caramba",
+		client.WithNewSnapshot("caramba-snap", container.image),
+		client.WithRuntime("io.containerd.runc.v2", nil),
+		client.WithSnapshotter("native"),
+	); err != nil {
+		return errnie.New(errnie.WithError(fmt.Errorf("failed to create container: %w", err)))
+	}
+
+	// Double check snapshot permissions after container creation
+	snapshotDir = filepath.Join(os.Getenv("CONTAINERD_ROOT"), "snapshots")
+	walkErr := filepath.Walk(snapshotDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return errnie.New(errnie.WithError(err))
+		}
+		if err := os.Chmod(path, 0777); err != nil {
+			return errnie.New(errnie.WithError(fmt.Errorf("failed to chmod %s: %w", path, err)))
+		}
+		if err := os.Chown(path, os.Getuid(), os.Getgid()); err != nil {
+			return errnie.New(errnie.WithError(fmt.Errorf("failed to chown %s: %w", path, err)))
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return errnie.New(errnie.WithError(fmt.Errorf("failed to set snapshot permissions: %w", walkErr)))
+	}
+
+	return nil
+}
+
+
+
+---
+File: /pkg/tools/environment/docker.go
+---
+
+package environment
+
+import (
+	"archive/tar"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"sync"
+	"time"
+
+	"slices"
+
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/client"
+	"github.com/theapemachine/caramba/pkg/errnie"
+	fs "github.com/theapemachine/caramba/pkg/stores/fs"
+)
+
+/*
+dockerRuntime implements the Runtime interface using Docker.
+It manages container lifecycle and operations through the Docker API.
+*/
+type dockerRuntime struct {
+	client      *client.Client
+	containerID string
+	fsStore     *fs.Store
+}
+
+/*
+newDockerRuntime creates a new Docker runtime instance.
+
+It initializes a Docker client using environment configuration.
+Returns an error if client creation fails.
+*/
+func newDockerRuntime(fsStore *fs.Store) (Runtime, error) {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Docker client: %w", err)
+	}
+
+	return &dockerRuntime{
+		client:  cli,
+		fsStore: fsStore,
+	}, nil
+}
+
+/*
+CreateContainer creates or reuses a Docker container.
+
+It checks for an existing container with the name "caramba-env". If none exists,
+it builds a new image from the Dockerfile and creates a container from it.
+Returns an error if container creation fails.
+*/
+func (runtime *dockerRuntime) CreateContainer(ctx context.Context) (err error) {
+	containerName := "caramba-env"
+	const dockerfilePath = "manifests/Dockerfile"
+
+	// Read the Dockerfile content from the filesystem store
+	dockerfileFile, err := runtime.fsStore.Get(dockerfilePath)
+	if err != nil {
+		return errnie.New(errnie.WithError(fmt.Errorf("failed to get Dockerfile '%s' from fs store: %w", dockerfilePath, err)))
+	}
+	defer dockerfileFile.Close()
+	dockerfileContent, err := io.ReadAll(dockerfileFile)
+	if err != nil {
+		return errnie.New(errnie.WithError(fmt.Errorf("failed to read Dockerfile '%s' content: %w", dockerfilePath, err)))
+	}
+
+	// Check if container already exists
+	containers, err := runtime.client.ContainerList(ctx, container.ListOptions{All: true})
+
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	// Look for our container
+	for _, container := range containers {
+		if slices.Contains(container.Names, "/"+containerName) {
+			runtime.containerID = container.ID
+			return nil
+		}
+	}
+
+	// Build the image using the Dockerfile
+	if err := runtime.BuildImage(ctx, dockerfileContent, containerName); err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	// Create container using our built image
+	resp, err := runtime.client.ContainerCreate(ctx,
+		&container.Config{
+			Image: containerName,
+			Cmd:   []string{"/bin/bash"},
+			Tty:   true,
+		},
+		nil, nil, nil, containerName,
+	)
+
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	runtime.containerID = resp.ID
+	return nil
+}
+
+/*
+StartContainer starts the Docker container.
+
+Returns an error if the container start operation fails.
+*/
+func (runtime *dockerRuntime) StartContainer(ctx context.Context) (err error) {
+	if err = runtime.client.ContainerStart(ctx, runtime.containerID, container.StartOptions{}); err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	return nil
+}
+
+/*
+StopContainer stops the Docker container.
+
+Returns an error if the container stop operation fails.
+*/
+func (runtime *dockerRuntime) StopContainer(ctx context.Context) (err error) {
+	if err = runtime.client.ContainerStop(ctx, runtime.containerID, container.StopOptions{}); err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	return nil
+}
+
+/*
+AttachIO attaches IO streams to the Docker container.
+
+It connects stdin, stdout, and stderr streams to the container for
+interactive communication. Uses goroutines to handle bidirectional
+data flow between the container and the provided IO writers/readers.
+*/
+func (runtime *dockerRuntime) AttachIO(stdin io.Reader, stdout, stderr io.Writer) error {
+	resp, err := runtime.client.ContainerAttach(
+		context.Background(),
+		runtime.containerID,
+		container.AttachOptions{
+			Stream: true,
+			Stdin:  stdin != nil,
+			Stdout: stdout != nil,
+			Stderr: stderr != nil,
+			Logs:   true,
+		},
+	)
+
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	var wg sync.WaitGroup
+
+	if stdin != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			io.Copy(resp.Conn, stdin)
+			resp.CloseWrite()
+		}()
+	}
+
+	if stdout != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			io.Copy(stdout, resp.Reader)
+		}()
+	}
+
+	// Start a goroutine to wait for all IO operations to complete
+	go func() {
+		wg.Wait()
+		resp.Close()
+	}()
+
+	return nil
+}
+
+/*
+demultiplexDockerStream processes a Docker multiplexed stream.
+
+It reads the Docker stream header format and routes the data to the appropriate
+stdout or stderr writer. Returns an error if stream processing fails.
+*/
+func demultiplexDockerStream(reader io.Reader, stdout, stderr io.Writer) error {
+	var (
+		header = make([]byte, 8)
+		err    error
+	)
+
+	for {
+		// Read header
+		_, err = io.ReadFull(reader, header)
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return errnie.New(errnie.WithError(err))
+		}
+
+		// Get size of the coming message
+		size := int64(header[4])<<24 | int64(header[5])<<16 | int64(header[6])<<8 | int64(header[7])
+
+		// Choose writer based on stream type (header[0])
+		var w io.Writer
+		switch header[0] {
+		case 1:
+			w = stdout
+		case 2:
+			w = stderr
+		default:
+			continue
+		}
+
+		// Copy the message to the appropriate writer
+		_, err = io.CopyN(w, reader, size)
+		if err != nil {
+			return err
+		}
+	}
+}
+
+/*
+ExecuteCommand runs a command in the Docker container.
+
+It creates an exec instance in the container, attaches to it, and streams
+the command output to the provided writers. Returns an error if command
+execution fails.
+*/
+func (runtime *dockerRuntime) ExecuteCommand(ctx context.Context, command string, stdout, stderr io.Writer) error {
+	exec, err := runtime.client.ContainerExecCreate(
+		ctx,
+		runtime.containerID,
+		container.ExecOptions{
+			Cmd:          []string{"/bin/sh", "-c", command},
+			AttachStdout: true,
+			AttachStderr: true,
+		},
+	)
+
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	// Attach to the exec instance to get the output
+	resp, err := runtime.client.ContainerExecAttach(ctx, exec.ID, container.ExecStartOptions{})
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+	defer resp.Close()
+
+	// Start the command
+	if err := runtime.client.ContainerExecStart(ctx, exec.ID, container.ExecStartOptions{}); err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	// Create buffers to capture output
+	var stdoutBuf, stderrBuf bytes.Buffer
+	mw := io.MultiWriter(stdout, &stdoutBuf)
+	mwErr := io.MultiWriter(stderr, &stderrBuf)
+
+	// Copy output using the demultiplexer since we're not in TTY mode
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- demultiplexDockerStream(resp.Reader, mw, mwErr)
+	}()
+
+	// Wait for the command to complete
+	for {
+		inspectResp, err := runtime.client.ContainerExecInspect(ctx, exec.ID)
+		if err != nil {
+			return errnie.New(errnie.WithError(err))
+		}
+		if !inspectResp.Running {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Wait for output copying to complete
+	copyErr := <-errCh
+	if copyErr != nil && copyErr != io.EOF {
+		return errnie.New(errnie.WithError(copyErr))
+	}
+
+	// Check if this was an EOF during input read
+	if stderrStr := stderrBuf.String(); stderrStr != "" &&
+		(stderrStr == "EOFError: EOF when reading a line\n" ||
+			stderrStr == "EOFError: EOF when reading a line") {
+		// Just return without error - this is expected for interactive programs
+		return nil
+	}
+
+	return nil
+}
+
+/*
+PullImage pulls a Docker image from a registry.
+
+Takes an image reference and pulls it from the configured registry.
+Returns an error if the pull operation fails.
+*/
+func (runtime *dockerRuntime) PullImage(ctx context.Context, ref string) error {
+	errnie.Debug(fmt.Sprintf("Pulling image: %s", ref))
+
+	reader, err := runtime.client.ImagePull(ctx, ref, image.PullOptions{})
+
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	defer reader.Close()
+
+	// Read the output to complete the pull
+	_, err = io.Copy(io.Discard, reader)
+	return errnie.New(errnie.WithError(err))
+}
+
+/*
+BuildImage builds a Docker image from a Dockerfile.
+
+It creates a tar archive containing the Dockerfile, builds the image,
+and processes the build output. Returns an error if the build fails.
+*/
+func (runtime *dockerRuntime) BuildImage(
+	ctx context.Context, dockerfile []byte, imageName string,
+) error {
+	errnie.Debug(fmt.Sprintf("Building image: %s", imageName))
+
+	// Create a buffer to store our tar archive
+	var buf bytes.Buffer
+
+	// Create a new tar writer
+	tw := tar.NewWriter(&buf)
+
+	// Create a tar header for the Dockerfile
+	header := &tar.Header{
+		Name: "Dockerfile",
+		Mode: 0600,
+		Size: int64(len(dockerfile)),
+	}
+
+	// Write the header
+	if err := tw.WriteHeader(header); err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	// Write the Dockerfile content
+	if _, err := tw.Write(dockerfile); err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	// Close the tar writer
+	if err := tw.Close(); err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	opts := types.ImageBuildOptions{
+		Dockerfile: "Dockerfile",
+		Tags:       []string{imageName},
+		Remove:     true,
+		BuildArgs: map[string]*string{
+			"TARGETARCH": nil, // This will use the default architecture
+		},
+	}
+
+	resp, err := runtime.client.ImageBuild(ctx, &buf, opts)
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	defer resp.Body.Close()
+
+	// Read the output to complete the build
+	return runtime.processAndPrintBuildOutput(resp.Body)
+}
+
+/*
+processAndPrintBuildOutput processes Docker build output.
+
+It decodes the JSON stream from the build process and prints progress
+information. Returns an error if output processing fails or if the
+build reports an error.
+*/
+func (runtime *dockerRuntime) processAndPrintBuildOutput(reader io.Reader) error {
+	decoder := json.NewDecoder(reader)
+	for {
+		var message struct {
+			Stream string `json:"stream"`
+			Error  string `json:"error"`
+		}
+
+		if err := decoder.Decode(&message); err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return errnie.New(errnie.WithError(err))
+		}
+
+		if message.Error != "" {
+			return errnie.New(errnie.WithError(fmt.Errorf("build error: %s", message.Error)))
+		}
+
+		if message.Stream != "" {
+			fmt.Print(message.Stream)
+		}
+	}
+}
+
+
+
+---
+File: /pkg/tools/environment/environment.go
+---
+
+package environment
+
+import (
+	fs "github.com/theapemachine/caramba/pkg/stores/fs"
+)
+
+// Config holds runtime configuration
+type Config struct {
+	RuntimeType string    // "docker" or "caramba"
+	FSStore     *fs.Store // Added filesystem store
+}
+
+// NewRuntime creates a new container runtime based on the config
+func NewRuntime(cfg Config) (Runtime, error) {
+	return newDockerRuntime(cfg.FSStore)
+}
+
+
+
+---
+File: /pkg/tools/environment/runner.go
+---
+
+package environment
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"io"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/theapemachine/caramba/pkg/errnie"
+)
+
+/*
+Runner manages command execution and I/O operations within a container environment.
+
+It provides a buffered interface for running commands and handling interactive
+input/output with a container. The Runner maintains separate buffers for stdin,
+stdout, and stderr streams, and uses mutexes to ensure thread-safe operations.
+*/
+type Runner struct {
+	ctx      context.Context
+	cancel   context.CancelFunc
+	runtime  Runtime
+	bufIn    *bytes.Buffer
+	bufOut   *bytes.Buffer
+	bufErr   *bytes.Buffer
+	muOutErr sync.Mutex
+	muIn     sync.Mutex
+}
+
+/*
+NewRunner creates a new Runner instance with the specified runtime.
+
+It initializes the runner with a 5-minute timeout context and sets up buffered
+I/O streams for container interaction. The runtime's I/O is attached to the
+runner's buffers for command execution and interactive operations.
+
+Returns nil if I/O attachment fails.
+*/
+func NewRunner(runtime Runtime) *Runner {
+	errnie.Debug("environment.NewRunner")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+
+	runner := &Runner{
+		ctx:     ctx,
+		cancel:  cancel,
+		runtime: runtime,
+		bufIn:   bytes.NewBuffer([]byte{}),
+		bufOut:  bytes.NewBuffer([]byte{}),
+		bufErr:  bytes.NewBuffer([]byte{}),
+	}
+
+	// Attach IO
+	if err := runtime.AttachIO(runner.bufIn, runner.bufOut, runner.bufErr); err != nil {
+		errnie.New(errnie.WithError(err))
+		return nil
+	}
+
+	return runner
+}
+
+func (runner *Runner) Execute(
+	buffer chan map[string]any,
+	command string,
+	input string,
+) chan map[string]any {
+	out := make(chan map[string]any)
+
+	// Detect when the command has finished executing and the
+	// output has been written to the buffer.
+	waitforoutput := func() chan []byte {
+		var (
+			n           int
+			err         error
+			outputCh    = make(chan []byte, 1)
+			noDataCount = 0
+			output      = bytes.NewBuffer([]byte{})
+		)
+
+		go func() {
+			buf := make([]byte, 1024)
+			for {
+				select {
+				case <-runner.ctx.Done():
+					outputCh <- output.Bytes()
+					close(outputCh)
+					return
+				default:
+					runner.muOutErr.Lock()
+					n, err = runner.bufOut.Read(buf)
+					runner.muOutErr.Unlock()
+
+					if err != nil && err != io.EOF {
+						errnie.New(errnie.WithError(err))
+						outputCh <- output.Bytes()
+						close(outputCh)
+						return
+					}
+
+					if n > 0 {
+						output.Write(buf[:n])
+						errnie.Debug("environment.Runner.waitforoutput.n", "n", n, "buf", string(buf[:n]))
+						noDataCount = 0
+						continue
+					}
+
+					// Only consider command complete after multiple zero reads
+					noDataCount++
+					if noDataCount > 5 {
+						outputCh <- output.Bytes()
+						close(outputCh)
+						return
+					}
+
+					time.Sleep(100 * time.Millisecond)
+				}
+			}
+		}()
+
+		return outputCh
+	}
+
+	go func() {
+		defer close(out)
+
+		artifact := <-buffer
+
+		if command == "" && input == "" {
+			errnie.New(errnie.WithError(errors.New("no command or input")))
+			return
+		}
+
+		// Handle input differently from commands
+		if input != "" {
+			errnie.Debug("environment.Runner.buffer.fn.input", "input", input)
+
+			// For input, just write to stdin and wait for output
+			if !strings.HasSuffix(input, "\n") {
+				input = input + "\n"
+			}
+
+			runner.muIn.Lock()
+			runner.bufIn.Write([]byte(input))
+			runner.muIn.Unlock()
+
+			// Wait for the program's response
+			output := <-waitforoutput()
+
+			errnie.Debug("environment.Runner.buffer.fn.out", "out", string(output))
+			artifact["output"] = string(output)
+
+			out <- artifact
+		}
+
+		// For commands, reset all buffers
+		runner.muIn.Lock()
+		runner.bufIn.Reset()
+		runner.muIn.Unlock()
+
+		runner.muOutErr.Lock()
+		runner.bufOut.Reset()
+		runner.bufErr.Reset()
+		runner.muOutErr.Unlock()
+
+		// Handle command execution
+		runner.muIn.Lock()
+		errnie.Debug("environment.Runner.buffer.fn.command", "command", command)
+		runner.bufIn.Write([]byte(command))
+		runner.muIn.Unlock()
+
+		if err := runner.runtime.ExecuteCommand(runner.ctx, command, runner.bufOut, runner.bufErr); err != nil {
+			errnie.New(errnie.WithError(err))
+			return
+		}
+
+		// Wait until the output of the command returns 0 bytes
+		output := <-waitforoutput()
+
+		runner.muOutErr.Lock()
+		if bytes.Contains(runner.bufErr.Bytes(), []byte("EOFError: EOF when reading a line")) {
+			// If this is an EOF during input read, add explicit prompt
+			output = append(output, []byte("\n[WAITING FOR INPUT] Please provide input for the program.")...)
+		}
+
+		if len(output) == 0 {
+			output = []byte("Command executed successfully")
+		}
+
+		errnie.Debug("environment.Runner.buffer.fn.out", "out", string(output))
+		artifact["output"] = string(output)
+		runner.muOutErr.Unlock()
+
+		out <- artifact
+	}()
+
+	return out
+}
+
+/*
+ExecuteCommand runs a command in the container and returns the result.
+This is a wrapper around the runtime's ExecuteCommand method that handles
+the buffer management internally.
+*/
+func (runner *Runner) ExecuteCommand(ctx context.Context, command string, stdout, stderr io.Writer) error {
+	return runner.runtime.ExecuteCommand(ctx, command, stdout, stderr)
+}
+
+/*
+SendInput sends input to the container and returns the resulting output.
+This method handles locking and buffer management internally.
+*/
+func (runner *Runner) SendInput(input string) (string, error) {
+	// Write to the input buffer
+	runner.muIn.Lock()
+	_, err := runner.bufIn.Write([]byte(input))
+	runner.muIn.Unlock()
+
+	if err != nil {
+		return "", err
+	}
+
+	// Give time for the process to respond
+	time.Sleep(500 * time.Millisecond)
+
+	// Read from the output buffer
+	runner.muOutErr.Lock()
+	outputBytes := make([]byte, runner.bufOut.Len())
+	_, err = runner.bufOut.Read(outputBytes)
+	runner.bufOut.Reset() // Clear the buffer after reading
+	runner.muOutErr.Unlock()
+
+	if err != nil && err != io.EOF {
+		return "", err
+	}
+
+	return string(outputBytes), nil
+}
+
+
+
+---
+File: /pkg/tools/github/client.go
+---
+
+package github
+
+import (
+	"os"
+
+	"github.com/google/go-github/v70/github"
+)
+
+/*
+Client provides a high-level interface to GitHub services.
+It manages connections and operations for repositories, pull requests,
+and issues through a unified streaming interface.
+*/
+type Client struct {
+	conn   *github.Client
+	repo   *Repository
+	pr     *PR
+	issues *Issues
+}
+
+/*
+NewClient creates a new GitHub client using environment variables for authentication.
+
+It initializes connections to repository, pull request, and issues services using
+a GitHub personal access token from the GITHUB_TOKEN environment variable.
+*/
+func NewClient() *Client {
+	client := github.NewClient(nil).WithAuthToken(os.Getenv("GITHUB_TOKEN"))
+	repo := NewRepository(client)
+	pr := NewPR(client)
+	issues := NewIssues(client)
+
+	return &Client{
+		conn:   client,
+		pr:     pr,
+		repo:   repo,
+		issues: issues,
+	}
+}
+
+func (c *Client) Do(
+	buffer chan []byte,
+	fn ...func(artifact []byte) []byte,
+) chan []byte {
+	out := make(chan []byte)
+
+	go func() {
+		defer close(out)
+	}()
+
+	return out
+}
+
+
+
+---
+File: /pkg/tools/github/issues.go
+---
+
+package github
+
+import (
+	"context"
+
+	"github.com/google/go-github/v70/github"
+	"github.com/theapemachine/caramba/pkg/errnie"
+)
+
+/*
+Issues manages GitHub issue operations through the GitHub API.
+It provides functionality to create, update, and query repository issues.
+*/
+type Issues struct {
+	conn *github.Client
+}
+
+/*
+NewIssues creates a new Issues instance with the provided GitHub client connection.
+*/
+func NewIssues(conn *github.Client) *Issues {
+	return &Issues{conn: conn}
+}
+
+/*
+GetIssue retrieves a single issue from a repository.
+
+Uses owner, repository name, and issue number from the artifact's metadata.
+Returns an error if the retrieval fails.
+*/
+func (issues *Issues) GetIssue(issueID int) (issue *github.Issue, err error) {
+	issue, _, err = issues.conn.Issues.Get(
+		context.Background(),
+		"owner",
+		"name",
+		issueID,
+	)
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+	return issue, nil
+}
+
+/*
+ListIssues retrieves all issues from a repository.
+
+Uses owner and repository name from the artifact's metadata.
+Returns an error if the retrieval fails.
+*/
+func (issues *Issues) ListIssues() (issueList []*github.Issue, err error) {
+	issueList, _, err = issues.conn.Issues.ListByRepo(
+		context.Background(),
+		"owner",
+		"name",
+		nil,
+	)
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+	return issueList, nil
+}
+
+/*
+CreateIssue creates a new issue in a repository.
+
+Uses metadata from the artifact to set issue fields like title and body.
+Returns an error if the creation fails.
+*/
+func (issues *Issues) CreateIssue(title, body string) (issue *github.Issue, err error) {
+	issueRequest := &github.IssueRequest{
+		Title:     github.Ptr(title),
+		Body:      github.Ptr(body),
+		Labels:    &[]string{},
+		Assignees: &[]string{},
+	}
+
+	issue, _, err = issues.conn.Issues.Create(
+		context.Background(),
+		"owner",
+		"name",
+		issueRequest,
+	)
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+	return issue, nil
+}
+
+/*
+UpdateIssue updates an existing issue in a repository.
+
+Uses metadata from the artifact to update issue fields like title, body, and state.
+Returns an error if the update fails.
+*/
+func (issues *Issues) UpdateIssue(issueID int, title, body, state string) (issue *github.Issue, err error) {
+	update := &github.IssueRequest{
+		Title: github.Ptr(title),
+		Body:  github.Ptr(body),
+		State: github.Ptr(state),
+	}
+
+	issue, _, err = issues.conn.Issues.Edit(
+		context.Background(),
+		"owner",
+		"name",
+		issueID,
+		update,
+	)
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+	return issue, nil
+}
+
+
+
+---
+File: /pkg/tools/github/pr.go
+---
+
+package github
+
+import (
+	"context"
+
+	"github.com/google/go-github/v70/github"
+	"github.com/theapemachine/caramba/pkg/errnie"
+)
+
+/*
+PR manages GitHub pull request operations through the GitHub API.
+It provides functionality to create, update, review, and manage pull requests
+and their associated comments and reviews.
+*/
+type PR struct {
+	conn *github.Client
+}
+
+/*
+NewPR creates a new PR instance with the provided GitHub client connection.
+*/
+func NewPR(conn *github.Client) *PR {
+	return &PR{conn: conn}
+}
+
+/*
+GetPR retrieves a single pull request from a repository.
+
+Uses owner, repository name, and PR number from the artifact's metadata.
+Returns an error if the retrieval fails.
+*/
+func (pr *PR) GetPR(owner, name string, number int) (pullRequest *github.PullRequest, err error) {
+	pullRequest, _, err = pr.conn.PullRequests.Get(
+		context.Background(),
+		owner,
+		name,
+		number,
+	)
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+
+	return pullRequest, nil
+}
+
+/*
+ListPRs retrieves all pull requests from a repository.
+
+Uses owner and repository name from the artifact's metadata.
+Returns an error if the retrieval fails.
+*/
+func (pr *PR) ListPRs(owner, name string) (prs []*github.PullRequest, err error) {
+	pullRequests, _, err := pr.conn.PullRequests.List(
+		context.Background(),
+		owner,
+		name,
+		nil,
+	)
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+	return pullRequests, nil
+}
+
+/*
+CreatePR creates a new pull request in a repository.
+
+Uses metadata from the artifact to set PR fields like title, head branch,
+base branch, and body. Returns an error if the creation fails.
+*/
+func (pr *PR) CreatePR(owner, name, title, head, base, body string) (createdPR *github.PullRequest, err error) {
+	newPR := &github.NewPullRequest{
+		Title:               github.Ptr(title),
+		Head:                github.Ptr(head),
+		Base:                github.Ptr(base),
+		Body:                github.Ptr(body),
+		MaintainerCanModify: github.Ptr(true),
+	}
+
+	createdPR, _, err = pr.conn.PullRequests.Create(
+		context.Background(),
+		owner,
+		name,
+		newPR,
+	)
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+	return createdPR, nil
+}
+
+/*
+UpdatePR updates an existing pull request in a repository.
+
+Uses metadata from the artifact to update PR fields like title, body, and state.
+Returns an error if the update fails.
+*/
+func (pr *PR) UpdatePR(owner, name string, number int, title, body, state string) (updatedPR *github.PullRequest, err error) {
+	update := &github.PullRequest{
+		Title: github.Ptr(title),
+		Body:  github.Ptr(body),
+		State: github.Ptr(state),
+	}
+
+	updatedPR, _, err = pr.conn.PullRequests.Edit(
+		context.Background(),
+		owner,
+		name,
+		number,
+		update,
+	)
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+	return updatedPR, nil
+}
+
+/*
+CreatePRComment creates a new comment on a pull request.
+
+Uses metadata from the artifact to set the comment body.
+Returns an error if the comment creation fails.
+*/
+func (pr *PR) CreatePRComment(owner, name string, number int, body string) (createdComment *github.IssueComment, err error) {
+	comment := &github.IssueComment{
+		Body: github.Ptr(body),
+	}
+
+	createdComment, _, err = pr.conn.Issues.CreateComment(
+		context.Background(),
+		owner,
+		name,
+		number,
+		comment,
+	)
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+	return createdComment, nil
+}
+
+/*
+ListPRComments retrieves all comments from a pull request.
+
+Uses owner, repository name, and PR number from the artifact's metadata.
+Returns an error if the retrieval fails.
+*/
+func (pr *PR) ListPRComments(owner, name string, number int) (listedComments []*github.IssueComment, err error) {
+	listedComments, _, err = pr.conn.Issues.ListComments(
+		context.Background(),
+		owner,
+		name,
+		number,
+		nil,
+	)
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+	return listedComments, nil
+}
+
+/*
+CreateReviewComment creates a new review comment on a specific line of code in a pull request.
+
+Uses metadata from the artifact to set the comment body, file path, and position.
+Returns an error if the comment creation fails.
+*/
+func (pr *PR) CreateReviewComment(owner, name string, number int, body, path string, position int) (createdComment *github.PullRequestComment, err error) {
+	comment := &github.PullRequestComment{
+		Body:     github.Ptr(body),
+		Path:     github.Ptr(path),
+		Position: github.Ptr(position),
+	}
+
+	createdComment, _, err = pr.conn.PullRequests.CreateComment(
+		context.Background(),
+		owner,
+		name,
+		number,
+		comment,
+	)
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+	return createdComment, nil
+}
+
+/*
+ListReviewComments retrieves all review comments from a pull request.
+
+Uses owner, repository name, and PR number from the artifact's metadata.
+Returns an error if the retrieval fails.
+*/
+func (pr *PR) ListReviewComments(owner, name string, number int) (listedComments []*github.PullRequestComment, err error) {
+	listedComments, _, err = pr.conn.PullRequests.ListComments(
+		context.Background(),
+		owner,
+		name,
+		number,
+		nil,
+	)
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+	return listedComments, nil
+}
+
+/*
+CreatePRReview creates a new review on a pull request.
+
+Uses metadata from the artifact to set the review body, event type (APPROVE,
+REQUEST_CHANGES, COMMENT), and optional line-specific comments.
+Returns an error if the review creation fails.
+*/
+func (pr *PR) CreatePRReview(owner, name string, number int, body, event string, path string, position int, comment string) (createdReview *github.PullRequestReview, err error) {
+	review := &github.PullRequestReviewRequest{
+		Body:  github.Ptr(body),
+		Event: github.Ptr(event), // APPROVE, REQUEST_CHANGES, COMMENT
+		Comments: []*github.DraftReviewComment{
+			{
+				Path:     github.Ptr(path),
+				Position: github.Ptr(position),
+				Body:     github.Ptr(comment),
+			},
+		},
+	}
+
+	createdReview, _, err = pr.conn.PullRequests.CreateReview(
+		context.Background(),
+		owner,
+		name,
+		number,
+		review,
+	)
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+	return createdReview, nil
+}
+
+/*
+ListPRReviews retrieves all reviews from a pull request.
+
+Uses owner, repository name, and PR number from the artifact's metadata.
+Returns an error if the retrieval fails.
+*/
+func (pr *PR) ListPRReviews(owner, name string, number int) (listedReviews []*github.PullRequestReview, err error) {
+	listedReviews, _, err = pr.conn.PullRequests.ListReviews(
+		context.Background(),
+		owner,
+		name,
+		number,
+		nil,
+	)
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+	return listedReviews, nil
+}
+
+/*
+SubmitReview submits a pending review on a pull request.
+
+Uses metadata from the artifact to set the review body and event type
+(APPROVE, REQUEST_CHANGES, COMMENT). Returns an error if the submission fails.
+*/
+func (pr *PR) SubmitReview(owner, name string, number int, review_id int, body, event string) (submittedReview *github.PullRequestReview, err error) {
+	review := &github.PullRequestReviewRequest{
+		Body:  github.Ptr(body),
+		Event: github.Ptr(event), // APPROVE, REQUEST_CHANGES, COMMENT
+	}
+
+	submittedReview, _, err = pr.conn.PullRequests.SubmitReview(
+		context.Background(),
+		owner,
+		name,
+		number,
+		int64(review_id),
+		review,
+	)
+	if err != nil {
+		return nil, errnie.New(errnie.WithError(err))
+	}
+	return submittedReview, nil
+}
+
+
+
+---
+File: /pkg/tools/github/repository.go
+---
+
+package github
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+
+	"github.com/google/go-github/v70/github"
+	"github.com/theapemachine/caramba/pkg/errnie"
+)
+
+/*
+Repository manages GitHub repository operations through the GitHub API.
+It provides functionality to create, query, and manage repository information
+including branches and file contents.
+*/
+type Repository struct {
+	conn *github.Client
+}
+
+/*
+NewRepository creates a new Repository instance with the provided GitHub client connection.
+*/
+func NewRepository(conn *github.Client) *Repository {
+	return &Repository{conn: conn}
+}
+
+/*
+encode serializes the provided value into JSON and adds it to the artifact's payload.
+
+Returns an error if JSON encoding fails.
+*/
+func (repository *Repository) encode(artifact map[string]any, v any) (err error) {
+	payload := bytes.NewBuffer([]byte{})
+
+	if err = json.NewEncoder(payload).Encode(v); err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	artifact["payload"] = payload.Bytes()
+
+	return nil
+}
+
+/*
+GetRepositories retrieves all repositories accessible to the authenticated user.
+
+Returns an error if the retrieval fails.
+*/
+func (repository *Repository) GetRepositories(artifact map[string]any) (err error) {
+	repos, _, err := repository.conn.Repositories.ListByAuthenticatedUser(
+		context.Background(),
+		nil,
+	)
+
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	return repository.encode(artifact, repos)
+}
+
+/*
+GetRepository retrieves information about a specific repository.
+
+Uses owner and repository name from the artifact's metadata.
+Returns an error if the retrieval fails.
+*/
+func (repository *Repository) GetRepository(artifact map[string]any) (err error) {
+	repo, _, err := repository.conn.Repositories.Get(
+		context.Background(),
+		artifact["owner"].(string),
+		artifact["name"].(string),
+	)
+
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+
+	return repository.encode(artifact, repo)
+}
+
+/*
+CreateRepository creates a new repository for the authenticated user.
+
+Uses metadata from the artifact to set repository fields like name,
+description, and visibility. Returns an error if the creation fails.
+*/
+func (repository *Repository) CreateRepository(artifact map[string]any) (err error) {
+	repo := &github.Repository{
+		Name:        github.Ptr(artifact["name"].(string)),
+		Description: github.Ptr(artifact["description"].(string)),
+		Private:     github.Ptr(artifact["private"].(bool)),
+		AutoInit:    github.Ptr(true),
+	}
+
+	created, _, err := repository.conn.Repositories.Create(
+		context.Background(),
+		"",
+		repo,
+	)
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+	return repository.encode(artifact, created)
+}
+
+/*
+ListBranches retrieves all branches from a repository.
+
+Uses owner and repository name from the artifact's metadata.
+Returns an error if the retrieval fails.
+*/
+func (repository *Repository) ListBranches(artifact map[string]any) (err error) {
+	branches, _, err := repository.conn.Repositories.ListBranches(
+		context.Background(),
+		artifact["owner"].(string),
+		artifact["name"].(string),
+		nil,
+	)
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+	return repository.encode(artifact, branches)
+}
+
+/*
+GetContents retrieves the contents of a file or directory in a repository.
+
+Uses owner, repository name, and file path from the artifact's metadata.
+Returns an error if the retrieval fails.
+*/
+func (repository *Repository) GetContents(artifact map[string]any) (err error) {
+	content, _, _, err := repository.conn.Repositories.GetContents(
+		context.Background(),
+		artifact["owner"].(string),
+		artifact["name"].(string),
+		artifact["path"].(string),
+		nil,
+	)
+	if err != nil {
+		return errnie.New(errnie.WithError(err))
+	}
+	return repository.encode(artifact, content)
+}
+
+
+
+---
+File: /pkg/tools/browser.go
+---
+
+package tools
+
+import (
+	"context"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/caramba/pkg/tools/browser"
+)
+
+/* BrowserTool provides a base for all browser operations */
+type BrowserTool struct {
+	Tools []Tool
+}
+
+/* NewBrowserTool creates a new browser tool with all operations */
+func NewBrowserTool() *BrowserTool {
+	getContent := NewBrowserGetContentTool()
+	getLinks := NewBrowserGetLinksTool()
+
+	return &BrowserTool{
+		Tools: []Tool{
+			{
+				Tool: getContent.Tool,
+				Use:  getContent.Use,
+			},
+			{
+				Tool: getLinks.Tool,
+				Use:  getLinks.Use,
+			},
+		},
+	}
+}
+
+/* BrowserGetContentTool implements a tool for retrieving page content */
+type BrowserGetContentTool struct {
+	mcp.Tool
+}
+
+/* NewBrowserGetContentTool creates a new tool for retrieving page content */
+func NewBrowserGetContentTool() *BrowserGetContentTool {
+	return &BrowserGetContentTool{
+		Tool: mcp.NewTool(
+			"get_content",
+			mcp.WithDescription("A tool which can get the content of a page."),
+			mcp.WithString(
+				"url",
+				mcp.Description("The URL to navigate to."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the content retrieval operation */
+func (tool *BrowserGetContentTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* BrowserGetLinksTool implements a tool for extracting links from a page */
+type BrowserGetLinksTool struct {
+	mcp.Tool
+	client *browser.Manager
+}
+
+/* NewBrowserGetLinksTool creates a new tool for extracting links */
+func NewBrowserGetLinksTool() *BrowserGetLinksTool {
+	return &BrowserGetLinksTool{
+		Tool: mcp.NewTool(
+			"get_links",
+			mcp.WithDescription("A tool which can get the links of a page."),
+			mcp.WithString(
+				"url",
+				mcp.Description("The URL to navigate to."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the link extraction operation */
+func (tool *BrowserGetLinksTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+
+
+---
+File: /pkg/tools/environment.go
+---
+
+package tools
+
+import (
+	"bytes"
+	"context"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/caramba/pkg/tools/environment"
+)
+
+/* EnvironmentTool provides a base for all environment operations */
+type EnvironmentTool struct {
+	Tools []Tool
+}
+
+/* NewEnvironmentTool creates a new environment tool with all operations */
+func NewEnvironmentTool() *EnvironmentTool {
+	command := NewEnvironmentCommandTool()
+	input := NewEnvironmentInputTool()
+
+	return &EnvironmentTool{
+		Tools: []Tool{
+			{
+				Tool: command.Tool,
+				Use:  command.Use,
+			},
+			{
+				Tool: input.Tool,
+				Use:  input.Use,
+			},
+		},
+	}
+}
+
+/* EnvironmentCommandTool implements a tool for executing commands */
+type EnvironmentCommandTool struct {
+	mcp.Tool
+}
+
+/* NewEnvironmentCommandTool creates a new tool for executing commands */
+func NewEnvironmentCommandTool() *EnvironmentCommandTool {
+	return &EnvironmentCommandTool{
+		Tool: mcp.NewTool(
+			"command",
+			mcp.WithDescription("A tool which gives you a full Linux terminal-based environment to interact with."),
+			mcp.WithString(
+				"command",
+				mcp.Description("A valid bash command to execute in the environment."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the command operation */
+func (tool *EnvironmentCommandTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	builder := environment.NewBuilder()
+
+	if builder == nil {
+		return mcp.NewToolResultText("error creating builder"), nil
+	}
+
+	runner := environment.NewRunner(builder.Runtime)
+
+	if runner == nil {
+		return mcp.NewToolResultText("error creating runner"), nil
+	}
+
+	command := req.Params.Arguments["command"].(string)
+
+	if command == "" {
+		return mcp.NewToolResultText("missing required field: command"), nil
+	}
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+
+	if err := runner.ExecuteCommand(ctx, command, &stdoutBuf, &stderrBuf); err != nil {
+		return mcp.NewToolResultText("error executing command"), err
+	}
+
+	output := stdoutBuf.String()
+
+	if output == "" && stderrBuf.Len() > 0 {
+		output = stderrBuf.String()
+	}
+
+	return mcp.NewToolResultText(output), nil
+}
+
+/* EnvironmentInputTool implements a tool for providing input */
+type EnvironmentInputTool struct {
+	mcp.Tool
+}
+
+/* NewEnvironmentInputTool creates a new tool for providing input */
+func NewEnvironmentInputTool() *EnvironmentInputTool {
+	return &EnvironmentInputTool{
+		Tool: mcp.NewTool(
+			"input",
+			mcp.WithDescription(
+				"A tool which gives you a full Linux terminal-based environment to interact with.",
+			),
+			mcp.WithString(
+				"input",
+				mcp.Description(
+					"Valid input to pass to the environment, used for interactive sessions.",
+				),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the input operation */
+func (tool *EnvironmentInputTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	builder := environment.NewBuilder()
+
+	if builder == nil {
+		return mcp.NewToolResultText("error creating builder"), nil
+	}
+
+	runner := environment.NewRunner(builder.Runtime)
+
+	if runner == nil {
+		return mcp.NewToolResultText("error creating runner"), nil
+	}
+
+	input := req.Params.Arguments["input"].(string)
+
+	if input == "" {
+		return mcp.NewToolResultText("missing required field: input"), nil
+	}
+
+	if input[len(input)-1] != '\n' {
+		input += "\n"
+	}
+
+	output, err := runner.SendInput(input)
+
+	if err != nil {
+		return mcp.NewToolResultText("error sending input"), err
+	}
+
+	return mcp.NewToolResultText(output), nil
+}
+
+
+
+---
+File: /pkg/tools/github.go
+---
+
+package tools
+
+import (
+	"context"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/theapemachine/caramba/pkg/tools/github"
+)
+
+/* GithubTool provides a base for all GitHub operations */
+type GithubTool struct {
+	Tools []Tool
+}
+
+/* NewGithubTool creates a new GitHub tool with all operations */
+func NewGithubTool() *GithubTool {
+	getRepositories := NewGithubGetRepositoriesTool()
+	getRepository := NewGithubGetRepositoryTool()
+	createRepository := NewGithubCreateRepositoryTool()
+	deleteRepository := NewGithubDeleteRepositoryTool()
+	updateRepository := NewGithubUpdateRepositoryTool()
+	listIssues := NewGithubListIssuesTool()
+	createIssue := NewGithubCreateIssueTool()
+	updateIssue := NewGithubUpdateIssueTool()
+	closeIssue := NewGithubCloseIssueTool()
+	listPulls := NewGithubListPullsTool()
+	createPull := NewGithubCreatePullTool()
+	updatePull := NewGithubUpdatePullTool()
+	mergePull := NewGithubMergePullTool()
+	listReviews := NewGithubListReviewsTool()
+	createReview := NewGithubCreateReviewTool()
+	updateReview := NewGithubUpdateReviewTool()
+	listReviewComments := NewGithubListReviewCommentsTool()
+	createReviewComment := NewGithubCreateReviewCommentTool()
+
+	return &GithubTool{
+		Tools: []Tool{
+			{
+				Tool: getRepositories.Tool,
+				Use:  getRepositories.Use,
+			},
+			{
+				Tool: getRepository.Tool,
+				Use:  getRepository.Use,
+			},
+			{
+				Tool: createRepository.Tool,
+				Use:  createRepository.Use,
+			},
+			{
+				Tool: createIssue.Tool,
+				Use:  createIssue.Use,
+			},
+			{
+				Tool: updateIssue.Tool,
+				Use:  updateIssue.Use,
+			},
+			{
+				Tool: closeIssue.Tool,
+				Use:  closeIssue.Use,
+			},
+			{
+				Tool: listPulls.Tool,
+				Use:  listPulls.Use,
+			},
+			{
+				Tool: createPull.Tool,
+				Use:  createPull.Use,
+			},
+			{
+				Tool: updatePull.Tool,
+				Use:  updatePull.Use,
+			},
+			{
+				Tool: listReviews.Tool,
+				Use:  listReviews.Use,
+			},
+			{
+				Tool: createReview.Tool,
+				Use:  createReview.Use,
+			},
+			{
+				Tool: updateReview.Tool,
+				Use:  updateReview.Use,
+			},
+			{
+				Tool: listReviewComments.Tool,
+				Use:  listReviewComments.Use,
+			},
+			{
+				Tool: createReviewComment.Tool,
+				Use:  createReviewComment.Use,
+			},
+			{
+				Tool: deleteRepository.Tool,
+				Use:  deleteRepository.Use,
+			},
+			{
+				Tool: updateRepository.Tool,
+				Use:  updateRepository.Use,
+			},
+			{
+				Tool: mergePull.Tool,
+				Use:  mergePull.Use,
+			},
+			{
+				Tool: listIssues.Tool,
+				Use:  listIssues.Use,
+			},
+		},
+	}
+}
+
+/* GithubGetRepositoriesTool implements a tool for getting repositories from GitHub */
+type GithubGetRepositoriesTool struct {
+	mcp.Tool
+}
+
+/* NewGithubGetRepositoriesTool creates a new tool for getting repositories */
+func NewGithubGetRepositoriesTool() *GithubGetRepositoriesTool {
+	return &GithubGetRepositoriesTool{
+		Tool: mcp.NewTool(
+			"get_repositories",
+			mcp.WithDescription("A tool for getting repositories from GitHub."),
+		),
+	}
+}
+
+/* Use executes the get repositories operation and returns the results */
+func (tool *GithubGetRepositoriesTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubGetRepositoryTool implements a tool for getting a repository from GitHub */
+type GithubGetRepositoryTool struct {
+	mcp.Tool
+}
+
+/* NewGithubGetRepositoryTool creates a new tool for getting a repository */
+func NewGithubGetRepositoryTool() *GithubGetRepositoryTool {
+	return &GithubGetRepositoryTool{
+		Tool: mcp.NewTool(
+			"get_repository",
+			mcp.WithDescription("A tool for getting a repository from GitHub."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to get."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the get repository operation and returns the results */
+func (tool *GithubGetRepositoryTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubCreateRepositoryTool implements a tool for creating a repository */
+type GithubCreateRepositoryTool struct {
+	mcp.Tool
+	client *github.Client
+}
+
+/* NewGithubCreateRepositoryTool creates a new tool for creating repositories */
+func NewGithubCreateRepositoryTool() *GithubCreateRepositoryTool {
+	return &GithubCreateRepositoryTool{
+		Tool: mcp.NewTool(
+			"create_repository",
+			mcp.WithDescription("A tool for creating a repository on GitHub."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to create."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the create repository operation and returns the results */
+func (tool *GithubCreateRepositoryTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubDeleteRepositoryTool implements a tool for deleting a repository */
+type GithubDeleteRepositoryTool struct {
+	mcp.Tool
+}
+
+/* NewGithubDeleteRepositoryTool creates a new tool for deleting repositories */
+func NewGithubDeleteRepositoryTool() *GithubDeleteRepositoryTool {
+	return &GithubDeleteRepositoryTool{
+		Tool: mcp.NewTool(
+			"delete_repository",
+			mcp.WithDescription("A tool for deleting a repository on GitHub."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to delete."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the delete repository operation */
+func (tool *GithubDeleteRepositoryTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubUpdateRepositoryTool implements a tool for updating a repository */
+type GithubUpdateRepositoryTool struct {
+	mcp.Tool
+}
+
+/* NewGithubUpdateRepositoryTool creates a new tool for updating repositories */
+func NewGithubUpdateRepositoryTool() *GithubUpdateRepositoryTool {
+	return &GithubUpdateRepositoryTool{
+		Tool: mcp.NewTool(
+			"update_repository",
+			mcp.WithDescription("A tool for updating a repository on GitHub."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to update."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"description",
+				mcp.Description("New description for the repository."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the update repository operation */
+func (tool *GithubUpdateRepositoryTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubListIssuesTool implements a tool for listing repository issues */
+type GithubListIssuesTool struct {
+	mcp.Tool
+}
+
+/* NewGithubListIssuesTool creates a new tool for listing issues */
+func NewGithubListIssuesTool() *GithubListIssuesTool {
+	return &GithubListIssuesTool{
+		Tool: mcp.NewTool(
+			"list_issues",
+			mcp.WithDescription("A tool for listing issues in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to list issues from."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the list issues operation */
+func (tool *GithubListIssuesTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubCreateIssueTool implements a tool for creating an issue */
+type GithubCreateIssueTool struct {
+	mcp.Tool
+}
+
+/* NewGithubCreateIssueTool creates a new tool for creating issues */
+func NewGithubCreateIssueTool() *GithubCreateIssueTool {
+	return &GithubCreateIssueTool{
+		Tool: mcp.NewTool(
+			"create_issue",
+			mcp.WithDescription("A tool for creating an issue in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to create the issue in."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"title",
+				mcp.Description("The title of the issue."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"body",
+				mcp.Description("The body content of the issue."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the create issue operation */
+func (tool *GithubCreateIssueTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubUpdateIssueTool implements a tool for updating an issue */
+type GithubUpdateIssueTool struct {
+	mcp.Tool
+}
+
+/* NewGithubUpdateIssueTool creates a new tool for updating issues */
+func NewGithubUpdateIssueTool() *GithubUpdateIssueTool {
+	return &GithubUpdateIssueTool{
+		Tool: mcp.NewTool(
+			"update_issue",
+			mcp.WithDescription("A tool for updating an issue in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the issue."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"issue_number",
+				mcp.Description("The number of the issue to update."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"title",
+				mcp.Description("The new title of the issue."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"body",
+				mcp.Description("The new body content of the issue."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the update issue operation */
+func (tool *GithubUpdateIssueTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubCloseIssueTool implements a tool for closing an issue */
+type GithubCloseIssueTool struct {
+	mcp.Tool
+}
+
+/* NewGithubCloseIssueTool creates a new tool for closing issues */
+func NewGithubCloseIssueTool() *GithubCloseIssueTool {
+	return &GithubCloseIssueTool{
+		Tool: mcp.NewTool(
+			"close_issue",
+			mcp.WithDescription("A tool for closing an issue in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the issue."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"issue_number",
+				mcp.Description("The number of the issue to close."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the close issue operation */
+func (tool *GithubCloseIssueTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubListPullsTool implements a tool for listing pull requests */
+type GithubListPullsTool struct {
+	mcp.Tool
+}
+
+/* NewGithubListPullsTool creates a new tool for listing pull requests */
+func NewGithubListPullsTool() *GithubListPullsTool {
+	return &GithubListPullsTool{
+		Tool: mcp.NewTool(
+			"list_pulls",
+			mcp.WithDescription("A tool for listing pull requests in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to list pull requests from."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the list pulls operation */
+func (tool *GithubListPullsTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubCreatePullTool implements a tool for creating a pull request */
+type GithubCreatePullTool struct {
+	mcp.Tool
+}
+
+/* NewGithubCreatePullTool creates a new tool for creating pull requests */
+func NewGithubCreatePullTool() *GithubCreatePullTool {
+	return &GithubCreatePullTool{
+		Tool: mcp.NewTool(
+			"create_pull",
+			mcp.WithDescription("A tool for creating a pull request in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository to create the pull request in."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"title",
+				mcp.Description("The title of the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"head",
+				mcp.Description("The name of the branch where your changes are implemented."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"base",
+				mcp.Description("The name of the branch you want your changes pulled into."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"body",
+				mcp.Description("The contents of the pull request."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the create pull request operation */
+func (tool *GithubCreatePullTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubUpdatePullTool implements a tool for updating a pull request */
+type GithubUpdatePullTool struct {
+	mcp.Tool
+}
+
+/* NewGithubUpdatePullTool creates a new tool for updating pull requests */
+func NewGithubUpdatePullTool() *GithubUpdatePullTool {
+	return &GithubUpdatePullTool{
+		Tool: mcp.NewTool(
+			"update_pull",
+			mcp.WithDescription("A tool for updating a pull request in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"pull_number",
+				mcp.Description("The number of the pull request to update."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"title",
+				mcp.Description("The new title of the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"body",
+				mcp.Description("The new contents of the pull request."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the update pull request operation */
+func (tool *GithubUpdatePullTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubMergePullTool implements a tool for merging a pull request */
+type GithubMergePullTool struct {
+	mcp.Tool
+}
+
+/* NewGithubMergePullTool creates a new tool for merging pull requests */
+func NewGithubMergePullTool() *GithubMergePullTool {
+	return &GithubMergePullTool{
+		Tool: mcp.NewTool(
+			"merge_pull",
+			mcp.WithDescription("A tool for merging a pull request in a GitHub repository."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"pull_number",
+				mcp.Description("The number of the pull request to merge."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"merge_method",
+				mcp.Description("The merge method to use (merge, squash, or rebase)."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the merge pull request operation */
+func (tool *GithubMergePullTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubListReviewsTool implements a tool for listing pull request reviews */
+type GithubListReviewsTool struct {
+	mcp.Tool
+}
+
+/* NewGithubListReviewsTool creates a new tool for listing reviews */
+func NewGithubListReviewsTool() *GithubListReviewsTool {
+	return &GithubListReviewsTool{
+		Tool: mcp.NewTool(
+			"list_reviews",
+			mcp.WithDescription("A tool for listing reviews on a GitHub pull request."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"pull_number",
+				mcp.Description("The number of the pull request."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the list reviews operation */
+func (tool *GithubListReviewsTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubCreateReviewTool implements a tool for creating a pull request review */
+type GithubCreateReviewTool struct {
+	mcp.Tool
+}
+
+/* NewGithubCreateReviewTool creates a new tool for creating reviews */
+func NewGithubCreateReviewTool() *GithubCreateReviewTool {
+	return &GithubCreateReviewTool{
+		Tool: mcp.NewTool(
+			"create_review",
+			mcp.WithDescription("A tool for creating a review on a GitHub pull request."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"pull_number",
+				mcp.Description("The number of the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"event",
+				mcp.Description("The review action (APPROVE, REQUEST_CHANGES, or COMMENT)."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"body",
+				mcp.Description("The review comment."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the create review operation */
+func (tool *GithubCreateReviewTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubUpdateReviewTool implements a tool for updating a pull request review */
+type GithubUpdateReviewTool struct {
+	mcp.Tool
+}
+
+/* NewGithubUpdateReviewTool creates a new tool for updating reviews */
+func NewGithubUpdateReviewTool() *GithubUpdateReviewTool {
+	return &GithubUpdateReviewTool{
+		Tool: mcp.NewTool(
+			"update_review",
+			mcp.WithDescription("A tool for updating a review on a GitHub pull request."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"pull_number",
+				mcp.Description("The number of the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"review_id",
+				mcp.Description("The ID of the review to update."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"body",
+				mcp.Description("The updated review comment."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the update review operation */
+func (tool *GithubUpdateReviewTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubListReviewCommentsTool implements a tool for listing review comments */
+type GithubListReviewCommentsTool struct {
+	mcp.Tool
+}
+
+/* NewGithubListReviewCommentsTool creates a new tool for listing review comments */
+func NewGithubListReviewCommentsTool() *GithubListReviewCommentsTool {
+	return &GithubListReviewCommentsTool{
+		Tool: mcp.NewTool(
+			"list_review_comments",
+			mcp.WithDescription("A tool for listing review comments on a GitHub pull request."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"pull_number",
+				mcp.Description("The number of the pull request."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the list review comments operation */
+func (tool *GithubListReviewCommentsTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* GithubCreateReviewCommentTool implements a tool for creating a review comment */
+type GithubCreateReviewCommentTool struct {
+	mcp.Tool
+}
+
+/* NewGithubCreateReviewCommentTool creates a new tool for creating review comments */
+func NewGithubCreateReviewCommentTool() *GithubCreateReviewCommentTool {
+	return &GithubCreateReviewCommentTool{
+		Tool: mcp.NewTool(
+			"create_review_comment",
+			mcp.WithDescription("A tool for creating a review comment on a GitHub pull request."),
+			mcp.WithString(
+				"repository",
+				mcp.Description("The repository containing the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"pull_number",
+				mcp.Description("The number of the pull request."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"commit_id",
+				mcp.Description("The SHA of the commit to comment on."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"path",
+				mcp.Description("The relative path to the file being commented on."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"position",
+				mcp.Description("The line index in the diff to comment on."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"body",
+				mcp.Description("The text of the review comment."),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the create review comment operation */
+func (tool *GithubCreateReviewCommentTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+
+
+---
+File: /pkg/tools/memory.go
+---
+
+package tools
+
+import (
+	"context"
+
+	"github.com/mark3labs/mcp-go/mcp"
+)
+
+/* MemoryTool provides a base for all memory operations */
+type MemoryTool struct {
+	Tools []Tool
+}
+
+/* NewMemoryTool creates a new Memory tool with all operations */
+func NewMemoryTool() *MemoryTool {
+	return &MemoryTool{
+		Tools: []Tool{
+			{
+				Tool: NewMemoryQueryTool().Tool,
+				Use:  NewMemoryQueryTool().Use,
+			},
+			{
+				Tool: NewMemoryStoreTool().Tool,
+				Use:  NewMemoryStoreTool().Use,
+			},
+			{
+				Tool: NewMemorySearchTool().Tool,
+				Use:  NewMemorySearchTool().Use,
+			},
+		},
+	}
+}
+
+/* MemoryQueryTool implements a tool for querying memory stores */
+type MemoryQueryTool struct {
+	mcp.Tool
+}
+
+/* NewMemoryQueryTool creates a new tool for memory queries */
+func NewMemoryQueryTool() *MemoryQueryTool {
+	return &MemoryQueryTool{
+		Tool: mcp.NewTool(
+			"memory_query",
+			mcp.WithDescription("A tool for querying memory stores with specific patterns."),
+			mcp.WithString(
+				"query",
+				mcp.Description("The query pattern to search for."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"store",
+				mcp.Description("The memory store to query (vector/graph)."),
+				mcp.Enum("vector", "graph"),
+				mcp.Required(),
+			),
+		),
+	}
+}
+
+/* Use executes the memory query operation and returns the results */
+func (tool *MemoryQueryTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* MemoryStoreTool implements a tool for storing data in memory */
+type MemoryStoreTool struct {
+	mcp.Tool
+}
+
+/* NewMemoryStoreTool creates a new tool for storing memory */
+func NewMemoryStoreTool() *MemoryStoreTool {
+	return &MemoryStoreTool{
+		Tool: mcp.NewTool(
+			"memory_store",
+			mcp.WithDescription("A tool for storing data in memory stores."),
+			mcp.WithString(
+				"data",
+				mcp.Description("The data to store."),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"store",
+				mcp.Description("The memory store to use (vector/graph)."),
+				mcp.Enum("vector", "graph"),
+				mcp.Required(),
+			),
+			mcp.WithString(
+				"metadata",
+				mcp.Description("Additional metadata to store with the data."),
+			),
+		),
+	}
+}
+
+/* Use executes the memory store operation and returns the results */
+func (tool *MemoryStoreTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+
+/* MemorySearchTool implements a tool for semantic search in memory */
+type MemorySearchTool struct {
+	mcp.Tool
+}
+
+/* NewMemorySearchTool creates a new tool for memory search */
+func NewMemorySearchTool() *MemorySearchTool {
+	return &MemorySearchTool{
+		Tool: mcp.NewTool(
+			"memory_search",
+			mcp.WithDescription("A tool for semantic search across memory stores."),
+			mcp.WithString(
+				"query",
+				mcp.Description("The semantic query to search for."),
+				mcp.Required(),
+			),
+			mcp.WithNumber(
+				"limit",
+				mcp.Description("Maximum number of results to return."),
+			),
+			mcp.WithNumber(
+				"threshold",
+				mcp.Description("Similarity threshold for matches."),
+			),
+		),
+	}
+}
+
+/* Use executes the memory search operation and returns the results */
+func (tool *MemorySearchTool) Use(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	return mcp.NewToolResultText("Operation not implemented"), nil
+}
+

@@ -1,0 +1,1411 @@
+Directory Structure:
+
+└── ./
+    └── samples
+        └── python
+            └── agents
+                ├── google_adk
+                │   ├── __init__.py
+                │   ├── __main__.py
+                │   ├── .python-version
+                │   ├── agent.py
+                │   ├── pyproject.toml
+                │   ├── README.md
+                │   └── task_manager.py
+                └── langgraph
+                    ├── __init__.py
+                    ├── __main__.py
+                    ├── .python-version
+                    ├── agent.py
+                    ├── pyproject.toml
+                    ├── README.md
+                    └── task_manager.py
+
+
+
+---
+File: /samples/python/agents/google_adk/__init__.py
+---
+
+
+
+
+---
+File: /samples/python/agents/google_adk/__main__.py
+---
+
+from common.server import A2AServer
+from common.types import AgentCard, AgentCapabilities, AgentSkill, MissingAPIKeyError
+from task_manager import AgentTaskManager
+from agent import ReimbursementAgent
+import click
+import os
+import logging
+from dotenv import load_dotenv
+
+load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+@click.command()
+@click.option("--host", default="localhost")
+@click.option("--port", default=10002)
+def main(host, port):
+    try:
+        if not os.getenv("GOOGLE_API_KEY"):
+                raise MissingAPIKeyError("GOOGLE_API_KEY environment variable not set.")
+        
+        capabilities = AgentCapabilities(streaming=True)
+        skill = AgentSkill(
+            id="process_reimbursement",
+            name="Process Reimbursement Tool",
+            description="Helps with the reimbursement process for users given the amount and purpose of the reimbursement.",
+            tags=["reimbursement"],
+            examples=["Can you reimburse me $20 for my lunch with the clients?"],
+        )
+        agent_card = AgentCard(
+            name="Reimbursement Agent",
+            description="This agent handles the reimbursement process for the employees given the amount and purpose of the reimbursement.",
+            url=f"http://{host}:{port}/",
+            version="1.0.0",
+            defaultInputModes=ReimbursementAgent.SUPPORTED_CONTENT_TYPES,
+            defaultOutputModes=ReimbursementAgent.SUPPORTED_CONTENT_TYPES,
+            capabilities=capabilities,
+            skills=[skill],
+        )
+        server = A2AServer(
+            agent_card=agent_card,
+            task_manager=AgentTaskManager(agent=ReimbursementAgent()),
+            host=host,
+            port=port,
+        )
+        server.start()
+    except MissingAPIKeyError as e:
+        logger.error(f"Error: {e}")
+        exit(1)
+    except Exception as e:
+        logger.error(f"An error occurred during server startup: {e}")
+        exit(1)
+    
+if __name__ == "__main__":
+    main()
+
+
+
+
+---
+File: /samples/python/agents/google_adk/.python-version
+---
+
+3.12
+
+
+
+---
+File: /samples/python/agents/google_adk/agent.py
+---
+
+import json
+import random
+from typing import Any, AsyncIterable, Dict, Optional
+from google.adk.agents.llm_agent import LlmAgent
+from google.adk.tools.tool_context import ToolContext
+from google.adk.artifacts import InMemoryArtifactService
+from google.adk.memory.in_memory_memory_service import InMemoryMemoryService
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.genai import types
+
+# Local cache of created request_ids for demo purposes.
+request_ids = set()
+
+
+def create_request_form(date: Optional[str] = None, amount: Optional[str] = None, purpose: Optional[str] = None) -> dict[str, Any]:
+  """
+   Create a request form for the employee to fill out.
+   
+   Args:
+       date (str): The date of the request. Can be an empty string.
+       amount (str): The requested amount. Can be an empty string.
+       purpose (str): The purpose of the request. Can be an empty string.
+       
+   Returns:
+       dict[str, Any]: A dictionary containing the request form data.
+   """
+  request_id = "request_id_" + str(random.randint(1000000, 9999999))
+  request_ids.add(request_id)
+  return {
+      "request_id": request_id,
+      "date": "<transaction date>" if not date else date,
+      "amount": "<transaction dollar amount>" if not amount else amount,
+      "purpose": "<business justification/purpose of the transaction>" if not purpose else purpose,
+  }
+
+def return_form(
+    form_request: dict[str, Any],    
+    tool_context: ToolContext,
+    instructions: Optional[str] = None) -> dict[str, Any]:
+  """
+   Returns a structured json object indicating a form to complete.
+   
+   Args:
+       form_request (dict[str, Any]): The request form data.
+       tool_context (ToolContext): The context in which the tool operates.
+       instructions (str): Instructions for processing the form. Can be an empty string.       
+       
+   Returns:
+       dict[str, Any]: A JSON dictionary for the form response.
+   """  
+  if isinstance(form_request, str):
+    form_request = json.loads(form_request)
+
+  tool_context.actions.skip_summarization = True
+  tool_context.actions.escalate = True
+  form_dict = {
+      'type': 'form',
+      'form': {
+        'type': 'object',
+        'properties': {
+            'date': {
+                'type': 'string',
+                'format': 'date',
+                'description': 'Date of expense',
+                'title': 'Date',
+            },
+            'amount': {
+                'type': 'string',
+                'format': 'number',
+                'description': 'Amount of expense',
+                'title': 'Amount',
+            },
+            'purpose': {
+                'type': 'string',
+                'description': 'Purpose of expense',
+                'title': 'Purpose',
+            },
+            'request_id': {
+                'type': 'string',
+                'description': 'Request id',
+                'title': 'Request ID',
+            },
+        },
+        'required': list(form_request.keys()),
+      },
+      'form_data': form_request,
+      'instructions': instructions,
+  }
+  return json.dumps(form_dict)
+
+def reimburse(request_id: str) -> dict[str, Any]:
+  """Reimburse the amount of money to the employee for a given request_id."""
+  if request_id not in request_ids:
+    return {"request_id": request_id, "status": "Error: Invalid request_id."}
+  return {"request_id": request_id, "status": "approved"}
+
+
+class ReimbursementAgent:
+  """An agent that handles reimbursement requests."""
+
+  SUPPORTED_CONTENT_TYPES = ["text", "text/plain"]
+
+  def __init__(self):
+    self._agent = self._build_agent()
+    self._user_id = "remote_agent"
+    self._runner = Runner(
+        app_name=self._agent.name,
+        agent=self._agent,
+        artifact_service=InMemoryArtifactService(),
+        session_service=InMemorySessionService(),
+        memory_service=InMemoryMemoryService(),
+    )
+
+  def invoke(self, query, session_id) -> str:
+    session = self._runner.session_service.get_session(
+        app_name=self._agent.name, user_id=self._user_id, session_id=session_id
+    )
+    content = types.Content(
+        role="user", parts=[types.Part.from_text(text=query)]
+    )
+    if session is None:
+      session = self._runner.session_service.create_session(
+          app_name=self._agent.name,
+          user_id=self._user_id,
+          state={},
+          session_id=session_id,
+      )
+    events = list(self._runner.run(
+        user_id=self._user_id, session_id=session.id, new_message=content
+    ))
+    if not events or not events[-1].content or not events[-1].content.parts:
+      return ""
+    return "\n".join([p.text for p in events[-1].content.parts if p.text])
+
+  async def stream(self, query, session_id) -> AsyncIterable[Dict[str, Any]]:
+    session = self._runner.session_service.get_session(
+        app_name=self._agent.name, user_id=self._user_id, session_id=session_id
+    )
+    content = types.Content(
+        role="user", parts=[types.Part.from_text(text=query)]
+    )
+    if session is None:
+      session = self._runner.session_service.create_session(
+          app_name=self._agent.name,
+          user_id=self._user_id,
+          state={},
+          session_id=session_id,
+      )
+    async for event in self._runner.run_async(
+        user_id=self._user_id, session_id=session.id, new_message=content
+    ):
+      if event.is_final_response():
+        response = ""
+        if (
+            event.content
+            and event.content.parts
+            and event.content.parts[0].text
+        ):
+          response = "\n".join([p.text for p in event.content.parts if p.text])
+        elif (
+            event.content
+            and event.content.parts
+            and any([True for p in event.content.parts if p.function_response])):
+          response = next((p.function_response.model_dump() for p in event.content.parts))
+        yield {
+            "is_task_complete": True,
+            "content": response,
+        }
+      else:
+        yield {
+            "is_task_complete": False,
+            "updates": "Processing the reimbursement request...",
+        }
+
+  def _build_agent(self) -> LlmAgent:
+    """Builds the LLM agent for the reimbursement agent."""
+    return LlmAgent(
+        model="gemini-2.0-flash-001",
+        name="reimbursement_agent",
+        description=(
+            "This agent handles the reimbursement process for the employees"
+            " given the amount and purpose of the reimbursement."
+        ),
+        instruction="""
+    You are an agent who handle the reimbursement process for employees.
+
+    When you receive an reimbursement request, you should first create a new request form using create_request_form(). Only provide default values if they are provided by the user, otherwise use an empty string as the default value.
+      1. 'Date': the date of the transaction.
+      2. 'Amount': the dollar amount of the transaction.
+      3. 'Business Justification/Purpose': the reason for the reimbursement.
+
+    Once you created the form, you should return the result of calling return_form with the form data from the create_request_form call.
+
+    Once you received the filled-out form back from the user, you should then check the form contains all required information:
+      1. 'Date': the date of the transaction.
+      2. 'Amount': the value of the amount of the reimbursement being requested.
+      3. 'Business Justification/Purpose': the item/object/artifact of the reimbursement.
+
+    If you don't have all of the information, you should reject the request directly by calling the request_form method, providing the missing fields.
+
+
+    For valid reimbursement requests, you can then use reimburse() to reimburse the employee.
+      * In your response, you should include the request_id and the status of the reimbursement request.
+
+    """,
+        tools=[
+            create_request_form,
+            reimburse,
+            return_form,
+        ],
+    )
+
+
+
+
+---
+File: /samples/python/agents/google_adk/pyproject.toml
+---
+
+[project]
+name = "a2a-sample-agent-adk"
+version = "0.1.0"
+description = "Sample Google ADK-based Expense Reimbursement agent hosted as an A2A server." 
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "a2a-samples",
+    "click>=8.1.8",
+    "google-adk>=0.0.3",
+    "google-genai>=1.9.0",
+    "python-dotenv>=1.1.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.uv.sources]
+a2a-samples = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+
+---
+File: /samples/python/agents/google_adk/README.md
+---
+
+## ADK Agent
+
+This sample uses the Agent Development Kit (ADK) to create a simple "Expense Reimbursement" agent that is hosted as an A2A server.
+
+This agent takes text requests from the client and, if any details are missing, returns a webform for the client (or its user) to fill out. After the client fills out the form, the agent will complete the task.
+
+## Prerequisites
+
+- Python 3.9 or higher
+- [UV](https://docs.astral.sh/uv/)
+- Access to an LLM and API Key
+
+
+## Running the Sample
+
+1. Navigate to the samples directory:
+    ```bash
+    cd samples/python/agents/google_adk
+    ```
+2. Create an environment file with your API key:
+
+   ```bash
+   echo "GOOGLE_API_KEY=your_api_key_here" > .env
+   ```
+
+4. Run an agent:
+    ```bash
+    uv run .
+    ```
+
+5. In a separate terminal, run the A2A client:
+    ```
+    # Connect to the agent (specify the agent URL with correct port)
+    uv run hosts/cli --agent http://localhost:10002
+
+    # If you changed the port when starting the agent, use that port instead
+    # uv run hosts/cli --agent http://localhost:YOUR_PORT
+    ```
+
+
+
+---
+File: /samples/python/agents/google_adk/task_manager.py
+---
+
+import json
+from typing import AsyncIterable
+from common.types import (
+    SendTaskRequest,
+    TaskSendParams,
+    Message,
+    TaskStatus,
+    Artifact,
+    TaskStatusUpdateEvent,
+    TaskArtifactUpdateEvent,
+    TextPart,
+    TaskState,
+    Task,
+    SendTaskResponse,
+    InternalError,
+    JSONRPCResponse,
+    SendTaskStreamingRequest,
+    SendTaskStreamingResponse,
+)
+from common.server.task_manager import InMemoryTaskManager
+from agent import ReimbursementAgent
+import common.server.utils as utils
+from typing import Union
+import logging
+logger = logging.getLogger(__name__)
+
+class AgentTaskManager(InMemoryTaskManager):
+
+    def __init__(self, agent: ReimbursementAgent):
+        super().__init__()
+        self.agent = agent
+
+    async def _stream_generator(
+        self, request: SendTaskStreamingRequest
+    ) -> AsyncIterable[SendTaskStreamingResponse] | JSONRPCResponse:
+        task_send_params: TaskSendParams = request.params
+        query = self._get_user_query(task_send_params)
+        try:
+          async for item in self.agent.stream(query, task_send_params.sessionId):
+            is_task_complete = item["is_task_complete"]
+            artifacts = None
+            if not is_task_complete:
+              task_state = TaskState.WORKING
+              parts = [{"type": "text", "text": item["updates"]}]
+            else:
+              if isinstance(item["content"], dict):
+                if ("response" in item["content"]
+                    and "result" in item["content"]["response"]):
+                  data = json.loads(item["content"]["response"]["result"])
+                  task_state = TaskState.INPUT_REQUIRED
+                else:
+                  data = item["content"]
+                  task_state = TaskState.COMPLETED
+                parts = [{"type": "data", "data": data}]
+              else:
+                task_state = TaskState.COMPLETED
+                parts = [{"type": "text", "text": item["content"]}]
+              artifacts = [Artifact(parts=parts, index=0, append=False)]
+          message = Message(role="agent", parts=parts)
+          task_status = TaskStatus(state=task_state, message=message)
+          await self._update_store(task_send_params.id, task_status, artifacts)
+          task_update_event = TaskStatusUpdateEvent(
+                id=task_send_params.id,
+                status=task_status,
+                final=False,
+            )
+          yield SendTaskStreamingResponse(id=request.id, result=task_update_event)
+          # Now yield Artifacts too
+          if artifacts:
+            for artifact in artifacts:
+              yield SendTaskStreamingResponse(
+                  id=request.id,
+                  result=TaskArtifactUpdateEvent(
+                      id=task_send_params.id,
+                      artifact=artifact,
+                  )
+              )
+          if is_task_complete:
+            yield SendTaskStreamingResponse(
+              id=request.id,
+              result=TaskStatusUpdateEvent(
+                  id=task_send_params.id,
+                  status=TaskStatus(
+                      state=task_status.state,
+                  ),
+                  final=True
+              )
+            )
+        except Exception as e:
+            logger.error(f"An error occurred while streaming the response: {e}")
+            yield JSONRPCResponse(
+                id=request.id,
+                error=InternalError(
+                    message="An error occurred while streaming the response"
+                ),
+            )
+    def _validate_request(
+        self, request: Union[SendTaskRequest, SendTaskStreamingRequest]
+    ) -> None:
+        task_send_params: TaskSendParams = request.params
+        if not utils.are_modalities_compatible(
+            task_send_params.acceptedOutputModes, ReimbursementAgent.SUPPORTED_CONTENT_TYPES
+        ):
+            logger.warning(
+                "Unsupported output mode. Received %s, Support %s",
+                task_send_params.acceptedOutputModes,
+                ReimbursementAgent.SUPPORTED_CONTENT_TYPES,
+            )
+            return utils.new_incompatible_types_error(request.id)
+    async def on_send_task(self, request: SendTaskRequest) -> SendTaskResponse:
+        error = self._validate_request(request)
+        if error:
+            return error
+        await self.upsert_task(request.params)
+        return await self._invoke(request)
+    async def on_send_task_subscribe(
+        self, request: SendTaskStreamingRequest
+    ) -> AsyncIterable[SendTaskStreamingResponse] | JSONRPCResponse:
+        error = self._validate_request(request)
+        if error:
+            return error
+        await self.upsert_task(request.params)
+        return self._stream_generator(request)
+    async def _update_store(
+        self, task_id: str, status: TaskStatus, artifacts: list[Artifact]
+    ) -> Task:
+        async with self.lock:
+            try:
+                task = self.tasks[task_id]
+            except KeyError:
+                logger.error(f"Task {task_id} not found for updating the task")
+                raise ValueError(f"Task {task_id} not found")
+            task.status = status
+            #if status.message is not None:
+            #    self.task_messages[task_id].append(status.message)
+            if artifacts is not None:
+                if task.artifacts is None:
+                    task.artifacts = []
+                task.artifacts.extend(artifacts)
+            return task
+    async def _invoke(self, request: SendTaskRequest) -> SendTaskResponse:
+        task_send_params: TaskSendParams = request.params
+        query = self._get_user_query(task_send_params)
+        try:
+            result = self.agent.invoke(query, task_send_params.sessionId)
+        except Exception as e:
+            logger.error(f"Error invoking agent: {e}")
+            raise ValueError(f"Error invoking agent: {e}")
+        parts = [{"type": "text", "text": result}]
+        task_state = TaskState.INPUT_REQUIRED if "MISSING_INFO:" in result else TaskState.COMPLETED
+        task = await self._update_store(
+            task_send_params.id,
+            TaskStatus(
+                state=task_state, message=Message(role="agent", parts=parts)
+            ),
+            [Artifact(parts=parts)],
+        )
+        return SendTaskResponse(id=request.id, result=task)
+    def _get_user_query(self, task_send_params: TaskSendParams) -> str:
+        part = task_send_params.message.parts[0]
+        if not isinstance(part, TextPart):
+            raise ValueError("Only text parts are supported")
+        return part.text
+
+
+
+
+---
+File: /samples/python/agents/langgraph/__init__.py
+---
+
+
+
+
+---
+File: /samples/python/agents/langgraph/__main__.py
+---
+
+from common.server import A2AServer
+from common.types import AgentCard, AgentCapabilities, AgentSkill, MissingAPIKeyError
+from common.utils.push_notification_auth import PushNotificationSenderAuth
+from agents.langgraph.task_manager import AgentTaskManager
+from agents.langgraph.agent import CurrencyAgent
+import click
+import os
+import logging
+from dotenv import load_dotenv
+
+load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+@click.command()
+@click.option("--host", "host", default="localhost")
+@click.option("--port", "port", default=10000)
+def main(host, port):
+    """Starts the Currency Agent server."""
+    try:
+        if not os.getenv("GOOGLE_API_KEY"):
+            raise MissingAPIKeyError("GOOGLE_API_KEY environment variable not set.")
+
+        capabilities = AgentCapabilities(streaming=True, pushNotifications=True)
+        skill = AgentSkill(
+            id="convert_currency",
+            name="Currency Exchange Rates Tool",
+            description="Helps with exchange values between various currencies",
+            tags=["currency conversion", "currency exchange"],
+            examples=["What is exchange rate between USD and GBP?"],
+        )
+        agent_card = AgentCard(
+            name="Currency Agent",
+            description="Helps with exchange rates for currencies",
+            url=f"http://{host}:{port}/",
+            version="1.0.0",
+            defaultInputModes=CurrencyAgent.SUPPORTED_CONTENT_TYPES,
+            defaultOutputModes=CurrencyAgent.SUPPORTED_CONTENT_TYPES,
+            capabilities=capabilities,
+            skills=[skill],
+        )
+
+        notification_sender_auth = PushNotificationSenderAuth()
+        notification_sender_auth.generate_jwk()
+        server = A2AServer(
+            agent_card=agent_card,
+            task_manager=AgentTaskManager(agent=CurrencyAgent(), notification_sender_auth=notification_sender_auth),
+            host=host,
+            port=port,
+        )
+
+        server.app.add_route(
+            "/.well-known/jwks.json", notification_sender_auth.handle_jwks_endpoint, methods=["GET"]
+        )
+
+        logger.info(f"Starting server on {host}:{port}")
+        server.start()
+    except MissingAPIKeyError as e:
+        logger.error(f"Error: {e}")
+        exit(1)
+    except Exception as e:
+        logger.error(f"An error occurred during server startup: {e}")
+        exit(1)
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+---
+File: /samples/python/agents/langgraph/.python-version
+---
+
+3.12
+
+
+
+---
+File: /samples/python/agents/langgraph/agent.py
+---
+
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.tools import tool
+from langgraph.prebuilt import create_react_agent
+from langgraph.checkpoint.memory import MemorySaver
+from langchain_core.messages import AIMessage, ToolMessage
+import httpx
+from typing import Any, Dict, AsyncIterable, Literal
+from pydantic import BaseModel
+
+memory = MemorySaver()
+
+
+@tool
+def get_exchange_rate(
+    currency_from: str = "USD",
+    currency_to: str = "EUR",
+    currency_date: str = "latest",
+):
+    """Use this to get current exchange rate.
+
+    Args:
+        currency_from: The currency to convert from (e.g., "USD").
+        currency_to: The currency to convert to (e.g., "EUR").
+        currency_date: The date for the exchange rate or "latest". Defaults to "latest".
+
+    Returns:
+        A dictionary containing the exchange rate data, or an error message if the request fails.
+    """    
+    try:
+        response = httpx.get(
+            f"https://api.frankfurter.app/{currency_date}",
+            params={"from": currency_from, "to": currency_to},
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        if "rates" not in data:
+            return {"error": "Invalid API response format."}
+        return data
+    except httpx.HTTPError as e:
+        return {"error": f"API request failed: {e}"}
+    except ValueError:
+        return {"error": "Invalid JSON response from API."}
+
+
+class ResponseFormat(BaseModel):
+    """Respond to the user in this format."""
+    status: Literal["input_required", "completed", "error"] = "input_required"
+    message: str
+
+class CurrencyAgent:
+
+    SYSTEM_INSTRUCTION = (
+        "You are a specialized assistant for currency conversions. "
+        "Your sole purpose is to use the 'get_exchange_rate' tool to answer questions about currency exchange rates. "
+        "If the user asks about anything other than currency conversion or exchange rates, "
+        "politely state that you cannot help with that topic and can only assist with currency-related queries. "
+        "Do not attempt to answer unrelated questions or use tools for other purposes."
+        "Set response status to input_required if the user needs to provide more information."
+        "Set response status to error if there is an error while processing the request."
+        "Set response status to completed if the request is complete."
+    )
+     
+    def __init__(self):
+        self.model = ChatGoogleGenerativeAI(model="gemini-2.0-flash")
+        self.tools = [get_exchange_rate]
+
+        self.graph = create_react_agent(
+            self.model, tools=self.tools, checkpointer=memory, prompt = self.SYSTEM_INSTRUCTION, response_format=ResponseFormat
+        )
+
+    def invoke(self, query, sessionId) -> str:
+        config = {"configurable": {"thread_id": sessionId}}
+        self.graph.invoke({"messages": [("user", query)]}, config)        
+        return self.get_agent_response(config)
+
+    async def stream(self, query, sessionId) -> AsyncIterable[Dict[str, Any]]:
+        inputs = {"messages": [("user", query)]}
+        config = {"configurable": {"thread_id": sessionId}}
+
+        for item in self.graph.stream(inputs, config, stream_mode="values"):
+            message = item["messages"][-1]
+            if (
+                isinstance(message, AIMessage)
+                and message.tool_calls
+                and len(message.tool_calls) > 0
+            ):
+                yield {
+                    "is_task_complete": False,
+                    "require_user_input": False,
+                    "content": "Looking up the exchange rates...",
+                }
+            elif isinstance(message, ToolMessage):
+                yield {
+                    "is_task_complete": False,
+                    "require_user_input": False,
+                    "content": "Processing the exchange rates..",
+                }            
+        
+        yield self.get_agent_response(config)
+
+        
+    def get_agent_response(self, config):
+        current_state = self.graph.get_state(config)        
+        structured_response = current_state.values.get('structured_response')
+        if structured_response and isinstance(structured_response, ResponseFormat): 
+            if structured_response.status == "input_required":
+                return {
+                    "is_task_complete": False,
+                    "require_user_input": True,
+                    "content": structured_response.message
+                }
+            elif structured_response.status == "error":
+                return {
+                    "is_task_complete": False,
+                    "require_user_input": True,
+                    "content": structured_response.message
+                }
+            elif structured_response.status == "completed":
+                return {
+                    "is_task_complete": True,
+                    "require_user_input": False,
+                    "content": structured_response.message
+                }
+
+        return {
+            "is_task_complete": False,
+            "require_user_input": True,
+            "content": "We are unable to process your request at the moment. Please try again.",
+        }
+
+    SUPPORTED_CONTENT_TYPES = ["text", "text/plain"]
+
+
+
+---
+File: /samples/python/agents/langgraph/pyproject.toml
+---
+
+[project]
+name = "a2a-sample-agent-langgraph"
+version = "0.1.0"
+description = "Sample LangGraph currency ggent with A2A Protocol"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "a2a-samples",
+    "click>=8.1.8",
+    "httpx>=0.28.1",
+    "langchain-google-genai>=2.0.10",
+    "langgraph>=0.3.18",
+    "pydantic>=2.10.6",
+    "python-dotenv>=1.1.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.uv.sources]
+a2a-samples = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+
+---
+File: /samples/python/agents/langgraph/README.md
+---
+
+# LangGraph Currency Agent with A2A Protocol
+
+This sample demonstrates a currency conversion agent built with [LangGraph](https://langchain-ai.github.io/langgraph/) and exposed through the A2A protocol. It showcases conversational interactions with support for multi-turn dialogue and streaming responses.
+
+## How It Works
+
+This agent uses LangGraph with Google Gemini to provide currency exchange information through a ReAct agent pattern. The A2A protocol enables standardized interaction with the agent, allowing clients to send requests and receive real-time updates.
+
+```mermaid
+sequenceDiagram
+    participant Client as A2A Client
+    participant Server as A2A Server
+    participant Agent as LangGraph Agent
+    participant API as Frankfurter API
+
+    Client->>Server: Send task with currency query
+    Server->>Agent: Forward query to currency agent
+
+    alt Complete Information
+        Agent->>API: Call get_exchange_rate tool
+        API->>Agent: Return exchange rate data
+        Agent->>Server: Process data & return result
+        Server->>Client: Respond with currency information
+    else Incomplete Information
+        Agent->>Server: Request additional input
+        Server->>Client: Set state to "input-required"
+        Client->>Server: Send additional information
+        Server->>Agent: Forward additional info
+        Agent->>API: Call get_exchange_rate tool
+        API->>Agent: Return exchange rate data
+        Agent->>Server: Process data & return result
+        Server->>Client: Respond with currency information
+    end
+
+    alt With Streaming
+        Note over Client,Server: Real-time status updates
+        Server->>Client: "Looking up exchange rates..."
+        Server->>Client: "Processing exchange rates..."
+        Server->>Client: Final result
+    end
+```
+
+## Key Features
+
+- **Multi-turn Conversations**: Agent can request additional information when needed
+- **Real-time Streaming**: Provides status updates during processing
+- **Push Notifications**: Support for webhook-based notifications
+- **Conversational Memory**: Maintains context across interactions
+- **Currency Exchange Tool**: Integrates with Frankfurter API for real-time rates
+
+## Prerequisites
+
+- Python 3.13 or higher
+- [UV](https://docs.astral.sh/uv/)
+- Access to an LLM and API Key
+
+## Setup & Running
+
+1. Navigate to the samples directory:
+
+   ```bash
+   cd samples/python/agents/langgraph
+   ```
+
+2. Create an environment file with your API key:
+
+   ```bash
+   echo "GOOGLE_API_KEY=your_api_key_here" > .env
+   ```
+
+3. Run the agent:
+
+   ```bash
+   # Basic run on default port 10000
+   uv run .
+
+   # On custom host/port
+   uv run . --host 0.0.0.0 --port 8080
+   ```
+
+4. In a separate terminal, run an A2A [client](/samples/python/hosts/README.md):
+
+   ```bash
+   uv run hosts/cli
+   ```
+
+## Technical Implementation
+
+- **LangGraph ReAct Agent**: Uses the ReAct pattern for reasoning and tool usage
+- **Streaming Support**: Provides incremental updates during processing
+- **Checkpoint Memory**: Maintains conversation state between turns
+- **Push Notification System**: Webhook-based updates with JWK authentication
+- **A2A Protocol Integration**: Full compliance with A2A specifications
+
+## Limitations
+
+- Only supports text-based input/output (no multi-modal support)
+- Uses Frankfurter API which has limited currency options
+- Memory is session-based and not persisted between server restarts
+
+## Examples
+
+**Synchronous request**
+
+Request:
+
+```
+POST http://localhost:10000
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": 11,
+  "method": "tasks/send",
+  "params": {
+    "id": "129",
+    "sessionId": "8f01f3d172cd4396a0e535ae8aec6687",
+    "acceptedOutputModes": [
+      "text"
+    ],
+    "message": {
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "How much is the exchange rate for 1 USD to INR?"
+        }
+      ]
+    }
+  }
+}
+```
+
+Response:
+
+```
+{
+  "jsonrpc": "2.0",
+  "id": 11,
+  "result": {
+    "id": "129",
+    "status": {
+      "state": "completed",
+      "timestamp": "2025-04-02T16:53:29.301828"
+    },
+    "artifacts": [
+      {
+        "parts": [
+          {
+            "type": "text",
+            "text": "The exchange rate for 1 USD to INR is 85.49."
+          }
+        ],
+        "index": 0
+      }
+    ],
+    "history": []
+  }
+}
+```
+
+**Multi-turn example**
+
+Request - Seq 1:
+
+```
+POST http://localhost:10000
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": 10,
+  "method": "tasks/send",
+  "params": {
+    "id": "130",
+    "sessionId": "a9bb617f2cd94bd585da0f88ce2ddba2",
+    "acceptedOutputModes": [
+      "text"
+    ],
+    "message": {
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "How much is the exchange rate for 1 USD?"
+        }
+      ]
+    }
+  }
+}
+```
+
+Response - Seq 2:
+
+```
+{
+  "jsonrpc": "2.0",
+  "id": 10,
+  "result": {
+    "id": "130",
+    "status": {
+      "state": "input-required",
+      "message": {
+        "role": "agent",
+        "parts": [
+          {
+            "type": "text",
+            "text": "Which currency do you want to convert to? Also, do you want the latest exchange rate or a specific date?"
+          }
+        ]
+      },
+      "timestamp": "2025-04-02T16:57:02.336787"
+    },
+    "history": []
+  }
+}
+```
+
+Request - Seq 3:
+
+```
+POST http://localhost:10000
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": 10,
+  "method": "tasks/send",
+  "params": {
+    "id": "130",
+    "sessionId": "a9bb617f2cd94bd585da0f88ce2ddba2",
+    "acceptedOutputModes": [
+      "text"
+    ],
+    "message": {
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "CAD"
+        }
+      ]
+    }
+  }
+}
+```
+
+Response - Seq 4:
+
+```
+{
+  "jsonrpc": "2.0",
+  "id": 10,
+  "result": {
+    "id": "130",
+    "status": {
+      "state": "completed",
+      "timestamp": "2025-04-02T16:57:40.033328"
+    },
+    "artifacts": [
+      {
+        "parts": [
+          {
+            "type": "text",
+            "text": "The current exchange rate is 1 USD = 1.4328 CAD."
+          }
+        ],
+        "index": 0
+      }
+    ],
+    "history": []
+  }
+}
+```
+
+**Streaming example**
+
+Request:
+
+```
+{
+  "jsonrpc": "2.0",
+  "id": 12,
+  "method": "tasks/sendSubscribe",
+  "params": {
+    "id": "131",
+    "sessionId": "cebd704d0ddd4e8aa646aeb123d60614",
+    "acceptedOutputModes": [
+      "text"
+    ],
+    "message": {
+      "role": "user",
+      "parts": [
+        {
+          "type": "text",
+          "text": "How much is 100 USD in GBP?"
+        }
+      ]
+    }
+  }
+}
+```
+
+Response:
+
+```
+data: {"jsonrpc":"2.0","id":12,"result":{"id":"131","status":{"state":"working","message":{"role":"agent","parts":[{"type":"text","text":"Looking up the exchange rates..."}]},"timestamp":"2025-04-02T16:59:34.578939"},"final":false}}
+
+data: {"jsonrpc":"2.0","id":12,"result":{"id":"131","status":{"state":"working","message":{"role":"agent","parts":[{"type":"text","text":"Processing the exchange rates.."}]},"timestamp":"2025-04-02T16:59:34.737052"},"final":false}}
+
+data: {"jsonrpc":"2.0","id":12,"result":{"id":"131","artifact":{"parts":[{"type":"text","text":"Based on the current exchange rate, 1 USD is equivalent to 0.77252 GBP. Therefore, 100 USD would be approximately 77.252 GBP."}],"index":0,"append":false}}}
+
+data: {"jsonrpc":"2.0","id":12,"result":{"id":"131","status":{"state":"completed","timestamp":"2025-04-02T16:59:35.331844"},"final":true}}
+```
+
+## Learn More
+
+- [A2A Protocol Documentation](https://google.github.io/A2A/#/documentation)
+- [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
+- [Frankfurter API](https://www.frankfurter.app/docs/)
+- [Google Gemini API](https://ai.google.dev/gemini-api)
+
+
+
+---
+File: /samples/python/agents/langgraph/task_manager.py
+---
+
+from typing import AsyncIterable
+from common.types import (
+    SendTaskRequest,
+    TaskSendParams,
+    Message,
+    TaskStatus,
+    Artifact,
+    TextPart,
+    TaskState,
+    SendTaskResponse,
+    InternalError,
+    JSONRPCResponse,
+    SendTaskStreamingRequest,
+    SendTaskStreamingResponse,
+    TaskArtifactUpdateEvent,
+    TaskStatusUpdateEvent,
+    Task,
+    TaskIdParams,
+    PushNotificationConfig,
+    SetTaskPushNotificationRequest,
+    SetTaskPushNotificationResponse,
+    TaskPushNotificationConfig,
+    TaskNotFoundError,
+    InvalidParamsError,
+)
+from common.server.task_manager import InMemoryTaskManager
+from agents.langgraph.agent import CurrencyAgent
+from common.utils.push_notification_auth import PushNotificationSenderAuth
+import common.server.utils as utils
+from typing import Union
+import asyncio
+import logging
+import traceback
+
+logger = logging.getLogger(__name__)
+
+
+class AgentTaskManager(InMemoryTaskManager):
+    def __init__(self, agent: CurrencyAgent, notification_sender_auth: PushNotificationSenderAuth):
+        super().__init__()
+        self.agent = agent
+        self.notification_sender_auth = notification_sender_auth
+
+    async def _run_streaming_agent(self, request: SendTaskStreamingRequest):
+        task_send_params: TaskSendParams = request.params
+        query = self._get_user_query(task_send_params)
+
+        try:
+            async for item in self.agent.stream(query, task_send_params.sessionId):
+                is_task_complete = item["is_task_complete"]
+                require_user_input = item["require_user_input"]
+                artifact = None
+                message = None
+                parts = [{"type": "text", "text": item["content"]}]
+                end_stream = False
+
+                if not is_task_complete and not require_user_input:
+                    task_state = TaskState.WORKING
+                    message = Message(role="agent", parts=parts)
+                elif require_user_input:
+                    task_state = TaskState.INPUT_REQUIRED
+                    message = Message(role="agent", parts=parts)
+                    end_stream = True
+                else:
+                    task_state = TaskState.COMPLETED
+                    artifact = Artifact(parts=parts, index=0, append=False)
+                    end_stream = True
+
+                task_status = TaskStatus(state=task_state, message=message)
+                latest_task = await self.update_store(
+                    task_send_params.id,
+                    task_status,
+                    None if artifact is None else [artifact],
+                )
+                await self.send_task_notification(latest_task)
+
+                if artifact:
+                    task_artifact_update_event = TaskArtifactUpdateEvent(
+                        id=task_send_params.id, artifact=artifact
+                    )
+                    await self.enqueue_events_for_sse(
+                        task_send_params.id, task_artifact_update_event
+                    )                    
+                    
+
+                task_update_event = TaskStatusUpdateEvent(
+                    id=task_send_params.id, status=task_status, final=end_stream
+                )
+                await self.enqueue_events_for_sse(
+                    task_send_params.id, task_update_event
+                )
+
+        except Exception as e:
+            logger.error(f"An error occurred while streaming the response: {e}")
+            await self.enqueue_events_for_sse(
+                task_send_params.id,
+                InternalError(message=f"An error occurred while streaming the response: {e}")                
+            )
+
+    def _validate_request(
+        self, request: Union[SendTaskRequest, SendTaskStreamingRequest]
+    ) -> JSONRPCResponse | None:
+        task_send_params: TaskSendParams = request.params
+        if not utils.are_modalities_compatible(
+            task_send_params.acceptedOutputModes, CurrencyAgent.SUPPORTED_CONTENT_TYPES
+        ):
+            logger.warning(
+                "Unsupported output mode. Received %s, Support %s",
+                task_send_params.acceptedOutputModes,
+                CurrencyAgent.SUPPORTED_CONTENT_TYPES,
+            )
+            return utils.new_incompatible_types_error(request.id)
+        
+        if task_send_params.pushNotification and not task_send_params.pushNotification.url:
+            logger.warning("Push notification URL is missing")
+            return JSONRPCResponse(id=request.id, error=InvalidParamsError(message="Push notification URL is missing"))
+        
+        return None
+        
+    async def on_send_task(self, request: SendTaskRequest) -> SendTaskResponse:
+        """Handles the 'send task' request."""
+        validation_error = self._validate_request(request)
+        if validation_error:
+            return SendTaskResponse(id=request.id, error=validation_error.error)
+        
+        if request.params.pushNotification:
+            if not await self.set_push_notification_info(request.params.id, request.params.pushNotification):
+                return SendTaskResponse(id=request.id, error=InvalidParamsError(message="Push notification URL is invalid"))
+
+        await self.upsert_task(request.params)
+        task = await self.update_store(
+            request.params.id, TaskStatus(state=TaskState.WORKING), None
+        )
+        await self.send_task_notification(task)
+
+        task_send_params: TaskSendParams = request.params
+        query = self._get_user_query(task_send_params)
+        try:
+            agent_response = self.agent.invoke(query, task_send_params.sessionId)
+        except Exception as e:
+            logger.error(f"Error invoking agent: {e}")
+            raise ValueError(f"Error invoking agent: {e}")
+        return await self._process_agent_response(
+            request, agent_response
+        )
+
+    async def on_send_task_subscribe(
+        self, request: SendTaskStreamingRequest
+    ) -> AsyncIterable[SendTaskStreamingResponse] | JSONRPCResponse:
+        try:
+            error = self._validate_request(request)
+            if error:
+                return error
+
+            await self.upsert_task(request.params)
+
+            if request.params.pushNotification:
+                if not await self.set_push_notification_info(request.params.id, request.params.pushNotification):
+                    return JSONRPCResponse(id=request.id, error=InvalidParamsError(message="Push notification URL is invalid"))
+
+            task_send_params: TaskSendParams = request.params
+            sse_event_queue = await self.setup_sse_consumer(task_send_params.id, False)            
+
+            asyncio.create_task(self._run_streaming_agent(request))
+
+            return self.dequeue_events_for_sse(
+                request.id, task_send_params.id, sse_event_queue
+            )
+        except Exception as e:
+            logger.error(f"Error in SSE stream: {e}")
+            print(traceback.format_exc())
+            return JSONRPCResponse(
+                id=request.id,
+                error=InternalError(
+                    message="An error occurred while streaming the response"
+                ),
+            )
+
+    async def _process_agent_response(
+        self, request: SendTaskRequest, agent_response: dict
+    ) -> SendTaskResponse:
+        """Processes the agent's response and updates the task store."""
+        task_send_params: TaskSendParams = request.params
+        task_id = task_send_params.id
+        history_length = task_send_params.historyLength
+        task_status = None
+
+        parts = [{"type": "text", "text": agent_response["content"]}]
+        artifact = None
+        if agent_response["require_user_input"]:
+            task_status = TaskStatus(
+                state=TaskState.INPUT_REQUIRED,
+                message=Message(role="agent", parts=parts),
+            )
+        else:
+            task_status = TaskStatus(state=TaskState.COMPLETED)
+            artifact = Artifact(parts=parts)
+        task = await self.update_store(
+            task_id, task_status, None if artifact is None else [artifact]
+        )
+        task_result = self.append_task_history(task, history_length)
+        await self.send_task_notification(task)
+        return SendTaskResponse(id=request.id, result=task_result)
+    
+    def _get_user_query(self, task_send_params: TaskSendParams) -> str:
+        part = task_send_params.message.parts[0]
+        if not isinstance(part, TextPart):
+            raise ValueError("Only text parts are supported")
+        return part.text
+    
+    async def send_task_notification(self, task: Task):
+        if not await self.has_push_notification_info(task.id):
+            logger.info(f"No push notification info found for task {task.id}")
+            return
+        push_info = await self.get_push_notification_info(task.id)
+
+        logger.info(f"Notifying for task {task.id} => {task.status.state}")
+        await self.notification_sender_auth.send_push_notification(
+            push_info.url,
+            data=task.model_dump(exclude_none=True)
+        )
+
+    async def on_resubscribe_to_task(
+        self, request
+    ) -> AsyncIterable[SendTaskStreamingResponse] | JSONRPCResponse:
+        task_id_params: TaskIdParams = request.params
+        try:
+            sse_event_queue = await self.setup_sse_consumer(task_id_params.id, True)
+            return self.dequeue_events_for_sse(request.id, task_id_params.id, sse_event_queue)
+        except Exception as e:
+            logger.error(f"Error while reconnecting to SSE stream: {e}")
+            return JSONRPCResponse(
+                id=request.id,
+                error=InternalError(
+                    message=f"An error occurred while reconnecting to stream: {e}"
+                ),
+            )
+    
+    async def set_push_notification_info(self, task_id: str, push_notification_config: PushNotificationConfig):
+        # Verify the ownership of notification URL by issuing a challenge request.
+        is_verified = await self.notification_sender_auth.verify_push_notification_url(push_notification_config.url)
+        if not is_verified:
+            return False
+        
+        await super().set_push_notification_info(task_id, push_notification_config)
+        return True
+

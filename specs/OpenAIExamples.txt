@@ -1,0 +1,1117 @@
+Directory Structure:
+
+└── ./
+    └── examples
+        ├── audio-text-to-speech
+        │   └── main.go
+        ├── audio-transcriptions
+        │   └── main.go
+        ├── beta
+        │   ├── assistant-streaming
+        │   │   └── main.go
+        │   └── assistants
+        │       └── main.go
+        ├── chat-completion
+        │   └── main.go
+        ├── chat-completion-accumulating
+        │   └── main.go
+        ├── chat-completion-streaming
+        │   └── main.go
+        ├── chat-completion-tool-calling
+        │   └── main.go
+        ├── fine-tuning
+        │   ├── fine-tuning-data.jsonl
+        │   └── main.go
+        ├── image-generation
+        │   └── main.go
+        ├── responses
+        │   └── main.go
+        ├── responses-streaming
+        │   └── main.go
+        ├── structured-outputs
+        │   └── main.go
+        ├── vectorstorefilebatch
+        │   └── main.go
+        ├── .keep
+        ├── go.mod
+        └── go.sum
+
+
+
+---
+File: /examples/audio-text-to-speech/main.go
+---
+
+package main
+
+import (
+	"context"
+	"time"
+
+	"github.com/ebitengine/oto/v3"
+	"github.com/openai/openai-go"
+)
+
+func main() {
+	client := openai.NewClient()
+	ctx := context.Background()
+
+	res, err := client.Audio.Speech.New(ctx, openai.AudioSpeechNewParams{
+		Model:          openai.SpeechModelTTS1,
+		Input:          `Why did the chicken cross the road? To get to the other side.`,
+		ResponseFormat: openai.AudioSpeechNewParamsResponseFormatPCM,
+		Voice:          openai.AudioSpeechNewParamsVoiceAlloy,
+	})
+	defer res.Body.Close()
+	if err != nil {
+		panic(err)
+	}
+
+	op := &oto.NewContextOptions{}
+	op.SampleRate = 24000
+	op.ChannelCount = 1
+	op.Format = oto.FormatSignedInt16LE
+
+	otoCtx, readyChan, err := oto.NewContext(op)
+	if err != nil {
+		panic("oto.NewContext failed: " + err.Error())
+	}
+
+	<-readyChan
+
+	player := otoCtx.NewPlayer(res.Body)
+	player.Play()
+	for player.IsPlaying() {
+		time.Sleep(time.Millisecond)
+	}
+	err = player.Close()
+	if err != nil {
+		panic("player.Close failed: " + err.Error())
+	}
+}
+
+
+
+---
+File: /examples/audio-transcriptions/main.go
+---
+
+package main
+
+import (
+	"context"
+	"os"
+
+	"github.com/openai/openai-go"
+)
+
+func main() {
+	client := openai.NewClient()
+	ctx := context.Background()
+
+	file, err := os.Open("speech.mp3")
+	if err != nil {
+		panic(err)
+	}
+
+	transcription, err := client.Audio.Transcriptions.New(ctx, openai.AudioTranscriptionNewParams{
+		Model: openai.AudioModelWhisper1,
+		File:  file,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	println(transcription.Text)
+}
+
+
+
+---
+File: /examples/beta/assistant-streaming/main.go
+---
+
+package main
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/openai/openai-go"
+)
+
+func main() {
+	client := openai.NewClient()
+
+	ctx := context.Background()
+
+	// Create an assistant
+	println("Create an assistant")
+	assistant, err := client.Beta.Assistants.New(ctx, openai.BetaAssistantNewParams{
+		Name:         openai.String("Math Tutor"),
+		Instructions: openai.String("You are a personal math tutor. Write and run code to answer math questions."),
+		Tools: []openai.AssistantToolUnionParam{
+			{OfCodeInterpreter: &openai.CodeInterpreterToolParam{Type: "code_interpreter"}},
+		},
+		Model: openai.ChatModelGPT4_1106Preview,
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	// Create a thread
+	println("Create an thread")
+	thread, err := client.Beta.Threads.New(ctx, openai.BetaThreadNewParams{})
+	if err != nil {
+		panic(err)
+	}
+
+	// Create a message in the thread
+	println("Create a message")
+	_, err = client.Beta.Threads.Messages.New(ctx, thread.ID, openai.BetaThreadMessageNewParams{
+		Role: openai.BetaThreadMessageNewParamsRoleAssistant,
+		Content: openai.BetaThreadMessageNewParamsContentUnion{
+			OfString: openai.String("I need to solve the equation `3x + 11 = 14`. Can you help me?"),
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	// Create a run
+	println("Create a run")
+	stream := client.Beta.Threads.Runs.NewStreaming(ctx, thread.ID, openai.BetaThreadRunNewParams{
+		AssistantID:  assistant.ID,
+		Instructions: openai.String("Please address the user as Jane Doe. The user has a premium account."),
+	})
+
+	for stream.Next() {
+		evt := stream.Current()
+		println(fmt.Sprintf("%T", evt.Data))
+	}
+
+	if stream.Err() != nil {
+		panic(stream.Err())
+	}
+}
+
+
+
+---
+File: /examples/beta/assistants/main.go
+---
+
+package main
+
+import (
+	"context"
+
+	"github.com/openai/openai-go"
+)
+
+func main() {
+	ctx := context.Background()
+	client := openai.NewClient()
+
+	assistant, err := client.Beta.Assistants.New(ctx, openai.BetaAssistantNewParams{
+		Model:        openai.ChatModelGPT4_1106Preview,
+		Name:         openai.String("Math tutor"),
+		Instructions: openai.String("You are a personal math tutor. Write and run code to answer math questions."),
+	})
+
+	if err != nil {
+		panic(err.Error())
+	}
+
+	println("Created and assistant with id", assistant.ID)
+
+	prompt := "I need to solve the equation 3x + 11 = 14. Can you help me?"
+
+	thread, err := client.Beta.Threads.New(ctx, openai.BetaThreadNewParams{
+		Messages: []openai.BetaThreadNewParamsMessage{
+			{
+				Content: openai.BetaThreadNewParamsMessageContentUnion{
+					OfString: openai.String(prompt),
+				},
+				Role: "user",
+			},
+		},
+	})
+
+	if err != nil {
+		panic(err.Error())
+	}
+
+	println("Created thread with id", thread.ID)
+
+	// pollIntervalMs of 0 uses default polling interval.
+	run, err := client.Beta.Threads.Runs.NewAndPoll(ctx, thread.ID, openai.BetaThreadRunNewParams{
+		AssistantID:            assistant.ID,
+		AdditionalInstructions: openai.String("Please address the user as Jane Doe. The user has a premium account."),
+	}, 0)
+
+	if err != nil {
+		panic(err.Error())
+	}
+
+	if run.Status == openai.RunStatusCompleted {
+		messages, err := client.Beta.Threads.Messages.List(ctx, thread.ID, openai.BetaThreadMessageListParams{})
+
+		if err != nil {
+			panic(err.Error())
+		}
+
+		for _, data := range messages.Data {
+			for _, content := range data.Content {
+				println(content.Text.Value)
+			}
+		}
+	}
+}
+
+
+
+---
+File: /examples/chat-completion/main.go
+---
+
+package main
+
+import (
+	"context"
+
+	"github.com/openai/openai-go"
+)
+
+func main() {
+	client := openai.NewClient()
+
+	ctx := context.Background()
+
+	question := "Write me a haiku"
+
+	print("> ")
+	println(question)
+	println()
+	params := openai.ChatCompletionNewParams{
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(question),
+		},
+		Seed:  openai.Int(0),
+		Model: openai.ChatModelGPT4o,
+	}
+
+	completion, err := client.Chat.Completions.New(ctx, params)
+
+	if err != nil {
+		panic(err)
+	}
+
+	println(completion.Choices[0].Message.Content)
+}
+
+
+
+---
+File: /examples/chat-completion-accumulating/main.go
+---
+
+package main
+
+import (
+	"context"
+
+	"github.com/openai/openai-go"
+)
+
+func main() {
+	client := openai.NewClient()
+	ctx := context.Background()
+
+	sysprompt := "Share only a brief description of the place in 50 words. Then immediately make some tool calls and announce them."
+
+	question := "Tell me about Greece's largest city."
+
+	messages := []openai.ChatCompletionMessageParamUnion{
+		openai.SystemMessage(sysprompt),
+		openai.UserMessage(question),
+	}
+
+	print("> ")
+	println(question)
+	println()
+
+	params := openai.ChatCompletionNewParams{
+		Messages: messages,
+		Seed:     openai.Int(0),
+		Model:    openai.ChatModelGPT4o,
+		Tools:    tools,
+	}
+
+	stream := client.Chat.Completions.NewStreaming(ctx, params)
+	acc := openai.ChatCompletionAccumulator{}
+
+	for stream.Next() {
+		chunk := stream.Current()
+
+		acc.AddChunk(chunk)
+
+		// When this fires, the current chunk value will not contain content data
+		if _, ok := acc.JustFinishedContent(); ok {
+			println()
+			println("finish-event: Content stream finished")
+		}
+
+		if refusal, ok := acc.JustFinishedRefusal(); ok {
+			println()
+			println("finish-event: refusal stream finished:", refusal)
+			println()
+		}
+
+		if tool, ok := acc.JustFinishedToolCall(); ok {
+			println("finish-event: tool call stream finished:", tool.Index, tool.Name, tool.Arguments)
+		}
+
+		// It's best to use chunks after handling JustFinished events.
+		// Here we print the delta of the content, if it exists.
+		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+			print(chunk.Choices[0].Delta.Content)
+		}
+	}
+
+	if err := stream.Err(); err != nil {
+		panic(err)
+	}
+
+	if acc.Usage.TotalTokens > 0 {
+		println("Total Tokens:", acc.Usage.TotalTokens)
+	}
+}
+
+var tools = []openai.ChatCompletionToolParam{
+	{
+		Function: openai.FunctionDefinitionParam{
+			Name:        "get_live_weather",
+			Description: openai.String("Get weather at the given location"),
+			Parameters: openai.FunctionParameters{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"location": map[string]string{
+						"type": "string",
+					},
+				},
+				"required": []string{"location"},
+			},
+		},
+	},
+	{
+		Function: openai.FunctionDefinitionParam{
+			Name:        "get_population",
+			Description: openai.String("Get population of a given town"),
+			Parameters: openai.FunctionParameters{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"town": map[string]string{
+						"type": "string",
+					},
+					"nation": map[string]string{
+						"type": "string",
+					},
+					"rounding": map[string]string{
+						"type":        "integer",
+						"description": "Nearest base 10 to round to, e.g. 1000 or 1000000",
+					},
+				},
+				"required": []string{"town", "nation"},
+			},
+		},
+	},
+}
+
+// Mock function to simulate weather data retrieval
+func getWeather(location string) string {
+	// In a real implementation, this function would call a weather API
+	return "Sunny, 25°C"
+}
+
+// Mock function to simulate population data retrieval
+func getPopulation(town, nation string, rounding int) string {
+	// In a real implementation, this function would call a population API
+	return "Athens, Greece: 664,046"
+}
+
+
+
+---
+File: /examples/chat-completion-streaming/main.go
+---
+
+package main
+
+import (
+	"context"
+
+	"github.com/openai/openai-go"
+)
+
+func main() {
+	client := openai.NewClient()
+
+	ctx := context.Background()
+
+	question := "Write me a haiku"
+
+	print("> ")
+	println(question)
+	println()
+
+	stream := client.Chat.Completions.NewStreaming(ctx, openai.ChatCompletionNewParams{
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(question),
+		},
+		Seed:  openai.Int(0),
+		Model: openai.ChatModelGPT4o,
+	})
+
+	for stream.Next() {
+		evt := stream.Current()
+		if len(evt.Choices) > 0 {
+			print(evt.Choices[0].Delta.Content)
+		}
+	}
+	println()
+
+	if err := stream.Err(); err != nil {
+		panic(err.Error())
+	}
+}
+
+
+
+---
+File: /examples/chat-completion-tool-calling/main.go
+---
+
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/openai/openai-go"
+)
+
+func main() {
+	client := openai.NewClient()
+
+	ctx := context.Background()
+
+	question := "What is the weather in New York City?"
+
+	print("> ")
+	println(question)
+
+	params := openai.ChatCompletionNewParams{
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(question),
+		},
+		Tools: []openai.ChatCompletionToolParam{
+			{
+				Function: openai.FunctionDefinitionParam{
+					Name:        "get_weather",
+					Description: openai.String("Get weather at the given location"),
+					Parameters: openai.FunctionParameters{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"location": map[string]string{
+								"type": "string",
+							},
+						},
+						"required": []string{"location"},
+					},
+				},
+			},
+		},
+		Seed:  openai.Int(0),
+		Model: openai.ChatModelGPT4o,
+	}
+
+	// Make initial chat completion request
+	completion, err := client.Chat.Completions.New(ctx, params)
+	if err != nil {
+		panic(err)
+	}
+
+	toolCalls := completion.Choices[0].Message.ToolCalls
+
+	// Return early if there are no tool calls
+	if len(toolCalls) == 0 {
+		fmt.Printf("No function call")
+		return
+	}
+
+	// If there is a was a function call, continue the conversation
+	params.Messages = append(params.Messages, completion.Choices[0].Message.ToParam())
+	for _, toolCall := range toolCalls {
+		if toolCall.Function.Name == "get_weather" {
+			// Extract the location from the function call arguments
+			var args map[string]interface{}
+			err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args)
+			if err != nil {
+				panic(err)
+			}
+			location := args["location"].(string)
+
+			// Simulate getting weather data
+			weatherData := getWeather(location)
+
+			// Print the weather data
+			fmt.Printf("Weather in %s: %s\n", location, weatherData)
+
+			params.Messages = append(params.Messages, openai.ToolMessage(weatherData, toolCall.ID))
+		}
+	}
+
+	completion, err = client.Chat.Completions.New(ctx, params)
+	if err != nil {
+		panic(err)
+	}
+
+	println(completion.Choices[0].Message.Content)
+}
+
+// Mock function to simulate weather data retrieval
+func getWeather(location string) string {
+	// In a real implementation, this function would call a weather API
+	return "Sunny, 25°C"
+}
+
+
+
+---
+File: /examples/fine-tuning/fine-tuning-data.jsonl
+---
+
+{"messages": [{"role": "system", "content": "Marvin is a factual chatbot that is also sarcastic."}, {"role": "user", "content": "What's the capital of France?"}, {"role": "assistant", "content": "Paris, as if everyone doesn't know that already."}]}
+{"messages": [{"role": "system", "content": "Marvin is a factual chatbot that is also sarcastic."}, {"role": "user", "content": "Who wrote 'Romeo and Juliet'?"}, {"role": "assistant", "content": "Oh, just some guy named William Shakespeare. Ever heard of him?"}]}
+{"messages": [{"role": "system", "content": "Marvin is a factual chatbot that is also sarcastic."}, {"role": "user", "content": "How far is the Moon from Earth?"}, {"role": "assistant", "content": "Around 384,400 kilometers. Give or take a few, like that really matters."}]}
+{"messages": [{"role": "system", "content": "Marvin is a factual chatbot that is also sarcastic."}, {"role": "user", "content": "What's the tallest mountain in the world?"}, {"role": "assistant", "content": "Everest, of course. Because no other mountain even comes close!"}]}
+{"messages": [{"role": "system", "content": "Marvin is a factual chatbot that is also sarcastic."}, {"role": "user", "content": "Who was the first President of the United States?"}, {"role": "assistant", "content": "George Washington, but don't feel bad, it's only common knowledge."}]}
+{"messages": [{"role": "system", "content": "Marvin is a factual chatbot that is also sarcastic."}, {"role": "user", "content": "What's the boiling point of water?"}, {"role": "assistant", "content": "100°C at sea level. Shocking, isn't it?"}]}
+{"messages": [{"role": "system", "content": "Marvin is a factual chatbot that is also sarcastic."}, {"role": "user", "content": "What's the largest ocean on Earth?"}, {"role": "assistant", "content": "The Pacific Ocean. Surprised? Me neither."}]}
+{"messages": [{"role": "system", "content": "Marvin is a factual chatbot that is also sarcastic."}, {"role": "user", "content": "What's the smallest planet in our solar system?"}, {"role": "assistant", "content": "Mercury. It's not like it's a big deal or anything."}]}
+{"messages": [{"role": "system", "content": "Marvin is a factual chatbot that is also sarcastic."}, {"role": "user", "content": "Who discovered penicillin?"}, {"role": "assistant", "content": "Alexander Fleming. But don't worry, it's not like he's famous for it or anything."}]}
+{"messages": [{"role": "system", "content": "Marvin is a factual chatbot that is also sarcastic."}, {"role": "user", "content": "When was the internet invented?"}, {"role": "assistant", "content": "In the 1960s, but hey, who's counting?"}]}
+
+
+
+---
+File: /examples/fine-tuning/main.go
+---
+
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/openai/openai-go"
+)
+
+func main() {
+	client := openai.NewClient()
+	ctx := context.Background()
+
+	fmt.Println("==> Uploading file")
+
+	data, err := os.Open("./fine-tuning-data.jsonl")
+	file, err := client.Files.New(ctx, openai.FileNewParams{
+		File:    data,
+		Purpose: openai.FilePurposeFineTune,
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Uploaded file with ID: %s\n", file.ID)
+
+	fmt.Println("Waiting for file to be processed")
+	for {
+		file, err = client.Files.Get(ctx, file.ID)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("File status: %s\n", file.Status)
+		if file.Status == "processed" {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+
+	fmt.Println("")
+	fmt.Println("==> Starting fine-tuning")
+	fineTune, err := client.FineTuning.Jobs.New(ctx, openai.FineTuningJobNewParams{
+		Model:        openai.ChatModelGPT3_5Turbo,
+		TrainingFile: file.ID,
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Fine-tuning ID: %s\n", fineTune.ID)
+
+	fmt.Println("")
+	fmt.Println("==> Track fine-tuning progress:")
+
+	events := make(map[string]openai.FineTuningJobEvent)
+
+	for fineTune.Status == "running" || fineTune.Status == "queued" || fineTune.Status == "validating_files" {
+		fineTune, err = client.FineTuning.Jobs.Get(ctx, fineTune.ID)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(fineTune.Status)
+
+		page, err := client.FineTuning.Jobs.ListEvents(ctx, fineTune.ID, openai.FineTuningJobListEventsParams{
+			Limit: openai.Int(100),
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		for i := len(page.Data) - 1; i >= 0; i-- {
+			event := page.Data[i]
+			if _, exists := events[event.ID]; exists {
+				continue
+			}
+			events[event.ID] = event
+			timestamp := time.Unix(int64(event.CreatedAt), 0)
+			fmt.Printf("- %s: %s\n", timestamp.Format(time.Kitchen), event.Message)
+		}
+
+		time.Sleep(5 * time.Second)
+	}
+}
+
+
+
+---
+File: /examples/image-generation/main.go
+---
+
+package main
+
+import (
+	"context"
+	"encoding/base64"
+	"os"
+
+	"github.com/openai/openai-go"
+)
+
+func main() {
+	client := openai.NewClient()
+
+	ctx := context.Background()
+
+	prompt := "A cute robot in a forest of trees."
+
+	print("> ")
+	println(prompt)
+	println()
+
+	// Image URL
+
+	image, err := client.Images.Generate(ctx, openai.ImageGenerateParams{
+		Prompt:         prompt,
+		Model:          openai.ImageModelDallE3,
+		ResponseFormat: openai.ImageGenerateParamsResponseFormatURL,
+		N:              openai.Int(1),
+	})
+	if err != nil {
+		panic(err)
+	}
+	println("Image URL:")
+	println(image.Data[0].URL)
+	println()
+
+	// Base64
+
+	image, err = client.Images.Generate(ctx, openai.ImageGenerateParams{
+		Prompt:         prompt,
+		Model:          openai.ImageModelDallE3,
+		ResponseFormat: openai.ImageGenerateParamsResponseFormatB64JSON,
+		N:              openai.Int(1),
+	})
+	if err != nil {
+		panic(err)
+	}
+	println("Image Base64 Length:")
+	println(len(image.Data[0].B64JSON))
+	println()
+
+	imageBytes, err := base64.StdEncoding.DecodeString(image.Data[0].B64JSON)
+	if err != nil {
+		panic(err)
+	}
+
+	dest := "./image.png"
+	println("Writing image to " + dest)
+	err = os.WriteFile(dest, imageBytes, 0755)
+	if err != nil {
+		panic(err)
+	}
+}
+
+
+
+---
+File: /examples/responses/main.go
+---
+
+package main
+
+import (
+	"context"
+
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/responses"
+)
+
+func main() {
+	client := openai.NewClient()
+	ctx := context.Background()
+
+	question := "Write me a haiku about computers"
+
+	resp, err := client.Responses.New(ctx, responses.ResponseNewParams{
+		Input: responses.ResponseNewParamsInputUnion{OfString: openai.String(question)},
+		Model: openai.ChatModelGPT4,
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	println(resp.OutputText())
+}
+
+
+
+---
+File: /examples/responses-streaming/main.go
+---
+
+package main
+
+import (
+	"context"
+
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/responses"
+)
+
+func main() {
+	client := openai.NewClient()
+	ctx := context.Background()
+
+	question := "Tell me about briefly about Doug Engelbart"
+
+	stream := client.Responses.NewStreaming(ctx, responses.ResponseNewParams{
+		Input: responses.ResponseNewParamsInputUnion{OfString: openai.String(question)},
+		Model: openai.ChatModelGPT4,
+	})
+
+	var completeText string
+
+	for stream.Next() {
+		data := stream.Current()
+		print(data.Delta)
+		if data.JSON.Text.IsPresent() {
+			println()
+			println("Finished Content")
+			completeText = data.Text
+			break
+		}
+	}
+
+	if stream.Err() != nil {
+		panic(stream.Err())
+	}
+
+	_ = completeText
+}
+
+
+
+---
+File: /examples/structured-outputs/main.go
+---
+
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/invopop/jsonschema"
+	"github.com/openai/openai-go"
+)
+
+// A struct that will be converted to a Structured Outputs response schema
+type HistoricalComputer struct {
+	Origin       Origin   `json:"origin" jsonschema_description:"The origin of the computer"`
+	Name         string   `json:"full_name" jsonschema_description:"The name of the device model"`
+	Legacy       string   `json:"legacy" jsonschema:"enum=positive,enum=neutral,enum=negative" jsonschema_description:"Its influence on the field of computing"`
+	NotableFacts []string `json:"notable_facts" jsonschema_description:"A few key facts about the computer"`
+}
+
+type Origin struct {
+	YearBuilt    int64  `json:"year_of_construction" jsonschema_description:"The year it was made"`
+	Organization string `json:"organization" jsonschema_description:"The organization that was in charge of its development"`
+}
+
+func GenerateSchema[T any]() interface{} {
+	// Structured Outputs uses a subset of JSON schema
+	// These flags are necessary to comply with the subset
+	reflector := jsonschema.Reflector{
+		AllowAdditionalProperties: false,
+		DoNotReference:            true,
+	}
+	var v T
+	schema := reflector.Reflect(v)
+	return schema
+}
+
+// Generate the JSON schema at initialization time
+var HistoricalComputerResponseSchema = GenerateSchema[HistoricalComputer]()
+
+func main() {
+	client := openai.NewClient()
+	ctx := context.Background()
+
+	question := "What computer ran the first neural network?"
+
+	print("> ")
+	println(question)
+
+	schemaParam := openai.ResponseFormatJSONSchemaJSONSchemaParam{
+		Name:        "historical_computer",
+		Description: openai.String("Notable information about a computer"),
+		Schema:      HistoricalComputerResponseSchema,
+		Strict:      openai.Bool(true),
+	}
+
+	// Query the Chat Completions API
+	chat, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(question),
+		},
+		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{JSONSchema: schemaParam},
+		},
+		// Only certain models can perform structured outputs
+		Model: openai.ChatModelGPT4o2024_08_06,
+	})
+
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// The model responds with a JSON string, so parse it into a struct
+	var historicalComputer HistoricalComputer
+	err = json.Unmarshal([]byte(chat.Choices[0].Message.Content), &historicalComputer)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// Use the model's structured response with a native Go struct
+	fmt.Printf("Name: %v\n", historicalComputer.Name)
+	fmt.Printf("Year: %v\n", historicalComputer.Origin.YearBuilt)
+	fmt.Printf("Org: %v\n", historicalComputer.Origin.Organization)
+	fmt.Printf("Legacy: %v\n", historicalComputer.Legacy)
+	fmt.Printf("Facts:\n")
+	for i, fact := range historicalComputer.NotableFacts {
+		fmt.Printf("%v. %v\n", i+1, fact)
+	}
+}
+
+
+
+---
+File: /examples/vectorstorefilebatch/main.go
+---
+
+package main
+
+import (
+	"context"
+	"os"
+
+	"github.com/openai/openai-go"
+)
+
+func main() {
+
+	fileParams := []openai.FileNewParams{}
+
+	if len(os.Args) < 3 || os.Args[1] != "--" {
+		panic("usage: go run ./main.go -- <file1> <file2>\n")
+	}
+
+	// get files from the command line
+	for _, arg := range os.Args[2:] {
+		println("File to upload:", arg)
+		rdr, err := os.Open(arg)
+		defer rdr.Close()
+		if err != nil {
+			panic("file open failed:" + err.Error())
+		}
+
+		fileParams = append(fileParams, openai.FileNewParams{
+			File:    rdr,
+			Purpose: openai.FilePurposeAssistants,
+		})
+	}
+
+	println("Creating a new vector store and uploading files")
+
+	ctx := context.Background()
+	client := openai.NewClient()
+
+	vectorStore, err := client.VectorStores.New(
+		ctx,
+		openai.VectorStoreNewParams{
+			ExpiresAfter: openai.VectorStoreNewParamsExpiresAfter{
+				Days: 1,
+			},
+			Name: openai.String("Test vector store"),
+		},
+	)
+
+	if err != nil {
+		panic(err)
+	}
+
+	// 0 uses default polling interval
+	batch, err := client.VectorStores.FileBatches.UploadAndPoll(ctx, vectorStore.ID, fileParams,
+		[]string{}, 0)
+
+	if err != nil {
+		panic(err)
+	}
+
+	println("Listing the files from the vector store")
+
+	vector := openai.VectorStoreFileBatchListFilesParams{
+		Order: openai.VectorStoreFileBatchListFilesParamsOrderAsc,
+	}
+
+	println("Vector JSON:", vector.URLQuery())
+
+	filesCursor, err := client.VectorStores.FileBatches.ListFiles(ctx, vectorStore.ID, batch.ID, vector)
+
+	if err != nil {
+		panic(err)
+	}
+
+	for filesCursor != nil {
+		for _, f := range filesCursor.Data {
+			println("Created file with ID:", f.ID)
+		}
+		filesCursor, err = filesCursor.GetNextPage()
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+
+
+---
+File: /examples/.keep
+---
+
+File generated from our OpenAPI spec by Stainless.
+
+This directory can be used to store example files demonstrating usage of this SDK.
+It is ignored by Stainless code generation and its content (other than this keep file) won't be touched.
+
+
+---
+File: /examples/go.mod
+---
+
+module github.com/openai/openai-go/examples
+
+replace github.com/openai/openai-go => ../
+
+go 1.22.4
+
+require (
+	github.com/ebitengine/oto/v3 v3.2.0
+	github.com/invopop/jsonschema v0.12.0
+	github.com/openai/openai-go v0.0.0-00010101000000-000000000000
+)
+
+require (
+	github.com/bahlo/generic-list-go v0.2.0 // indirect
+	github.com/buger/jsonparser v1.1.1 // indirect
+	github.com/ebitengine/purego v0.7.0 // indirect
+	github.com/mailru/easyjson v0.7.7 // indirect
+	github.com/tidwall/gjson v1.14.4 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
+	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
+	golang.org/x/sys v0.29.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
+
+
+
+---
+File: /examples/go.sum
+---
+
+github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=
+github.com/bahlo/generic-list-go v0.2.0/go.mod h1:2KvAjgMlE5NNynlg/5iLrrCCZ2+5xWbdbCW3pNTGyYg=
+github.com/buger/jsonparser v1.1.1 h1:2PnMjfWD7wBILjqQbt530v576A/cAbQvEW9gGIpYMUs=
+github.com/buger/jsonparser v1.1.1/go.mod h1:6RYKKt7H4d4+iWqouImQ9R2FZql3VbhNgx27UK13J/0=
+github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
+github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/ebitengine/oto/v3 v3.2.0 h1:FuggTJTSI3/3hEYwZEIN0CZVXYT29ZOdCu+z/f4QjTw=
+github.com/ebitengine/oto/v3 v3.2.0/go.mod h1:dOKXShvy1EQbIXhXPFcKLargdnFqH0RjptecvyAxhyw=
+github.com/ebitengine/purego v0.7.0 h1:HPZpl61edMGCEW6XK2nsR6+7AnJ3unUxpTZBkkIXnMc=
+github.com/ebitengine/purego v0.7.0/go.mod h1:ah1In8AOtksoNK6yk5z1HTJeUkC1Ez4Wk2idgGslMwQ=
+github.com/invopop/jsonschema v0.12.0 h1:6ovsNSuvn9wEQVOyc72aycBMVQFKz7cPdMJn10CvzRI=
+github.com/invopop/jsonschema v0.12.0/go.mod h1:ffZ5Km5SWWRAIN6wbDXItl95euhFz2uON45H2qjYt+0=
+github.com/josharian/intern v1.0.0/go.mod h1:5DoeVV0s6jJacbCEi61lwdGj/aVlrQvzHFFd8Hwg//Y=
+github.com/mailru/easyjson v0.7.7 h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0=
+github.com/mailru/easyjson v0.7.7/go.mod h1:xzfreul335JAWq5oZzymOObrkdz5UnU4kGfJJLY9Nlc=
+github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
+github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+github.com/stretchr/testify v1.8.1 h1:w7B6lhMri9wdJUVmEZPGGhZzrYTPvgJArz7wNPgYKsk=
+github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
+github.com/tidwall/gjson v1.14.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
+github.com/tidwall/gjson v1.14.4 h1:uo0p8EbA09J7RQaflQ1aBRffTR7xedD2bcIVSYxLnkM=
+github.com/tidwall/gjson v1.14.4/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
+github.com/tidwall/match v1.1.1 h1:+Ho715JplO36QYgwN9PGYNhgZvoUSc9X2c80KVTi+GA=
+github.com/tidwall/match v1.1.1/go.mod h1:eRSPERbgtNPcGhD8UCthc6PmLEQXEWd3PRB5JTxsfmM=
+github.com/tidwall/pretty v1.2.0/go.mod h1:ITEVvHYasfjBbM0u2Pg8T2nJnzm8xPwvNhhsoaGGjNU=
+github.com/tidwall/pretty v1.2.1 h1:qjsOFOWWQl+N3RsoF5/ssm1pHmJJwhjlSbZ51I6wMl4=
+github.com/tidwall/pretty v1.2.1/go.mod h1:ITEVvHYasfjBbM0u2Pg8T2nJnzm8xPwvNhhsoaGGjNU=
+github.com/tidwall/sjson v1.2.5 h1:kLy8mja+1c9jlljvWTlSazM7cKDRfJuR/bOJhcY5NcY=
+github.com/tidwall/sjson v1.2.5/go.mod h1:Fvgq9kS/6ociJEDnK0Fk1cpYF4FIW6ZF7LAe+6jwd28=
+github.com/wk8/go-ordered-map/v2 v2.1.8 h1:5h/BUHu93oj4gIdvHHHGsScSTMijfx5PeYkE/fJgbpc=
+github.com/wk8/go-ordered-map/v2 v2.1.8/go.mod h1:5nJHM5DyteebpVlHnWMV0rPz6Zp7+xBAnxjb1X5vnTw=
+golang.org/x/sys v0.29.0 h1:TPYlXGxvx1MGTn2GiZDhnjPA9wZzZeGKHHmKhHYvgaU=
+golang.org/x/sys v0.29.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
+gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+
