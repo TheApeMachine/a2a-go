@@ -147,7 +147,26 @@ func (s *Service) RefreshToken(refreshToken string) (*TokenInfo, error) {
 	delete(claims, "jti")
 
 	// Generate new token with updated claims
-	return s.GenerateToken("Bearer", claims)
+	newTokenInfo, newErr := s.GenerateToken("Bearer", claims)
+	if newErr != nil {
+		// It's good practice to wrap errors to provide context
+		return nil, fmt.Errorf("failed to generate new token during refresh: %w", newErr)
+	}
+
+	// Invalidate the old refresh token to prevent its reuse.
+	// This is a crucial step for security (refresh token rotation).
+	s.mu.Lock()
+	delete(s.refreshTokens, refreshToken) // 'refreshToken' is the one originally passed to this function.
+	
+	// Optionally, also invalidate the old access token associated with the used refresh token.
+	// This ensures the entire old session is cleaned up from the service's perspective.
+	// The 'oldToken' variable (fetched on line 126) holds the string of the old access token.
+	// if oldToken != "" { 
+	// 	delete(s.tokens, oldToken)
+	// }
+	s.mu.Unlock()
+
+	return newTokenInfo, nil
 }
 
 // RevokeToken revokes a token and its associated refresh token
