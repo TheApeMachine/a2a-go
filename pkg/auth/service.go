@@ -76,6 +76,13 @@ func (s *Service) AuthenticateRequest(req *http.Request) error {
 
 // GenerateToken generates a new JWT token
 func (s *Service) GenerateToken(scheme string, claims jwt.MapClaims) (*TokenInfo, error) {
+	now := time.Now()
+	if _, ok := claims["exp"]; !ok {
+		claims["exp"] = now.Add(time.Hour).Unix()
+	}
+	if _, ok := claims["iat"]; !ok {
+		claims["iat"] = now.Unix()
+	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenStr, err := token.SignedString(s.signingKey)
 	if err != nil {
@@ -86,6 +93,7 @@ func (s *Service) GenerateToken(scheme string, claims jwt.MapClaims) (*TokenInfo
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": claims["sub"],
 		"exp": time.Now().Add(24 * time.Hour).Unix(),
+		"iat": now.Unix(),
 	})
 	refreshTokenStr, err := refreshToken.SignedString(s.signingKey)
 	if err != nil {

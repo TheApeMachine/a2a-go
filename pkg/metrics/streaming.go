@@ -59,6 +59,23 @@ func (m *StreamingMetrics) RecordEvent(dropped bool, latency, processingTime tim
 	m.ProcessingTime += processingTime
 }
 
+/*
+Reset clears all accumulated metrics.
+*/
+func (m *StreamingMetrics) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.TotalConnections = 0
+	m.FailedConnections = 0
+	m.Reconnections = 0
+	m.ConnectionDuration = 0
+	m.TotalEvents = 0
+	m.DroppedEvents = 0
+	m.EventLatency = 0
+	m.ProcessingTime = 0
+}
+
 // GetMetrics returns a snapshot of the current metrics
 func (m *StreamingMetrics) GetMetrics() map[string]any {
 	m.mu.RLock()
