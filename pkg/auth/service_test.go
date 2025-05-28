@@ -67,12 +67,25 @@ func TestRefreshToken(t *testing.T) {
 		svc := NewService()
 		claims := jwt.MapClaims{"sub": "user1"}
 		tok, _ := svc.GenerateToken("Bearer", claims)
-		time.Sleep(10 * time.Millisecond)
 		newTok, err := svc.RefreshToken(tok.RefreshToken)
 
 		Convey("Then a new token is issued", func() {
 			So(err, ShouldBeNil)
 			So(newTok.Token, ShouldNotBeEmpty)
+			So(newTok.Token, ShouldNotEqual, tok.Token)
+			So(newTok.RefreshToken, ShouldNotEqual, tok.RefreshToken)
+			So(newTok.Scheme, ShouldEqual, "Bearer")
+		})
+	})
+
+	Convey("Given an invalid refresh token", t, func() {
+		svc := NewService()
+		newTok, err := svc.RefreshToken("invalid-refresh-token")
+
+		Convey("Then refresh fails", func() {
+			So(err, ShouldNotBeNil)
+			So(newTok, ShouldBeNil)
+			So(err.Error(), ShouldContainSubstring, "invalid refresh token")
 		})
 	})
 }
