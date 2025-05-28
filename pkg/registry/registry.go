@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -30,20 +31,25 @@ type ToolDefinition struct {
 }
 
 // toolRegistry holds the registered tool definitions, keyed by SkillID.
-var toolRegistry = make(map[string]ToolDefinition)
-
-// TODO: Add mutex for concurrent access if registration can happen dynamically
+var (
+	toolRegistry = make(map[string]ToolDefinition)
+	registryMu   sync.RWMutex
+)
 
 // RegisterTool adds or updates a tool definition in the central registry.
 // It should typically be called during initialization (e.g., in init() functions).
 func RegisterTool(def ToolDefinition) {
 	// Basic validation could be added here (e.g., ensure SkillID, ToolName, Executor are not empty)
+	registryMu.Lock()
 	toolRegistry[def.SkillID] = def
+	registryMu.Unlock()
 }
 
 // GetToolDefinition retrieves a tool definition from the registry by its SkillID.
 // Returns the definition and a boolean indicating if it was found.
 func GetToolDefinition(skillID string) (ToolDefinition, bool) {
+	registryMu.RLock()
 	def, found := toolRegistry[skillID]
+	registryMu.RUnlock()
 	return def, found
 }

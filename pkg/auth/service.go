@@ -15,6 +15,7 @@ type Service struct {
 	tokens        map[string]*TokenInfo
 	refreshTokens map[string]string
 	rateLimiter   *RateLimiter
+	signingKey    []byte
 }
 
 // TokenInfo represents a JWT token and its metadata
@@ -31,7 +32,15 @@ func NewService() *Service {
 		tokens:        make(map[string]*TokenInfo),
 		refreshTokens: make(map[string]string),
 		rateLimiter:   NewRateLimiter(100, time.Minute), // 100 requests per minute
+		signingKey:    []byte("your-secret-key"),
 	}
+}
+
+func (s *Service) getSigningKey(token *jwt.Token) (any, error) {
+	if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+	}
+	return s.signingKey, nil
 }
 
 // AuthenticateRequest authenticates an HTTP request
@@ -52,10 +61,7 @@ func (s *Service) AuthenticateRequest(req *http.Request) error {
 	}
 
 	// Validate token
-	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (any, error) {
-		// TODO: Implement proper key retrieval based on token claims
-		return []byte("your-secret-key"), nil
-	})
+	token, err := jwt.Parse(tokenStr, s.getSigningKey)
 	if err != nil {
 		return fmt.Errorf("invalid token: %w", err)
 	}
@@ -71,7 +77,7 @@ func (s *Service) AuthenticateRequest(req *http.Request) error {
 // GenerateToken generates a new JWT token
 func (s *Service) GenerateToken(scheme string, claims jwt.MapClaims) (*TokenInfo, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenStr, err := token.SignedString([]byte("your-secret-key"))
+	tokenStr, err := token.SignedString(s.signingKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign token: %w", err)
 	}
@@ -81,7 +87,7 @@ func (s *Service) GenerateToken(scheme string, claims jwt.MapClaims) (*TokenInfo
 		"sub": claims["sub"],
 		"exp": time.Now().Add(24 * time.Hour).Unix(),
 	})
-	refreshTokenStr, err := refreshToken.SignedString([]byte("your-secret-key"))
+	refreshTokenStr, err := refreshToken.SignedString(s.signingKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
@@ -112,9 +118,7 @@ func (s *Service) RefreshToken(refreshToken string) (*TokenInfo, error) {
 	}
 
 	// Parse the old token to get claims
-	token, err := jwt.Parse(oldToken, func(token *jwt.Token) (any, error) {
-		return []byte("your-secret-key"), nil
-	})
+	token, err := jwt.Parse(oldToken, s.getSigningKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse old token: %w", err)
 	}
