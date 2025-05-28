@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 // Service handles authentication and token management
@@ -83,6 +84,9 @@ func (s *Service) GenerateToken(scheme string, claims jwt.MapClaims) (*TokenInfo
 	if _, ok := claims["iat"]; !ok {
 		claims["iat"] = now.Unix()
 	}
+	if _, ok := claims["jti"]; !ok {
+		claims["jti"] = uuid.NewString()
+	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenStr, err := token.SignedString(s.signingKey)
 	if err != nil {
@@ -94,6 +98,7 @@ func (s *Service) GenerateToken(scheme string, claims jwt.MapClaims) (*TokenInfo
 		"sub": claims["sub"],
 		"exp": time.Now().Add(24 * time.Hour).Unix(),
 		"iat": now.Unix(),
+		"jti": uuid.NewString(),
 	})
 	refreshTokenStr, err := refreshToken.SignedString(s.signingKey)
 	if err != nil {
@@ -136,7 +141,12 @@ func (s *Service) RefreshToken(refreshToken string) (*TokenInfo, error) {
 		return nil, fmt.Errorf("invalid token claims")
 	}
 
-	// Generate new token with same claims
+	// Remove old timing claims so new values are generated
+	delete(claims, "exp")
+	delete(claims, "iat")
+	delete(claims, "jti")
+
+	// Generate new token with updated claims
 	return s.GenerateToken("Bearer", claims)
 }
 
