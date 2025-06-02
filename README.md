@@ -76,3 +76,7 @@ Use the `Makefile` to run a full containerized distributed system, demonstrating
 make server
 make client
 ```
+
+The `ui` agent is mapped to port `3212`. If you run the TUI outside the Docker
+network, update `agent.ui.url` in `~/.a2a-go/config.yml` to point to
+`http://localhost:3212`.
