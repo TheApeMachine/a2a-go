@@ -84,6 +84,8 @@ services:
       - CATALOG_URL=http://catalog:3210
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    ports:
+      - "3212:3210"
     networks:
       - a2a-network
     depends_on:
