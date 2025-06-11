@@ -2,6 +2,7 @@ services:
   # Central catalog service that all agents register with
   catalog:
     image: theapemachine/a2a-go:latest
+    container_name: catalog
     command: ["catalog"]
     networks:
       - a2a-network
@@ -17,6 +18,7 @@ services:
 
   webhook:
     image: theapemachine/a2a-go:latest
+    container_name: webhook
     command: ["webhook"]
     env_file:
       - .env
@@ -30,6 +32,7 @@ services:
 
   slack:
     image: theapemachine/a2a-go:latest
+    container_name: slacktool
     command: ["slack"]
     env_file:
       - .env
@@ -44,6 +47,7 @@ services:
 
   dockertool:
     image: theapemachine/a2a-go:latest
+    container_name: dockertool
     command: ["mcp", "-c", "docker"]
     env_file:
       - .env
@@ -52,6 +56,7 @@ services:
 
   browsertool:
     image: theapemachine/a2a-go:latest
+    container_name: browser
     command: ["mcp", "-c", "browser"]
     env_file:
       - .env
@@ -60,15 +65,139 @@ services:
 
   catalogtool:
     image: theapemachine/a2a-go:latest
+    container_name: catalogtool
     command: ["mcp", "-c", "catalog"]
     env_file:
       - .env
     networks:
       - a2a-network
 
-  managementtool:
+  delegatetool:
     image: theapemachine/a2a-go:latest
-    command: ["mcp", "-c", "management"]
+    container_name: delegatetool
+    command: ["mcp", "-c", "delegate_task"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+
+  azure_get_sprints:
+    image: theapemachine/a2a-go:latest
+    container_name: azure_get_sprints
+    command: ["mcp", "-c", "azure_get_sprints"]
+    env_file:
+      - .env
+    environment:
+      - AZURE_DEVOPS_ORG=${AZURE_DEVOPS_ORG}
+      - AZDO_PAT=${AZDO_PAT}
+      - AZURE_DEVOPS_PROJECT=${AZURE_DEVOPS_PROJECT}
+      - AZURE_DEVOPS_TEAM=${AZURE_DEVOPS_TEAM}
+    networks:
+      - a2a-network
+
+  azure_create_sprint:
+    image: theapemachine/a2a-go:latest
+    container_name: azure_create_sprint
+    command: ["mcp", "-c", "azure_create_sprint"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+
+  azure_sprint_items:
+    image: theapemachine/a2a-go:latest
+    container_name: azure_sprint_items
+    command: ["mcp", "-c", "azure_sprint_items"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+
+  azure_sprint_overview:
+    image: theapemachine/a2a-go:latest
+    container_name: azure_sprint_overview
+    command: ["mcp", "-c", "azure_sprint_overview"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+
+  azure_get_work_items:
+    image: theapemachine/a2a-go:latest
+    container_name: azure_get_work_items
+    command: ["mcp", "-c", "azure_get_work_items"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+
+  azure_create_work_items:
+    image: theapemachine/a2a-go:latest
+    container_name: azure_create_work_items
+    command: ["mcp", "-c", "azure_create_work_items"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+
+  azure_update_work_items:
+    image: theapemachine/a2a-go:latest
+    container_name: azure_update_work_items
+    command: ["mcp", "-c", "azure_update_work_items"] 
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+
+  azure_execute_wiql: 
+    image: theapemachine/a2a-go:latest
+    container_name: azure_execute_wiql
+    command: ["mcp", "-c", "azure_execute_wiql"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+
+  azure_search_work_items:
+    image: theapemachine/a2a-go:latest
+    container_name: azure_search_work_items
+    command: ["mcp", "-c", "azure_search_work_items"]
+    env_file:
+      - .env  
+    networks:
+      - a2a-network
+
+  azure_enrich_work_item:
+    image: theapemachine/a2a-go:latest
+    container_name: azure_enrich_work_item
+    command: ["mcp", "-c", "azure_enrich_work_item"]  
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+
+  azure_get_github_file_content:
+    image: theapemachine/a2a-go:latest
+    container_name: azure_get_github_file_content
+    command: ["mcp", "-c", "azure_get_github_file_content"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+
+  azure_work_item_comments:
+    image: theapemachine/a2a-go:latest
+    container_name: azure_work_item_comments
+    command: ["mcp", "-c", "azure_work_item_comments"]
+    env_file:
+      - .env  
+    networks:
+      - a2a-network
+
+  azure_find_items_by_status:
+    image: theapemachine/a2a-go:latest
+    container_name: azure_find_items_by_status  
+    command: ["mcp", "-c", "azure_find_items_by_status"]
     env_file:
       - .env
     networks:
@@ -77,6 +206,7 @@ services:
   # UI agent service - specialized in relaying messages between the user and the agents.
   ui:
     image: theapemachine/a2a-go:latest
+    container_name: ui
     command: ["agent", "-c", "ui"]
     env_file:
       - .env
@@ -98,7 +228,8 @@ services:
 
   # Manager agent service - specialized in managing tasks and agents.
   manager:
-    image: theapemachine/a2a-go:latest
+    image: theapemachine/a2a-go:latest  
+    container_name: manager
     command: ["agent", "-c", "manager"]
     env_file:
       - .env
@@ -119,6 +250,7 @@ services:
   # Planner agent service - specialized in planning tasks.
   planner:
     image: theapemachine/a2a-go:latest
+    container_name: planner
     command: ["agent", "-c", "planner"]
     env_file:
       - .env
@@ -139,6 +271,7 @@ services:
   # Researcher agent service - specialized in researching information.
   researcher:
     image: theapemachine/a2a-go:latest
+    container_name: researcher
     command: ["agent", "-c", "researcher"]
     env_file:
       - .env
@@ -159,6 +292,7 @@ services:
   # Developer agent service - specialized in implementing solutions
   developer:
     image: theapemachine/a2a-go:latest
+    container_name: developer
     command: ["agent", "-c", "developer"]
     env_file:
       - .env
@@ -200,6 +334,7 @@ services:
 
   qdrant:
     image: qdrant/qdrant:latest
+    container_name: qdrant
     ports:
       - "6333:6333" # REST API
       - "6334:6334" # gRPC API
@@ -216,6 +351,7 @@ services:
 
   neo4j:
     image: neo4j:latest
+    container_name: neo4j
     ports:
       - "7474:7474" # Browser
       - "7687:7687" # Bolt

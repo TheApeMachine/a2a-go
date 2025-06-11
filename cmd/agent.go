@@ -29,6 +29,7 @@ var (
 		Long:  longServe,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			log.SetReportCaller(true)
+			log.SetLevel(log.DebugLevel)
 
 			if configFlag == "" {
 				return errors.New("config is required")

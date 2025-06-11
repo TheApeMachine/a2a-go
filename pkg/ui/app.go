@@ -429,6 +429,12 @@ func (app *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if i, ok := app.agentList.SelectedItem().(agentItem); ok {
 					app.selectedAgent = &i.agent
 
+					// If this is the UI agent and the TUI is running on the host,
+					// change its URL to localhost and the exposed port (3212 for ui agent).
+					if app.selectedAgent.Name == "User Interface Agent" && app.selectedAgent.URL == "http://ui:3210" {
+						app.selectedAgent.URL = "http://localhost:3212"
+					}
+
 					// Use raw content instead of styled String() content
 					agentDetailText := fmt.Sprintf("Name: %s\n", app.selectedAgent.Name)
 					if app.selectedAgent.Description != nil {
@@ -884,7 +890,7 @@ func (app *App) renderMainUI() string {
 }
 
 func (app *App) getStore() (*s3.Store, error) {
-	minioClient, err := minio.New("minio:9000", &minio.Options{
+	minioClient, err := minio.New("localhost:9000", &minio.Options{
 		Region: "us-east-1",
 		Creds: credentials.NewStaticV4(
 			os.Getenv("AWS_ACCESS_KEY_ID"),

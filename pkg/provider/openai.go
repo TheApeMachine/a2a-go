@@ -6,8 +6,10 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
 	"github.com/gofiber/fiber/v3/client"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -85,8 +87,11 @@ func (prvdr *OpenAIProvider) Generate(
 			prvdr.params.ResponseFormat = prvdr.applySchema(params.Task)
 		}
 
-		for {
+		isFinished := false
+
+		for !isFinished {
 			if params.Stream {
+				fmt.Println(prvdr.String())
 				stream := prvdr.client.Chat.Completions.NewStreaming(ctx, *prvdr.params)
 				acc := openai.ChatCompletionAccumulator{}
 
@@ -141,7 +146,8 @@ func (prvdr *OpenAIProvider) Generate(
 						} else {
 							ch <- jsonrpc.Response{Result: params.Task} // Send updated task with success artifact
 						}
-						// Stream continues, LLM will get the tool response via updated prvdr.params.Messages
+
+						break
 					}
 
 					if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
@@ -152,6 +158,7 @@ func (prvdr *OpenAIProvider) Generate(
 					}
 				}
 			} else { // Non-streaming path
+				log.Debug("non-streaming", "params", prvdr.params)
 				completion, err := prvdr.client.Chat.Completions.New(ctx, *prvdr.params)
 				if err != nil {
 					ch <- jsonrpc.Response{Error: &jsonrpc.Error{Code: errors.ErrInternal.Code, Message: err.Error()}}
@@ -339,6 +346,122 @@ func (prvdr *OpenAIProvider) FineTune(ctx context.Context, fileID string) error 
 	}
 
 	return nil
+}
+
+func (prvdr *OpenAIProvider) String() string {
+	if prvdr.params == nil {
+		return "OpenAIProvider params are not initialized."
+	}
+
+	var sb strings.Builder
+
+	// Styles
+	headerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("212")).
+		Bold(true)
+
+	labelStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("39")).
+		Bold(true)
+
+	valueStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("252"))
+
+	// Indentation and box-drawing chars
+	bullet := "│ "
+
+	sb.WriteString(headerStyle.Render("OpenAIProvider Params") + "\n")
+
+	sb.WriteString(bullet + labelStyle.Render("Model: ") + valueStyle.Render(string(prvdr.params.Model)) + "\n")
+
+	sb.WriteString(bullet + labelStyle.Render("Messages:") + "\n")
+	for i, msg := range prvdr.params.Messages {
+		sb.WriteString(fmt.Sprintf("%s  Message %d:\n", bullet, i+1))
+		if msg.OfSystem != nil {
+			sb.WriteString(fmt.Sprintf("%s    Role: %s\n", bullet, msg.OfSystem.Role))
+			sb.WriteString(fmt.Sprintf("%s    Content: %s\n", bullet, msg.OfSystem.Content))
+		}
+		if msg.OfUser != nil {
+			sb.WriteString(fmt.Sprintf("%s    Role: %s\n", bullet, msg.OfUser.Role))
+			if msg.OfUser.Content.OfString.IsPresent() {
+				sb.WriteString(fmt.Sprintf("%s    Content: %s\n", bullet, msg.OfUser.Content.OfString))
+			} else if len(msg.OfUser.Content.OfArrayOfContentParts) > 0 {
+				sb.WriteString(fmt.Sprintf("%s    Content: [multipart (%d parts)]\n", bullet, len(msg.OfUser.Content.OfArrayOfContentParts)))
+				// Example for iterating parts if needed:
+				// for _, part := range msg.OfUserMessage.Content.OfContentPartArray {
+				// 	sb.WriteString(fmt.Sprintf("%s      Part Type: %s\n", bullet, part.Type))
+				// 	if part.Text != nil {
+				// 		sb.WriteString(fmt.Sprintf("%s        Text: %s\n", bullet, *part.Text))
+				// 	}
+				// }
+			} else {
+				sb.WriteString(fmt.Sprintf("%s    Content: [empty user message]\n", bullet))
+			}
+		}
+		if msg.OfAssistant != nil {
+			sb.WriteString(fmt.Sprintf("%s    Role: %s\n", bullet, msg.OfAssistant.Role))
+			sb.WriteString(fmt.Sprintf("%s    Content: %s\n", bullet, msg.OfAssistant.Content.OfString.Value))
+			if len(msg.OfAssistant.ToolCalls) > 0 {
+				sb.WriteString(fmt.Sprintf("%s    ToolCalls:\n", bullet))
+				for j, tc := range msg.OfAssistant.ToolCalls {
+					sb.WriteString(fmt.Sprintf("%s      ToolCall %d:\n", bullet, j+1))
+					sb.WriteString(fmt.Sprintf("%s        ID: %s\n", bullet, tc.ID))
+					sb.WriteString(fmt.Sprintf("%s        Type: %s\n", bullet, tc.Type))
+					sb.WriteString(fmt.Sprintf("%s        Function Name: %s\n", bullet, tc.Function.Name))
+					sb.WriteString(fmt.Sprintf("%s        Function Arguments: %s\n", bullet, tc.Function.Arguments))
+				}
+			}
+		}
+		if msg.OfTool != nil {
+			sb.WriteString(fmt.Sprintf("%s    Role: %s\n", bullet, msg.OfTool.Role))
+			sb.WriteString(fmt.Sprintf("%s    Content: %s\n", bullet, msg.OfTool.Content))
+			sb.WriteString(fmt.Sprintf("%s    ToolCallID: %s\n", bullet, msg.OfTool.ToolCallID))
+		}
+	}
+
+	if len(prvdr.params.Tools) > 0 {
+		sb.WriteString(bullet + labelStyle.Render("Tools:") + "\n")
+		for i, tool := range prvdr.params.Tools {
+			sb.WriteString(fmt.Sprintf("%s  Tool %d:\n", bullet, i+1))
+			sb.WriteString(fmt.Sprintf("%s    Type: %s\n", bullet, tool.Type))
+			sb.WriteString(fmt.Sprintf("%s    Function Name: %s\n", bullet, tool.Function.Name))
+			if tool.Function.Description.IsPresent() {
+				sb.WriteString(fmt.Sprintf("%s    Function Description: %s\n", bullet, tool.Function.Description))
+			}
+			if tool.Function.Parameters != nil {
+				sb.WriteString(fmt.Sprintf("%s    Function Parameters:\n", bullet))
+				// Assuming tool.Function.Parameters is map[string]any or similar
+				// The actual type is openai.FunctionParameters which is a type alias for a map.
+				for k, v := range tool.Function.Parameters {
+					sb.WriteString(fmt.Sprintf("%s      %s: %v\n", bullet, k, v))
+				}
+			}
+		}
+	}
+
+	if prvdr.params.ParallelToolCalls.IsPresent() {
+		sb.WriteString(bullet + labelStyle.Render("ParallelToolCalls: ") + valueStyle.Render(fmt.Sprintf("%t", prvdr.params.ParallelToolCalls.Value)) + "\n")
+	}
+	if prvdr.params.FrequencyPenalty.IsPresent() {
+		sb.WriteString(bullet + labelStyle.Render("FrequencyPenalty: ") + valueStyle.Render(fmt.Sprintf("%.2f", prvdr.params.FrequencyPenalty.Value)) + "\n")
+	}
+	if prvdr.params.MaxTokens.IsPresent() {
+		sb.WriteString(bullet + labelStyle.Render("MaxTokens: ") + valueStyle.Render(fmt.Sprintf("%d", prvdr.params.MaxTokens.Value)) + "\n")
+	}
+	if prvdr.params.TopP.IsPresent() {
+		sb.WriteString(bullet + labelStyle.Render("TopP: ") + valueStyle.Render(fmt.Sprintf("%.2f", prvdr.params.TopP.Value)) + "\n")
+	}
+	if prvdr.params.Seed.IsPresent() {
+		sb.WriteString(bullet + labelStyle.Render("Seed: ") + valueStyle.Render(fmt.Sprintf("%d", prvdr.params.Seed.Value)) + "\n")
+	}
+
+	if prvdr.params.Stop.OfChatCompletionNewsStopArray != nil && len(prvdr.params.Stop.OfChatCompletionNewsStopArray) > 0 {
+		sb.WriteString(bullet + labelStyle.Render("Stop: ") + valueStyle.Render(strings.Join(prvdr.params.Stop.OfChatCompletionNewsStopArray, ", ")) + "\n")
+	} else if prvdr.params.Stop.OfString.IsPresent() {
+		sb.WriteString(bullet + labelStyle.Render("Stop: ") + valueStyle.Render(prvdr.params.Stop.OfString.Value))
+	}
+
+	return sb.String()
 }
 
 func (prvdr *OpenAIProvider) convertMessages(

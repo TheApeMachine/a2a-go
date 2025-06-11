@@ -42,6 +42,42 @@ var (
 			case "management":
 				managementToolHandlerInstance := &tools.DelegateTool{}
 				stdio.AddTool(*toolDefinition, managementToolHandlerInstance.Handle)
+			case "azure_get_sprints":
+				azureGetSprintsToolHandlerInstance := &tools.AzureGetSprintsTool{}
+				stdio.AddTool(*toolDefinition, azureGetSprintsToolHandlerInstance.Handle)
+			case "azure_create_sprint":
+				azureCreateSprintToolHandlerInstance := &tools.AzureCreateSprintTool{}
+				stdio.AddTool(*toolDefinition, azureCreateSprintToolHandlerInstance.Handle)
+			case "azure_sprint_items":
+				azureSprintItemsToolHandlerInstance := &tools.AzureSprintItemsTool{}
+				stdio.AddTool(*toolDefinition, azureSprintItemsToolHandlerInstance.Handle)
+			case "azure_sprint_overview":
+				azureSprintOverviewToolHandlerInstance := &tools.AzureSprintOverviewTool{}
+				stdio.AddTool(*toolDefinition, azureSprintOverviewToolHandlerInstance.Handle)
+			case "azure_get_work_items":
+				azureGetWorkItemsToolHandlerInstance := &tools.AzureGetWorkItemsTool{}
+				stdio.AddTool(*toolDefinition, azureGetWorkItemsToolHandlerInstance.Handle)
+			case "azure_create_work_items":
+				azureCreateWorkItemsToolHandlerInstance := &tools.AzureCreateWorkItemsTool{}
+				stdio.AddTool(*toolDefinition, azureCreateWorkItemsToolHandlerInstance.Handle)
+			case "azure_update_work_items":
+				azureUpdateWorkItemsToolHandlerInstance := &tools.AzureUpdateWorkItemsTool{}
+				stdio.AddTool(*toolDefinition, azureUpdateWorkItemsToolHandlerInstance.Handle)
+			case "azure_execute_wiql":
+				azureExecuteWiqlToolHandlerInstance := &tools.AzureExecuteWiqlTool{}
+				stdio.AddTool(*toolDefinition, azureExecuteWiqlToolHandlerInstance.Handle)
+			case "azure_search_work_items":
+				azureSearchWorkItemsToolHandlerInstance := &tools.AzureSearchWorkItemsTool{}
+				stdio.AddTool(*toolDefinition, azureSearchWorkItemsToolHandlerInstance.Handle)
+			case "azure_enrich_work_item":
+				azureEnrichWorkItemToolHandlerInstance := &tools.AzureEnrichWorkItemTool{}
+				stdio.AddTool(*toolDefinition, azureEnrichWorkItemToolHandlerInstance.Handle)
+			case "azure_get_github_file_content":
+				azureGetGithubFileContentToolHandlerInstance := &tools.AzureGetGithubFileContentTool{}
+				stdio.AddTool(*toolDefinition, azureGetGithubFileContentToolHandlerInstance.Handle)
+			case "azure_work_item_comments":
+				azureWorkItemCommentsToolHandlerInstance := &tools.AzureWorkItemCommentsTool{}
+				stdio.AddTool(*toolDefinition, azureWorkItemCommentsToolHandlerInstance.Handle)
 			default:
 				return fmt.Errorf("unsupported tool config for mcp command: %s", configFlag)
 			}

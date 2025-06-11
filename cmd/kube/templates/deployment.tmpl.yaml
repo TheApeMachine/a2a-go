@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ .Name }}
+  name: {{ .Name }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Name }}
+    spec:
+      nodeSelector:
+        "kubernetes.io/os": linux
+      {{- if .UsesSharedConfig }}
+      volumes:
+        - name: config-volume
+          configMap:
+            name: a2a-go-configmap
+      {{- end }}
+      containers:
+        - name: {{ .Name }}
+          imagePullPolicy: Always
+          image: {{ .Image }}
+          command:
+{{- range .Command }}
+            - "{{ . }}"
+{{- end }}
+          {{- if .SecretName }}
+          envFrom:
+            - secretRef:
+                name: {{ .SecretName }}
+          {{- end }}
+          ports:
+            - containerPort: {{ .Port }}
+              name: http
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+          {{- if .UsesSharedConfig }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: "/root/.a2a-go/config.yml"
+              subPath: "config.yml"
+          {{- end }}
+      restartPolicy: Always 

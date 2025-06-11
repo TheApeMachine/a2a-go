@@ -24,6 +24,30 @@ func Acquire(id string) (*mcp.Tool, error) {
 		return NewCatalogTool(), nil
 	case "management":
 		return NewDelegateTool(), nil
+	case "azure_get_sprints":
+		return NewAzureGetSprintsTool(), nil
+	case "azure_create_sprint":
+		return NewAzureCreateSprintTool(), nil
+	case "azure_sprint_items":
+		return NewAzureSprintItemsTool(), nil
+	case "azure_sprint_overview":
+		return NewAzureSprintOverviewTool(), nil
+	case "azure_get_work_items":
+		return NewAzureGetWorkItemsTool(), nil
+	case "azure_create_work_items":
+		return NewAzureCreateWorkItemsTool(), nil
+	case "azure_update_work_items":
+		return NewAzureUpdateWorkItemsTool(), nil
+	case "azure_execute_wiql":
+		return NewAzureExecuteWiqlTool(), nil
+	case "azure_search_work_items":
+		return NewAzureSearchWorkItemsTool(), nil
+	case "azure_enrich_work_item":
+		return NewAzureEnrichWorkItemTool(), nil
+	case "azure_get_github_file_content":
+		return NewAzureGetGithubFileContentTool(), nil
+	case "azure_work_item_comments":
+		return NewAzureWorkItemCommentsTool(), nil
 	}
 
 	return nil, fmt.Errorf("tool not found: %s", id)
@@ -32,7 +56,15 @@ func Acquire(id string) (*mcp.Tool, error) {
 func NewExecutor(
 	ctx context.Context, name, args string,
 ) (string, error) {
-	url := viper.GetViper().GetString("endpoints." + name + "tool")
+	endpointKey := "endpoints." + name + "tool"
+
+	url := viper.GetViper().GetString(endpointKey)
+	if url == "" {
+		log.Error("endpoint URL not found in config", "key", endpointKey, "toolName", name)
+		return "", fmt.Errorf("configuration error: endpoint URL for %s (key: %s) not found", name, endpointKey)
+	}
+
+	// All MCP tools connect to an /sse endpoint on their respective MCP server URL
 	sseTransport, err := transport.NewSSE(url + "/sse")
 
 	if err != nil {
