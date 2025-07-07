@@ -17,6 +17,7 @@ type SessionStore interface {
 	Set(sessionID string, data map[string]any)
 	Delete(sessionID string)
 	Cleanup() // Add cleanup method to interface
+	Close()   // Add close method to interface
 }
 
 // sessionData wraps the actual data with expiration time
@@ -30,12 +31,14 @@ type InMemorySessionStore struct {
 	mu         sync.RWMutex
 	data       map[string]*sessionData
 	expiration time.Duration
+	stopChan   chan struct{}
 }
 
 func NewInMemorySessionStore() *InMemorySessionStore {
 	store := &InMemorySessionStore{
 		data:       make(map[string]*sessionData),
 		expiration: 24 * time.Hour, // Default 24 hour expiration
+		stopChan:   make(chan struct{}),
 	}
 	
 	// Start cleanup goroutine
@@ -55,7 +58,14 @@ func (s *InMemorySessionStore) Get(id string) (map[string]any, bool) {
 	
 	// Check if session has expired
 	if time.Now().After(sessionData.ExpiresAt) {
-		s.Delete(id)
+		s.mu.Lock()
+		// Re-check after upgrading to write lock to avoid race condition
+		currentSession, stillExists := s.data[id]
+		if stillExists && currentSession == sessionData {
+			// Only delete if it's still the same expired session
+			delete(s.data, id)
+		}
+		s.mu.Unlock()
 		return nil, false
 	}
 	
@@ -78,15 +88,30 @@ func (s *InMemorySessionStore) Delete(id string) {
 }
 
 func (s *InMemorySessionStore) Cleanup() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	
+	// First pass: collect expired session IDs with read lock
+	s.mu.RLock()
 	now := time.Now()
+	expiredIDs := make([]string, 0)
 	for id, sessionData := range s.data {
 		if now.After(sessionData.ExpiresAt) {
-			delete(s.data, id)
+			expiredIDs = append(expiredIDs, id)
 		}
 	}
+	s.mu.RUnlock()
+	
+	// Second pass: delete expired sessions with write lock
+	if len(expiredIDs) > 0 {
+		s.mu.Lock()
+		for _, id := range expiredIDs {
+			delete(s.data, id)
+		}
+		s.mu.Unlock()
+	}
+}
+
+// Close stops the cleanup goroutine and releases resources
+func (s *InMemorySessionStore) Close() {
+	close(s.stopChan)
 }
 
 // cleanupExpired runs in a goroutine to periodically clean up expired sessions
@@ -94,7 +119,12 @@ func (s *InMemorySessionStore) cleanupExpired() {
 	ticker := time.NewTicker(time.Hour) // Run cleanup every hour
 	defer ticker.Stop()
 	
-	for range ticker.C {
-		s.Cleanup()
+	for {
+		select {
+		case <-ticker.C:
+			s.Cleanup()
+		case <-s.stopChan:
+			return
+		}
 	}
 }

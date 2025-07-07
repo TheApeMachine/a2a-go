@@ -68,7 +68,7 @@ var (
 				exists, err := minioClient.BucketExists(ctx, "tasks")
 				if err != nil {
 					log.Error("failed to check if tasks bucket exists", "error", err, "attempt", try+1)
-					time.Sleep(time.Second * time.Duration(try*2+1))
+					time.Sleep(time.Second * time.Duration(1<<try)) // Exponential backoff: 1s, 2s, 4s, 8s, etc.
 					continue
 				}
 
@@ -85,7 +85,7 @@ var (
 					if try == maxRetries-1 {
 						return fmt.Errorf("failed to create tasks bucket after %d attempts: %w", maxRetries, err)
 					}
-					time.Sleep(time.Second * time.Duration(try*2+1))
+					time.Sleep(time.Second * time.Duration(1<<try)) // Exponential backoff: 1s, 2s, 4s, 8s, etc.
 					continue
 				}
 

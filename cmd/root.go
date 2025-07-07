@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -109,15 +110,13 @@ func writeConfig() (err error) {
 	)
 
 	// Create the config directory once before processing files
-	configDir := home + "/.a2a-go"
-	if !CheckFileExists(configDir) {
-		if err = os.MkdirAll(configDir, os.ModePerm); err != nil {
-			return fmt.Errorf("failed to create config directory: %w", err)
-		}
+	configDir := filepath.Join(home, ".a2a-go")
+	if err = os.MkdirAll(configDir, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
 	for _, file := range []string{cfgFile} {
-		fullPath := configDir + "/" + file
+		fullPath := filepath.Join(configDir, file)
 
 		if CheckFileExists(fullPath) {
 			continue
