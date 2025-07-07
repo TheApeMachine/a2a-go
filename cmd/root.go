@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -108,8 +109,14 @@ func writeConfig() (err error) {
 		buf     bytes.Buffer
 	)
 
-	for idx, file := range []string{cfgFile} {
-		fullPath := home + "/.a2a-go/" + file
+	// Create the config directory once before processing files
+	configDir := filepath.Join(home, ".a2a-go")
+	if err = os.MkdirAll(configDir, os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	for _, file := range []string{cfgFile} {
+		fullPath := filepath.Join(configDir, file)
 
 		if CheckFileExists(fullPath) {
 			continue
@@ -120,16 +127,12 @@ func writeConfig() (err error) {
 		}
 
 		if _, err = io.Copy(&buf, fh); err != nil {
+			fh.Close()
 			return fmt.Errorf("failed to read embedded config file: %w", err)
 		}
 
-		if idx == 0 {
-			if err = os.Mkdir(home+"/.a2a-go", os.ModePerm); err != nil {
-				return fmt.Errorf("failed to create config directory: %w", err)
-			}
-		}
-
 		if err = os.WriteFile(fullPath, buf.Bytes(), 0644); err != nil {
+			fh.Close()
 			return fmt.Errorf("failed to write config file: %w", err)
 		}
 

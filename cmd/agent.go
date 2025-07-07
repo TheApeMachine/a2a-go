@@ -60,33 +60,38 @@ var (
 				return err
 			}
 
-			try := 0
-
 			// Ensure the tasks bucket exists
-			for try != 10 {
-				ctx := context.Background()
+			ctx := context.Background()
+			maxRetries := 10
+			
+			for try := 0; try < maxRetries; try++ {
 				exists, err := minioClient.BucketExists(ctx, "tasks")
 				if err != nil {
-					log.Error("failed to check if tasks bucket exists", "error", err)
+					log.Error("failed to check if tasks bucket exists", "error", err, "attempt", try+1)
+					time.Sleep(time.Second * time.Duration(1<<try)) // Exponential backoff: 1s, 2s, 4s, 8s, etc.
+					continue
 				}
 
 				if exists {
+					log.Info("tasks bucket already exists")
 					break
 				}
 
-				if !exists {
-					log.Info("creating tasks bucket")
-					if err := minioClient.MakeBucket(
-						ctx, "tasks", minio.MakeBucketOptions{},
-					); err != nil {
-						log.Error("failed to create tasks bucket", "error", err)
+				log.Info("creating tasks bucket", "attempt", try+1)
+				if err := minioClient.MakeBucket(
+					ctx, "tasks", minio.MakeBucketOptions{},
+				); err != nil {
+					log.Error("failed to create tasks bucket", "error", err, "attempt", try+1)
+					if try == maxRetries-1 {
+						return fmt.Errorf("failed to create tasks bucket after %d attempts: %w", maxRetries, err)
 					}
-
-					break
+					time.Sleep(time.Second * time.Duration(1<<try)) // Exponential backoff: 1s, 2s, 4s, 8s, etc.
+					continue
 				}
 
-				time.Sleep(time.Second * time.Duration(try*2))
-				try++
+				// Successfully created bucket
+				log.Info("tasks bucket created successfully")
+				break
 			}
 
 			card := a2a.NewAgentCardFromConfig(configFlag)
