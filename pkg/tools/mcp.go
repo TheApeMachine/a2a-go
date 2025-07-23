@@ -16,6 +16,8 @@ func Acquire(id string) (*mcp.Tool, error) {
 	log.Info("initializing MCP client")
 
 	switch id {
+	case "agent":
+		return NewAgentTool(), nil
 	case "development", "docker":
 		return NewDockerTool(), nil
 	case "web-browsing", "browser":

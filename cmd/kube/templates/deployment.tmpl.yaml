@@ -14,7 +14,7 @@ spec:
         app: {{ .Name }}
     spec:
       nodeSelector:
-        "kubernetes.io/os": linux
+        "kubernetes.io/os": "linux"
       {{- if .UsesSharedConfig }}
       volumes:
         - name: config-volume
@@ -26,9 +26,9 @@ spec:
           imagePullPolicy: Always
           image: {{ .Image }}
           command:
-{{- range .Command }}
+{{ range .Command }}
             - "{{ . }}"
-{{- end }}
+{{ end }}
           {{- if .SecretName }}
           envFrom:
             - secretRef:

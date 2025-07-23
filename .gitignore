@@ -11,3 +11,5 @@ a2a-go
 
 # Log files
 *.log
+pkg/provider/openai.go
+.gitignore

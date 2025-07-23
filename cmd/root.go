@@ -26,6 +26,9 @@ which allows a developer to easily override the config file.
 //go:embed cfg/*
 var embedded embed.FS
 
+//go:embed kube/*
+var manifests embed.FS
+
 /*
 rootCmd represents the base command when called without any subcommands
 */

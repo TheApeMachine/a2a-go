@@ -1,0 +1,48 @@
+# cmd/kube/templates/argocd-app.tmpl.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .Name }}
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    name: {{ .Name }}
+    managed-by: agent
+    {{- if .RequestedBy }}
+    requested-by: {{ .RequestedBy }}
+    {{- end }}
+    {{- if .Purpose }}
+    purpose: {{ .Purpose }}
+    {{- end }}
+  {{- if .TTL }}
+  annotations:
+    agent.theapemachine.org/ttl: {{ .TTL }}
+    agent.theapemachine.org/created: {{ .CreatedAt }}
+  {{- end }}
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:TheApeMachine/a2a-go.git
+    targetRevision: release
+    path: .kube/{{ .Name }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: release
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - RespectIgnoreDifferences=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 3
