@@ -10,6 +10,7 @@ import (
 func SkillsToTools(skills []a2a.AgentSkill) []*mcp.Tool {
 	// Initialize an empty slice with a capacity if desired, or just empty.
 	mcpTools := make([]*mcp.Tool, 0, len(skills))
+	seenTools := make(map[string]bool)
 
 	for _, skill := range skills {
 		tool, err := ToMCPTool(skill)
@@ -22,7 +23,10 @@ func SkillsToTools(skills []a2a.AgentSkill) []*mcp.Tool {
 		}
 
 		if tool != nil { // Ensure the acquired tool is not nil before appending
-			mcpTools = append(mcpTools, tool)
+			if _, seen := seenTools[tool.Name]; !seen {
+				mcpTools = append(mcpTools, tool)
+				seenTools[tool.Name] = true
+			}
 		}
 	}
 

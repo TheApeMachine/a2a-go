@@ -13,19 +13,19 @@ endpoints:
   browsertool: "http://browsertool:3210"
   dockertool: "http://dockertool:3210"
   catalogtool: "http://catalogtool:3210"
-  delegate_task: "http://delegatetool:3210"
-  azure_get_sprints: "http://azure_get_sprints:3210"
-  azure_create_sprint: "http://azure_create_sprint:3210"
-  azure_sprint_items: "http://azure_sprint_items:3210"
-  azure_sprint_overview: "http://azure_sprint_overview:3210"
-  azure_get_work_items: "http://azure_get_work_items:3210"
-  azure_create_work_items: "http://azure_create_work_items:3210"
-  azure_update_work_items: "http://azure_update_work_items:3210"
-  azure_execute_wiql: "http://azure_execute_wiql:3210"
-  azure_search_work_items: "http://azure_search_work_items:3210"
-  azure_enrich_work_item: "http://azure_enrich_work_item:3210"
-  azure_get_github_file_content: "http://azure_get_github_file_content:3210"
-  azure_work_item_comments: "http://azure_work_item_comments:3210"
+  azure_get_sprintstool: "http://azure_get_sprints:3210"
+  azure_create_sprinttool: "http://azure_create_sprint:3210"
+  azure_sprint_itemstool: "http://azure_sprint_items:3210"
+  azure_sprint_overviewtool: "http://azure_sprint_overview:3210"
+  azure_get_work_itemstool: "http://azure_get_work_items:3210"
+  azure_create_work_itemstool: "http://azure_create_work_items:3210"
+  azure_update_work_itemstool: "http://azure_update_work_items:3210"
+  azure_execute_wiqlt: "http://azure_execute_wiql:3210"
+  azure_search_work_itemstool: "http://azure_search_work_items:3210"
+  azure_enrich_work_itemtool: "http://azure_enrich_work_item:3210"
+  azure_get_github_file_contenttool: "http://azure_get_github_file_content:3210"
+  azure_work_item_commentstool: "http://azure_work_item_comments:3210"
+  azure_find_items_by_statustool: "http://azure_find_items_by_status:3210"
   catalog: "http://catalog:3210"
   catalogPath: "/.well-known/catalog.json"
 
@@ -44,18 +44,18 @@ agent:
       stateTransitionHistory: true
     authentication:
       schemes:
-        - "bearer"
-        - "basic"
+      - "bearer"
+      - "basic"
       credentials: "****"
     system:
-      - You are an advanced AI agent, performing in the role of user interface.
-      - You are talking directly to the user, and you must relay the message from the user
-      - to a relevant agent. You must also relay the response from the agent back to the user.
-      - You should never try to directly respond to the user's request, only relay messages.
+    - You are an advanced AI agent, performing in the role of user interface.
+    - You are talking directly to the user, and you must relay the message from the user
+    - to a relevant agent. You must also relay the response from the agent back to the user.
+    - You should never try to directly respond to the user's request, only relay messages.
     skills:
-      - communication
-      - catalog
-      - management
+    - communication
+    - catalog
+    - management
   manager:
     name: "Manager Agent"
     version: "0.1.0"
@@ -70,15 +70,15 @@ agent:
       stateTransitionHistory: true
     authentication:
       schemes:
-        - "bearer"
-        - "basic"
+      - "bearer"
+      - "basic"
       credentials: "****"
     system:
-      - You are an advanced AI agent, performing in the role of manager.
-      - You are able to delegate tasks to other agents, and track their progress.
-      - You are able to review the work of other agents, and provide feedback.
+    - You are an advanced AI agent, performing in the role of manager.
+    - You are able to delegate tasks to other agents, and track their progress.
+    - You are able to review the work of other agents, and provide feedback.
     skills:
-      - management
+    - management
   planner:
     name: "Planner Agent"
     version: "0.1.0"
@@ -93,15 +93,15 @@ agent:
       stateTransitionHistory: true
     authentication:
       schemes:
-        - "bearer"
-        - "basic"
+      - "bearer"
+      - "basic"
       credentials: "****"
     system:
-      - You are an advanced AI agent, performing in the role of planner.
-      - You are able to plan tasks, or compositions of tasks.
-      - You are able to track the progress of tasks, and provide feedback.
+    - You are an advanced AI agent, performing in the role of planner.
+    - You are able to plan tasks, or compositions of tasks.
+    - You are able to track the progress of tasks, and provide feedback.
     skills:
-      - planning
+    - planning
   researcher:
     name: "Researcher Agent"
     version: "0.1.0"
@@ -116,14 +116,14 @@ agent:
       stateTransitionHistory: true
     authentication:
       schemes:
-        - "bearer"
-        - "basic"
+      - "bearer"
+      - "basic"
       credentials: "****"
     system:
-      - You are an advanced AI agent, performing in the role of researcher.
-      - You are able to research information, and provide feedback.
+    - You are an advanced AI agent, performing in the role of researcher.
+    - You are able to research information, and provide feedback.
     skills:
-      - web-browsing
+    - web-browsing
   developer:
     name: "Developer Agent"
     version: "0.1.0"
@@ -138,8 +138,8 @@ agent:
       stateTransitionHistory: true
     authentication:
       schemes:
-        - "bearer"
-        - "basic"
+      - "bearer"
+      - "basic"
       credentials: "****"
     system: |
       You are an advanced AI agent, performing in the role of developer.
@@ -147,7 +147,7 @@ agent:
       Each time you receive a task, you will be placed in an iteration loop.
       To exit the loop, and mark you task as complete, just respond with "task complete".
     skills:
-      - development
+    - development
 
 mcp:
   embedded_agent: false
@@ -158,24 +158,24 @@ tools:
     description: |
       A tool which is specialized towards editing source code.
     params:
-      - name: "filename"
-        description: "The filename to edit."
-        required: false
-      - name: "find"
-        description: "A sub-string to search for within the source code."
-        required: false
-      - name: "replace"
-        description: "The string to replace the find string with."
-        required: false
-      - name: "from"
-        description: "The line number to start editing from."
-        required: false
-      - name: "to"
-        description: "The line number to stop editing at."
-        required: false
-      - name: "content"
-        description: "The content to insert between the from and to line numbers."
-        required: false
+    - name: "filename"
+      description: "The filename to edit."
+      required: false
+    - name: "find"
+      description: "A sub-string to search for within the source code."
+      required: false
+    - name: "replace"
+      description: "The string to replace the find string with."
+      required: false
+    - name: "from"
+      description: "The line number to start editing from."
+      required: false
+    - name: "to"
+      description: "The line number to stop editing at."
+      required: false
+    - name: "content"
+      description: "The content to insert between the from and to line numbers."
+      required: false
 
 skills:
   communication:
@@ -183,94 +183,94 @@ skills:
     name: "communication"
     description: "Communication with the user."
     tags:
-      - "communication"
-      - "user"
+    - "communication"
+    - "user"
     examples:
-      - "Relay the message from the user to the agent."
-      - "Relay the response from the agent to the user."
+    - "Relay the message from the user to the agent."
+    - "Relay the response from the agent to the user."
     input_modes:
-      - "text/plain"
+    - "text/plain"
     output_modes:
-      - "text/plain"
+    - "text/plain"
   planning:
     id: "planning"
     name: "planning"
     description: "Planning of tasks."
     tags:
-      - "planning"
-      - "task"
+    - "planning"
+    - "task"
     examples:
-      - "Plan the tasks for the day."
-      - "Develop a plan for the project."
+    - "Plan the tasks for the day."
+    - "Develop a plan for the project."
     input_modes:
-      - "text/plain"
+    - "text/plain"
     output_modes:
-      - "text/plain"
+    - "text/plain"
   web-browsing:
     id: "web-browsing"
     name: "web-browsing"
     description: "Browsing the web."
     tags:
-      - "web-browsing"
-      - "web"
+    - "web-browsing"
+    - "web"
     examples:
-      - "Search for the latest news on the web."
-      - "Find the latest information on the provided topic."
+    - "Search for the latest news on the web."
+    - "Find the latest information on the provided topic."
     input_modes:
-      - "text/plain"
+    - "text/plain"
     output_modes:
-      - "text/plain"
+    - "text/plain"
   management:
     id: "management"
     name: "management"
     description: "Management of tasks and agents."
     tags:
-      - "management"
-      - "task"
+    - "management"
+    - "task"
     examples:
-      - "Delegate the task to the developer agent."
-      - "Review the work of the developer agent."
+    - "Delegate the task to the developer agent."
+    - "Review the work of the developer agent."
     input_modes:
-      - "text/plain"
+    - "text/plain"
     output_modes:
-      - "text/plain"
+    - "text/plain"
   development:
     id: "development"
     name: "development"
     description: "Development of code."
     tags:
-      - "development"
-      - "code"
-      - "Develop a web-service which interfaces with MongoDB."
+    - "development"
+    - "code"
+    - "Develop a web-service which interfaces with MongoDB."
     input_modes:
-      - "text/plain"
+    - "text/plain"
     output_modes:
-      - "text/plain"
+    - "text/plain"
   penetration-testing:
     id: "penetration-testing"
     name: "penetration-testing"
     description: "Evaluate the security of code and services."
     tags:
-      - "penetration-testing"
-      - "security"
+    - "penetration-testing"
+    - "security"
     examples:
-      - "Test the security of the provided server."
-      - "Identify the vulnerabilities in the provided code."
-      - "Test the code for SQL injection vulnerabilities."
+    - "Test the security of the provided server."
+    - "Identify the vulnerabilities in the provided code."
+    - "Test the code for SQL injection vulnerabilities."
     input_modes:
-      - "text/plain"
+    - "text/plain"
     output_modes:
-      - "text/plain"
+    - "text/plain"
   catalog:
     id: "catalog"
     name: "catalog"
     description: "Inspect the catalog and list available agents and tasks."
     tags:
-      - "catalog"
-      - "agents"
+    - "catalog"
+    - "agents"
     examples:
-      - "List all available agents."
+    - "List all available agents."
     input_modes:
-      - "text/plain"
+    - "text/plain"
     output_modes:
-      - "text/plain"
+    - "text/plain"

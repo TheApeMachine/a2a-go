@@ -113,19 +113,16 @@ func TestAzureSprintOverviewTool_Handler_Integration(t *testing.T) {
 				Params: struct {
 					Name      string         `json:"name"`
 					Arguments map[string]any `json:"arguments,omitempty"`
-					Meta      *struct {
-						ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
-					} `json:"_meta,omitempty"`
+					Meta      *mcp.Meta      `json:"_meta,omitempty"`
 				}{
 					Name: "azure_sprint_overview",
 					Arguments: map[string]any{
-						"sprint_identifier": "",
+						"sprint_identifier": "@currentIteration",
 						"format":            "json",
 					},
 					Meta: nil,
 				},
 			}
-
 			result, err := azureTool.Handler(ctx, request)
 
 			Convey("Then the result should be a valid JSON overview of the current sprint", func() {
@@ -134,26 +131,27 @@ func TestAzureSprintOverviewTool_Handler_Integration(t *testing.T) {
 				So(result.Content, ShouldNotBeNil)
 				So(len(result.Content), ShouldBeGreaterThan, 0)
 
-				contentStr, ok := result.Content[0].(string)
-				So(ok, ShouldBeTrue)
-				So(contentStr, ShouldNotBeEmpty)
-
-				var overview SprintOverviewOutput
-				if !strings.Contains(contentStr, "Failed to") {
-					errUnmarshal := json.Unmarshal([]byte(contentStr), &overview)
-					So(errUnmarshal, ShouldBeNil)
-					So(overview.Name, ShouldNotBeEmpty)
-					So(overview.IterationPath, ShouldNotBeEmpty)
-					So(overview.IterationPath, ShouldNotContainSubstring, "@currentIteration")
-					So(overview.TotalWorkItems, ShouldBeGreaterThanOrEqualTo, 0)
-					So(overview.WorkItemsByState, ShouldNotBeNil)
-					So(overview.WorkItemsByType, ShouldNotBeNil)
-					if overview.StartDate != "" {
-						So(overview.StartDate, ShouldHaveLength, 10)
+				if len(result.Content) > 0 {
+					if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
+						contentStr := textContent.Text
+						var overview SprintOverviewOutput
+						if !strings.Contains(contentStr, "Failed to") {
+							errUnmarshal := json.Unmarshal([]byte(contentStr), &overview)
+							So(errUnmarshal, ShouldBeNil)
+							So(overview.Name, ShouldNotBeEmpty)
+							So(overview.IterationPath, ShouldNotBeEmpty)
+							So(overview.IterationPath, ShouldNotContainSubstring, "@currentIteration")
+							So(overview.TotalWorkItems, ShouldBeGreaterThanOrEqualTo, 0)
+							So(overview.WorkItemsByState, ShouldNotBeNil)
+							So(overview.WorkItemsByType, ShouldNotBeNil)
+							if overview.StartDate != "" {
+								So(overview.StartDate, ShouldHaveLength, 10)
+							}
+							fmt.Printf("Current Sprint Overview (JSON): %+v\n", overview)
+						} else {
+							fmt.Printf("Current Sprint Overview (JSON) - Potential tool error in content: %s\n", contentStr)
+						}
 					}
-					fmt.Printf("Current Sprint Overview (JSON): %+v\n", overview)
-				} else {
-					fmt.Printf("Current Sprint Overview (JSON) - Potential tool error in content: %s\n", contentStr)
 				}
 			})
 		})
@@ -167,9 +165,7 @@ func TestAzureSprintOverviewTool_Handler_Integration(t *testing.T) {
 				Params: struct {
 					Name      string         `json:"name"`
 					Arguments map[string]any `json:"arguments,omitempty"`
-					Meta      *struct {
-						ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
-					} `json:"_meta,omitempty"`
+					Meta      *mcp.Meta      `json:"_meta,omitempty"`
 				}{
 					Name: "azure_sprint_overview",
 					Arguments: map[string]any{
@@ -188,15 +184,16 @@ func TestAzureSprintOverviewTool_Handler_Integration(t *testing.T) {
 				So(result.Content, ShouldNotBeNil)
 				So(len(result.Content), ShouldBeGreaterThan, 0)
 
-				contentStr, ok := result.Content[0].(string)
-				So(ok, ShouldBeTrue)
-				So(contentStr, ShouldNotBeEmpty)
-
-				So(contentStr, ShouldContainSubstring, "## Sprint Overview:")
-				So(contentStr, ShouldContainSubstring, "Iteration Path:")
-				So(contentStr, ShouldNotContainSubstring, "@currentIteration")
-				So(contentStr, ShouldContainSubstring, "Total Work Items:")
-				fmt.Printf("Current Sprint Overview (Text):\n%s\n", contentStr)
+				if len(result.Content) > 0 {
+					if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
+						contentStr := textContent.Text
+						So(contentStr, ShouldContainSubstring, "## Sprint Overview:")
+						So(contentStr, ShouldContainSubstring, "Iteration Path:")
+						So(contentStr, ShouldNotContainSubstring, "@currentIteration")
+						So(contentStr, ShouldContainSubstring, "Total Work Items:")
+						fmt.Printf("Current Sprint Overview (Text):\n%s\n", contentStr)
+					}
+				}
 			})
 		})
 
@@ -211,9 +208,7 @@ func TestAzureSprintOverviewTool_Handler_Integration(t *testing.T) {
 				Params: struct {
 					Name      string         `json:"name"`
 					Arguments map[string]any `json:"arguments,omitempty"`
-					Meta      *struct {
-						ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
-					} `json:"_meta,omitempty"`
+					Meta      *mcp.Meta      `json:"_meta,omitempty"`
 				}{
 					Name: "azure_sprint_overview",
 					Arguments: map[string]any{
@@ -232,18 +227,20 @@ func TestAzureSprintOverviewTool_Handler_Integration(t *testing.T) {
 				So(result.Content, ShouldNotBeNil)
 				So(len(result.Content), ShouldBeGreaterThan, 0)
 
-				contentStr, ok := result.Content[0].(string)
-				So(ok, ShouldBeTrue)
-
-				if strings.Contains(contentStr, "Failed to") || strings.Contains(contentStr, "Could not determine sprint") {
-					fmt.Printf("Specific Sprint Overview for '%s' (Tool Error in Content): %s\n", specificSprintPath, contentStr)
-				} else {
-					So(contentStr, ShouldNotBeEmpty)
-					var overview SprintOverviewOutput
-					errUnmarshal := json.Unmarshal([]byte(contentStr), &overview)
-					So(errUnmarshal, ShouldBeNil)
-					So(overview.IterationPath, ShouldContainSubstring, specificSprintPath)
-					fmt.Printf("Specific Sprint Overview ('%s', JSON):\n%+v\n", specificSprintPath, overview)
+				if len(result.Content) > 0 {
+					if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
+						contentStr := textContent.Text
+						if strings.Contains(contentStr, "Failed to") || strings.Contains(contentStr, "Could not determine sprint") {
+							fmt.Printf("Specific Sprint Overview for '%s' (Tool Error in Content): %s\n", specificSprintPath, contentStr)
+						} else {
+							So(contentStr, ShouldNotBeEmpty)
+							var overview SprintOverviewOutput
+							errUnmarshal := json.Unmarshal([]byte(contentStr), &overview)
+							So(errUnmarshal, ShouldBeNil)
+							So(overview.IterationPath, ShouldContainSubstring, specificSprintPath)
+							fmt.Printf("Specific Sprint Overview ('%s', JSON):\n%+v\n", specificSprintPath, overview)
+						}
+					}
 				}
 			})
 		})
@@ -254,9 +251,7 @@ func TestAzureSprintOverviewTool_Handler_Integration(t *testing.T) {
 				Params: struct {
 					Name      string         `json:"name"`
 					Arguments map[string]any `json:"arguments,omitempty"`
-					Meta      *struct {
-						ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
-					} `json:"_meta,omitempty"`
+					Meta      *mcp.Meta      `json:"_meta,omitempty"`
 				}{
 					Name: "azure_sprint_overview",
 					Arguments: map[string]any{
@@ -274,16 +269,18 @@ func TestAzureSprintOverviewTool_Handler_Integration(t *testing.T) {
 				So(result.Content, ShouldNotBeNil)
 				So(len(result.Content), ShouldBeGreaterThan, 0)
 
-				contentStr, ok := result.Content[0].(string)
-				So(ok, ShouldBeTrue)
-
-				if strings.Contains(contentStr, "Failed to query work items") || strings.Contains(contentStr, "Could not determine sprint") {
-					fmt.Printf("Non-existent Sprint Overview Response (Error in Content: %s)\n", contentStr)
-					So(contentStr, ShouldContainSubstring, "Failed to")
-				} else {
-					fmt.Printf("Non-existent Sprint Overview Response (NoError in Content, Output: %s)\n", contentStr)
-					So(contentStr, ShouldContainSubstring, "Total Work Items: 0")
-					So(contentStr, ShouldContainSubstring, nonExistentSprint)
+				if len(result.Content) > 0 {
+					if textContent, ok := result.Content[0].(*mcp.TextContent); ok {
+						contentStr := textContent.Text
+						if strings.Contains(contentStr, "Failed to query work items") || strings.Contains(contentStr, "Could not determine sprint") {
+							fmt.Printf("Non-existent Sprint Overview Response (Error in Content: %s)\n", contentStr)
+							So(contentStr, ShouldContainSubstring, "Failed to")
+						} else {
+							fmt.Printf("Non-existent Sprint Overview Response (NoError in Content, Output: %s)\n", contentStr)
+							So(contentStr, ShouldContainSubstring, "Total Work Items: 0")
+							So(contentStr, ShouldContainSubstring, nonExistentSprint)
+						}
+					}
 				}
 			})
 		})

@@ -148,17 +148,8 @@ func (at *AzureGetGithubFileContentTool) Handle(
 		return mcp.NewToolResultError("Azure DevOps environment variables not set correctly. Required: AZURE_DEVOPS_ORG, AZDO_PAT, AZURE_DEVOPS_PROJECT, AZURE_DEVOPS_TEAM"), nil
 	}
 
-	config := azuretools.AzureDevOpsConfig{
-		OrganizationURL:     "https://dev.azure.com/" + orgName,
-		PersonalAccessToken: pat,
-		Project:             project,
-		Team:                team,
-	}
-
-	conn := azuredevops.NewPatConnection(config.OrganizationURL, config.PersonalAccessToken)
-
-	// Create and execute the actual Azure tool
-	azureTool := azuretools.NewAzureGetGithubFileContentTool(conn, config)
+	// No Azure DevOps connection needed for GitHub file content
+	azureTool := azuretools.NewAzureGetGitHubFileContentTool()
 	if azureTool == nil {
 		return mcp.NewToolResultError("Failed to initialize Azure DevOps GetGithubFileContent tool"), nil
 	}
@@ -507,6 +498,7 @@ func (at *AzureGetSprintsTool) Handle(
 	}
 
 	conn := azuredevops.NewPatConnection(config.OrganizationURL, config.PersonalAccessToken)
+	_ = conn // connection not required for this tool
 	workClient, err := work.NewClient(ctx, conn)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to create work client: %v", err)), nil

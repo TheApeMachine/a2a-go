@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
+	"github.com/gofiber/fiber/v3/client"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/openai/openai-go/v2/client"
-	"github.com/openai/openai-go/v2/openai"
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 	"github.com/theapemachine/a2a-go/pkg/a2a"
 	"github.com/theapemachine/a2a-go/pkg/errors"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
@@ -76,9 +76,7 @@ func (prvdr *OpenAIProvider) Generate(
 			MaxTokens:         openai.Int(params.MaxTokens),
 			TopP:              openai.Float(params.TopP),
 			Seed:              openai.Int(params.Seed),
-			Stop: openai.ChatCompletionNewParamsStopUnion{
-				OfChatCompletionNewsStopArray: params.Stop,
-			},
+			Stop:              openai.ChatCompletionNewParamsStopUnion{OfStringArray: params.Stop},
 		}
 
 		schema := params.Task.History[len(params.Task.History)-1].Metadata["schema"]
@@ -128,7 +126,7 @@ func (prvdr *OpenAIProvider) Generate(
 							ctx,
 							toolCall.Name,
 							toolCall.Arguments,
-							toolCall.Id, // Use .Id for FinishedChatCompletionToolCall
+							toolCall.ID,
 							params.Task,
 							openAIToolResponseGenerator,
 						)
@@ -383,7 +381,7 @@ func (prvdr *OpenAIProvider) String() string {
 		}
 		if msg.OfUser != nil {
 			sb.WriteString(fmt.Sprintf("%s    Role: %s\n", bullet, msg.OfUser.Role))
-			if msg.OfUser.Content.OfString.IsPresent() {
+			if msg.OfUser.Content.OfString.Valid() {
 				sb.WriteString(fmt.Sprintf("%s    Content: %s\n", bullet, msg.OfUser.Content.OfString))
 			} else if len(msg.OfUser.Content.OfArrayOfContentParts) > 0 {
 				sb.WriteString(fmt.Sprintf("%s    Content: [multipart (%d parts)]\n", bullet, len(msg.OfUser.Content.OfArrayOfContentParts)))
@@ -425,7 +423,7 @@ func (prvdr *OpenAIProvider) String() string {
 			sb.WriteString(fmt.Sprintf("%s  Tool %d:\n", bullet, i+1))
 			sb.WriteString(fmt.Sprintf("%s    Type: %s\n", bullet, tool.Type))
 			sb.WriteString(fmt.Sprintf("%s    Function Name: %s\n", bullet, tool.Function.Name))
-			if tool.Function.Description.IsPresent() {
+			if tool.Function.Description.Value != "" {
 				sb.WriteString(fmt.Sprintf("%s    Function Description: %s\n", bullet, tool.Function.Description))
 			}
 			if tool.Function.Parameters != nil {
@@ -439,25 +437,25 @@ func (prvdr *OpenAIProvider) String() string {
 		}
 	}
 
-	if prvdr.params.ParallelToolCalls.IsPresent() {
+	if prvdr.params.ParallelToolCalls.Valid() {
 		sb.WriteString(bullet + labelStyle.Render("ParallelToolCalls: ") + valueStyle.Render(fmt.Sprintf("%t", prvdr.params.ParallelToolCalls.Value)) + "\n")
 	}
-	if prvdr.params.FrequencyPenalty.IsPresent() {
+	if prvdr.params.FrequencyPenalty.Valid() {
 		sb.WriteString(bullet + labelStyle.Render("FrequencyPenalty: ") + valueStyle.Render(fmt.Sprintf("%.2f", prvdr.params.FrequencyPenalty.Value)) + "\n")
 	}
-	if prvdr.params.MaxTokens.IsPresent() {
+	if prvdr.params.MaxTokens.Valid() {
 		sb.WriteString(bullet + labelStyle.Render("MaxTokens: ") + valueStyle.Render(fmt.Sprintf("%d", prvdr.params.MaxTokens.Value)) + "\n")
 	}
-	if prvdr.params.TopP.IsPresent() {
+	if prvdr.params.TopP.Valid() {
 		sb.WriteString(bullet + labelStyle.Render("TopP: ") + valueStyle.Render(fmt.Sprintf("%.2f", prvdr.params.TopP.Value)) + "\n")
 	}
-	if prvdr.params.Seed.IsPresent() {
+	if prvdr.params.Seed.Valid() {
 		sb.WriteString(bullet + labelStyle.Render("Seed: ") + valueStyle.Render(fmt.Sprintf("%d", prvdr.params.Seed.Value)) + "\n")
 	}
 
-	if prvdr.params.Stop.OfChatCompletionNewsStopArray != nil && len(prvdr.params.Stop.OfChatCompletionNewsStopArray) > 0 {
-		sb.WriteString(bullet + labelStyle.Render("Stop: ") + valueStyle.Render(strings.Join(prvdr.params.Stop.OfChatCompletionNewsStopArray, ", ")) + "\n")
-	} else if prvdr.params.Stop.OfString.IsPresent() {
+	if prvdr.params.Stop.OfStringArray != nil && len(prvdr.params.Stop.OfStringArray) > 0 {
+		sb.WriteString(bullet + labelStyle.Render("Stop: ") + valueStyle.Render(strings.Join(prvdr.params.Stop.OfStringArray, ", ")) + "\n")
+	} else if prvdr.params.Stop.OfString.Valid() {
 		sb.WriteString(bullet + labelStyle.Render("Stop: ") + valueStyle.Render(prvdr.params.Stop.OfString.Value))
 	}
 

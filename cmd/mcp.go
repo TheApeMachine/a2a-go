@@ -39,9 +39,6 @@ var (
 			case "catalog":
 				catalogToolHandlerInstance := &tools.CatalogTool{}
 				stdio.AddTool(*toolDefinition, catalogToolHandlerInstance.Handle)
-			case "management":
-				managementToolHandlerInstance := &tools.DelegateTool{}
-				stdio.AddTool(*toolDefinition, managementToolHandlerInstance.Handle)
 			case "azure_get_sprints":
 				azureGetSprintsToolHandlerInstance := &tools.AzureGetSprintsTool{}
 				stdio.AddTool(*toolDefinition, azureGetSprintsToolHandlerInstance.Handle)
@@ -78,6 +75,9 @@ var (
 			case "azure_work_item_comments":
 				azureWorkItemCommentsToolHandlerInstance := &tools.AzureWorkItemCommentsTool{}
 				stdio.AddTool(*toolDefinition, azureWorkItemCommentsToolHandlerInstance.Handle)
+			case "azure_find_items_by_status":
+				azureFindItemsByStatusToolHandlerInstance := &tools.AzureFindItemsByStatusTool{}
+				stdio.AddTool(*toolDefinition, azureFindItemsByStatusToolHandlerInstance.Handle)
 			default:
 				return fmt.Errorf("unsupported tool config for mcp command: %s", configFlag)
 			}

@@ -1,4 +1,91 @@
 services:
+
+  # MinIO Client service to initialize buckets and access keys
+  mc:
+    image: minio/mc
+    container_name: mc
+    networks:
+      - a2a-network
+    environment:
+      - MINIO_USER=${MINIO_USER}
+      - MINIO_PASSWORD=${MINIO_PASSWORD}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Waiting for MinIO to be ready...';
+      sleep 10;
+      mc alias set myminio http://minio:9000 ${MINIO_USER} ${MINIO_PASSWORD};
+      echo 'Creating tasks bucket...';
+      mc mb myminio/tasks --ignore-existing;
+      echo 'Creating access key for agents...';
+      mc admin user add myminio ${AWS_ACCESS_KEY_ID} ${AWS_SECRET_ACCESS_KEY};
+      mc admin policy attach myminio readwrite --user ${AWS_ACCESS_KEY_ID};
+      echo 'MinIO setup complete!';
+      exit 0;
+      "
+
+  test:
+    image: theapemachine/a2a-go:latest
+    container_name: test
+    command: ["test"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+    depends_on:
+      mc:
+        condition: service_completed_successfully
+      catalog:
+        condition: service_started
+      ui:
+        condition: service_started
+      manager:
+        condition: service_started
+      planner:
+        condition: service_started
+      researcher:
+        condition: service_started
+      developer:
+        condition: service_started
+      slack:
+        condition: service_started
+      dockertool:
+        condition: service_started
+      browsertool:
+        condition: service_started
+      catalogtool:
+        condition: service_started
+      azure_get_sprints:
+        condition: service_started
+      azure_create_sprint:  
+        condition: service_started
+      azure_sprint_items:
+        condition: service_started
+      azure_sprint_overview:
+        condition: service_started
+      azure_get_work_items:
+        condition: service_started
+      azure_create_work_items:
+        condition: service_started
+      azure_update_work_items:
+        condition: service_started
+      azure_execute_wiql:
+        condition: service_started
+      azure_search_work_items:
+        condition: service_started
+      azure_enrich_work_item:
+        condition: service_started
+      azure_get_github_file_content:
+        condition: service_started
+      azure_work_item_comments:
+        condition: service_started
+      azure_find_items_by_status:
+        condition: service_started
+
   # Central catalog service that all agents register with
   catalog:
     image: theapemachine/a2a-go:latest
@@ -67,15 +154,6 @@ services:
     image: theapemachine/a2a-go:latest
     container_name: catalogtool
     command: ["mcp", "-c", "catalog"]
-    env_file:
-      - .env
-    networks:
-      - a2a-network
-
-  delegatetool:
-    image: theapemachine/a2a-go:latest
-    container_name: delegatetool
-    command: ["mcp", "-c", "delegate_task"]
     env_file:
       - .env
     networks:
@@ -219,12 +297,28 @@ services:
     networks:
       - a2a-network
     depends_on:
+      mc:
+        condition: service_completed_successfully
       minio:
         condition: service_started
       qdrant:
         condition: service_started
       neo4j:
         condition: service_started
+
+  # TUI service - the user interface for interacting with the agents.
+  tui:
+    image: theapemachine/a2a-go:latest
+    container_name: tui
+    command: ["tui"]
+    env_file:
+      - .env
+    environment:
+      - CATALOG_URL=http://catalog:3210
+    networks:
+      - a2a-network
+    depends_on:
+      - ui
 
   # Manager agent service - specialized in managing tasks and agents.
   manager:
@@ -240,6 +334,8 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     depends_on:
+      mc:
+        condition: service_completed_successfully
       minio:
         condition: service_started
       qdrant:
@@ -261,6 +357,8 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     depends_on:
+      mc:
+        condition: service_completed_successfully
       minio:
         condition: service_started
       qdrant:
@@ -282,6 +380,8 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     depends_on:
+      mc:
+        condition: service_completed_successfully
       minio:
         condition: service_started
       qdrant:
@@ -305,6 +405,8 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
     depends_on:
+      mc:
+        condition: service_completed_successfully
       minio:
         condition: service_started
       qdrant:

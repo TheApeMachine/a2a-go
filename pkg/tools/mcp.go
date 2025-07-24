@@ -24,7 +24,7 @@ func Acquire(id string) (*mcp.Tool, error) {
 		return NewBrowserTool(), nil
 	case "catalog":
 		return NewCatalogTool(), nil
-	case "management":
+	case "management", "delegate_task", "communication":
 		return NewDelegateTool(), nil
 	case "azure_get_sprints":
 		return NewAzureGetSprintsTool(), nil
@@ -50,6 +50,8 @@ func Acquire(id string) (*mcp.Tool, error) {
 		return NewAzureGetGithubFileContentTool(), nil
 	case "azure_work_item_comments":
 		return NewAzureWorkItemCommentsTool(), nil
+	case "azure_find_items_by_status":
+		return NewAzureFindItemsByStatusTool(), nil
 	}
 
 	return nil, fmt.Errorf("tool not found: %s", id)
@@ -58,8 +60,41 @@ func Acquire(id string) (*mcp.Tool, error) {
 func NewExecutor(
 	ctx context.Context, name, args string,
 ) (string, error) {
-	endpointKey := "endpoints." + name + "tool"
+	if name == "delegate_task" {
+		log.Info("executing delegate_task tool locally")
+		delegateTool := &DelegateTool{}
+		arguments := map[string]any{}
+		if err := json.Unmarshal([]byte(args), &arguments); err != nil {
+			return "", fmt.Errorf("failed to unmarshal tool arguments for delegate_task '%s': %w", args, err)
+		}
+		callToolRequest := mcp.CallToolRequest{}
+		callToolRequest.Params.Name = name
+		callToolRequest.Params.Arguments = arguments
+		result, err := delegateTool.Handle(ctx, callToolRequest)
+		if err != nil {
+			return "", err
+		}
+		var resultString string
+		if len(result.Content) > 0 {
+			firstContent := result.Content[0]
+			if textContent, ok := firstContent.(mcp.TextContent); ok {
+				resultString = textContent.Text
+			} else {
+				jsonResult, err := json.Marshal(firstContent)
+				if err != nil {
+					log.Warn("failed to marshal tool result content", "error", err)
+					resultString = "[error marshalling result]"
+				} else {
+					resultString = string(jsonResult)
+				}
+			}
+		} else {
+			resultString = "[empty tool result]"
+		}
+		return resultString, nil
+	}
 
+	endpointKey := "endpoints." + name + "tool"
 	url := viper.GetViper().GetString(endpointKey)
 	if url == "" {
 		log.Error("endpoint URL not found in config", "key", endpointKey, "toolName", name)
