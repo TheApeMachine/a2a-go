@@ -108,10 +108,7 @@ interoperability with the [**Model Context Protocol (MCP)**](https://modelcontex
 A2A-Go implements a distributed microservice architecture where each component runs independently:
 
 ```mermaid
-config:
-  flowchart:
-    defaultRenderer: "elk"
-
+%%{init: {"flowchart": {"defaultRenderer": "elk"}}}%%
 graph TB
     subgraph "A2A-Go Distributed Architecture"
         subgraph "Service Layer"
