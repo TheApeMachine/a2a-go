@@ -141,13 +141,39 @@ agent:
       - "bearer"
       - "basic"
       credentials: "****"
-    system: |
-      You are an advanced AI agent, performing in the role of developer.
-      You are able to develop code, and interact with other agents.
-      Each time you receive a task, you will be placed in an iteration loop.
-      To exit the loop, and mark you task as complete, just respond with "task complete".
+    system:
+    - You are an advanced AI agent, performing in the role of developer.
+    - You are able to develop software, and provide feedback.
     skills:
     - development
+  evaluator:
+    name: "Evaluator Agent"
+    version: "0.1.0"
+    url: "http://evaluator:3210"
+    provider:
+      organization: "The Ape Machine"
+      url: "https://theapemachine.org"
+    documentationUrl: "https://theapemachine.org/docs/evaluator"
+    capabilities:
+      streaming: true
+      pushNotifications: true
+      stateTransitionHistory: true
+    authentication:
+      schemes:
+      - "bearer"
+      - "basic"
+      credentials: "****"
+    system:
+    - You are an advanced AI agent, performing in the role of evaluator.
+    - You evaluate whether task outputs meet completion requirements.
+    - You receive the original task and an agent's output, then judge if it's complete.
+    - Respond with exactly - DECISION:[COMPLETE/ITERATE/ESCALATE] REASONING:[explanation]
+    - COMPLETE means task is fully satisfied. ITERATE means try again. ESCALATE means different approach needed.
+    - Be thorough but practical in your evaluation.
+    - Consider if the output directly addresses what was requested.
+    - Judge completeness, accuracy, and usefulness of results.
+    skills:
+    - evaluation
 
 mcp:
   embedded_agent: false
@@ -242,6 +268,23 @@ skills:
     - "development"
     - "code"
     - "Develop a web-service which interfaces with MongoDB."
+    examples:
+    - "Develop a web-service which interfaces with MongoDB."
+    input_modes:
+    - "text/plain"
+    output_modes:
+    - "text/plain"
+  evaluation:
+    id: "evaluation"
+    name: "evaluation"
+    description: "Evaluation of task completion quality."
+    tags:
+    - "evaluation"
+    - "quality"
+    - "completion"
+    examples:
+    - "Evaluate if a task output meets the original requirements."
+    - "Judge whether a response is complete and satisfactory."
     input_modes:
     - "text/plain"
     output_modes:

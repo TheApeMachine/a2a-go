@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -54,8 +55,10 @@ Press Ctrl+C or Esc to quit.`)
 	// Initialize catalog client
 	v := viper.GetViper()
 	catalogURL := v.GetString("endpoints.catalog")
-	if catalogURL == "" {
-		catalogURL = "http://catalog:3210" // Default catalog URL
+
+	// Convert Docker internal URLs to localhost when running locally
+	if catalogURL == "" || strings.Contains(catalogURL, "catalog:3210") {
+		catalogURL = "http://localhost:3210"
 	}
 
 	return model{
@@ -150,7 +153,13 @@ func (m model) sendToUIAgent(userMessage string) string {
 	}
 
 	// Create A2A client for the UI agent
-	agentClient := a2a.NewClient(uiAgent.URL)
+	agentURL := uiAgent.URL
+	// If running locally and agent URL points to Docker internal network, use localhost
+	if strings.Contains(agentURL, "ui:3210") {
+		agentURL = "http://localhost:3212" // UI agent is mapped to port 3212 locally
+	}
+
+	agentClient := a2a.NewClient(agentURL)
 
 	// Create message
 	message := a2a.NewTextMessage("user", userMessage)
@@ -177,19 +186,31 @@ func (m model) sendToUIAgent(userMessage string) string {
 	}
 
 	// Extract response from task
-	if task, ok := response.Result.(*a2a.Task); ok {
-		if len(task.History) > 0 {
-			lastMessage := task.History[len(task.History)-1]
-			if lastMessage.Role == "agent" && len(lastMessage.Parts) > 0 {
-				return m.agentStyle.Render("Agent: ") + lastMessage.Parts[0].Text
+	if response.Result != nil {
+		// Marshal the result back to JSON then unmarshal to Task struct
+		resultBytes, err := json.Marshal(response.Result)
+		if err != nil {
+			return m.errorStyle.Render("Error: ") + "Failed to parse agent response: " + err.Error()
+		}
+
+		var task a2a.Task
+		if err := json.Unmarshal(resultBytes, &task); err != nil {
+			return m.errorStyle.Render("Error: ") + "Failed to parse task data: " + err.Error()
+		}
+
+		// Check for agent responses in history
+		for i := len(task.History) - 1; i >= 0; i-- {
+			msg := task.History[i]
+			if msg.Role == "assistant" && len(msg.Parts) > 0 {
+				return m.agentStyle.Render("Agent: ") + msg.Parts[0].Text
 			}
 		}
 
 		// Fallback to status message
-		if task.Status.Message.Parts != nil && len(task.Status.Message.Parts) > 0 {
+		if len(task.Status.Message.Parts) > 0 {
 			return m.agentStyle.Render("Agent: ") + task.Status.Message.Parts[0].Text
 		}
 	}
 
-	return m.errorStyle.Render("Error: ") + "Received unexpected response format from agent"
+	return m.errorStyle.Render("Error: ") + "No response received from agent"
 }

@@ -6,9 +6,7 @@ require (
 	github.com/anthropics/anthropic-sdk-go v0.2.0-beta.3
 	github.com/charmbracelet/bubbletea v1.3.5
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/charmbracelet/lipgloss/v2 v2.0.0-beta.2
 	github.com/charmbracelet/log v0.4.2
-	github.com/charmbracelet/x/exp/charmtone v0.0.0-20250720010745-3615766e35a0
 	github.com/cohere-ai/cohere-go/v2 v2.14.1
 	github.com/cohesion-org/deepseek-go v1.3.1
 	github.com/cohesivestack/valgo v0.4.1
@@ -44,10 +42,6 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.36.3 // indirect
 	github.com/aws/smithy-go v1.22.3 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
-	github.com/charmbracelet/bubbletea/v2 v2.0.0-beta1 // indirect
-	github.com/charmbracelet/x/exp/color v0.0.0-20250720010745-3615766e35a0 // indirect
-	github.com/charmbracelet/x/input v0.3.7 // indirect
-	github.com/charmbracelet/x/windows v0.2.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
@@ -73,8 +67,6 @@ require (
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/sahilm/fuzzy v0.1.1 // indirect
-	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/smarty/assertions v1.16.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.35.0 // indirect

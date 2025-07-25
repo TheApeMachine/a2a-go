@@ -172,9 +172,34 @@ func (prvdr *OpenAIProvider) Generate(
 
 				if len(llmToolCalls) == 0 {
 					params.Task.AddFinalPart(a2a.NewTextPart(messageFromAssistant.Content))
-					params.Task.ToStatus(a2a.TaskStateCompleted, a2a.NewTextMessage("assistant", messageFromAssistant.Content))
-					ch <- jsonrpc.Response{Result: params.Task}
-					break
+
+					// Evaluate before completion
+					shouldComplete, evaluationReason, evalErr := EvaluateBeforeCompletion(
+						ctx,
+						params.Task,
+						messageFromAssistant.Content,
+						"openai",
+					)
+
+					if evalErr != nil {
+						log.Warn("OpenAI: Evaluation error, proceeding with completion", "error", evalErr)
+						params.Task.ToStatus(a2a.TaskStateCompleted, a2a.NewTextMessage("assistant", messageFromAssistant.Content))
+						ch <- jsonrpc.Response{Result: params.Task}
+						break
+					}
+
+					if shouldComplete {
+						log.Info("OpenAI: Task approved for completion", "reason", evaluationReason)
+						params.Task.ToStatus(a2a.TaskStateCompleted, a2a.NewTextMessage("assistant", messageFromAssistant.Content))
+						ch <- jsonrpc.Response{Result: params.Task}
+						break
+					} else {
+						log.Info("OpenAI: Task needs iteration", "reason", evaluationReason)
+						// Add evaluation feedback to conversation and continue
+						iterationPrompt := fmt.Sprintf("The evaluator reviewed your response and determined it needs improvement. Feedback: %s\n\nPlease revise your response to better address the original task.", evaluationReason)
+						prvdr.params.Messages = append(prvdr.params.Messages, openai.UserMessage(iterationPrompt))
+						// Continue loop for another iteration
+					}
 				} else {
 					prvdr.params.Messages = append(prvdr.params.Messages, messageFromAssistant.ToParam())
 					anyToolFailed := false

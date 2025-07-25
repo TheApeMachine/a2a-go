@@ -51,6 +51,8 @@ services:
         condition: service_started
       developer:
         condition: service_started
+      evaluator:
+        condition: service_started
       slack:
         condition: service_started
       dockertool:
@@ -400,6 +402,31 @@ services:
       - a2a-network
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # For Docker-in-Docker capabilities.
+    environment:
+      - CATALOG_URL=http://catalog:3210
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    depends_on:
+      mc:
+        condition: service_completed_successfully
+      minio:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      neo4j:
+        condition: service_started
+
+  # Evaluator agent service - specialized in evaluating task completion
+  evaluator:
+    image: theapemachine/a2a-go:latest
+    container_name: evaluator
+    command: ["agent", "-c", "evaluator"]
+    env_file:
+      - .env
+    networks:
+      - a2a-network
+    ports:
+      - "3213:3210"
     environment:
       - CATALOG_URL=http://catalog:3210
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}

@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -51,41 +50,6 @@ var (
 			Padding(0, 1)
 )
 
-// Create active delegate for lists
-func newActiveDelegate() list.DefaultDelegate {
-	delegate := list.NewDefaultDelegate()
-	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
-		Foreground(lipgloss.Color("231")).
-		Background(indigo).
-		Bold(true)
-	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.
-		Foreground(lipgloss.Color("231")).
-		Background(indigo).
-		Faint(false)
-	delegate.SetHeight(3)
-	delegate.SetSpacing(1)
-
-	return delegate
-}
-
-// Create inactive delegate for lists
-func newInactiveDelegate() list.DefaultDelegate {
-	delegate := list.NewDefaultDelegate()
-	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
-		Foreground(lipgloss.Color("231")).
-		Background(gray).
-		Bold(true)
-	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.
-		Foreground(lipgloss.Color("231")).
-		Background(gray).
-		Faint(false)
-	delegate.SetHeight(3)
-	delegate.SetSpacing(1)
-
-	return delegate
-}
-
-// Styles
 var (
 	bgTextStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("239")).

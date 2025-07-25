@@ -180,9 +180,32 @@ func (prvdr *AnthropicProvider) Generate(
 						params.Task.AddFinalPart(a2a.NewTextPart(assistantTextResponse))
 						ch <- a2a.NewArtifactResult(params.Task.ID, a2a.NewTextPart(assistantTextResponse))
 					}
-					params.Task.ToStatus(a2a.TaskStateCompleted, a2a.NewTextMessage("assistant", assistantTextResponse))
-					ch <- jsonrpc.Response{Result: params.Task}
-					isDone = true
+
+					// Evaluate before completion
+					shouldComplete, evaluationReason, evalErr := EvaluateBeforeCompletion(
+						ctx,
+						params.Task,
+						assistantTextResponse,
+						"anthropic",
+					)
+
+					if evalErr != nil {
+						log.Warn("Anthropic: Evaluation error, proceeding with completion", "error", evalErr)
+						params.Task.ToStatus(a2a.TaskStateCompleted, a2a.NewTextMessage("assistant", assistantTextResponse))
+						ch <- jsonrpc.Response{Result: params.Task}
+						isDone = true
+					} else if shouldComplete {
+						log.Info("Anthropic: Task approved for completion", "reason", evaluationReason)
+						params.Task.ToStatus(a2a.TaskStateCompleted, a2a.NewTextMessage("assistant", assistantTextResponse))
+						ch <- jsonrpc.Response{Result: params.Task}
+						isDone = true
+					} else {
+						log.Info("Anthropic: Task needs iteration", "reason", evaluationReason)
+						// Add evaluation feedback to conversation and continue
+						iterationPrompt := fmt.Sprintf("The evaluator reviewed your response and determined it needs improvement. Feedback: %s\n\nPlease revise your response to better address the original task.", evaluationReason)
+						prvdr.params.Messages = append(prvdr.params.Messages, anthropic.NewUserMessage(anthropic.NewTextBlock(iterationPrompt)))
+						isDone = false
+					}
 				} else {
 					// Tools were called. The loop will continue to make another call to the LLM
 					// with the tool results included in prvdr.params.Messages.

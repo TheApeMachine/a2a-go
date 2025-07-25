@@ -24,6 +24,8 @@ func Acquire(id string) (*mcp.Tool, error) {
 		return NewBrowserTool(), nil
 	case "catalog":
 		return NewCatalogTool(), nil
+	case "evaluation", "evaluate_output":
+		return NewEvaluateTool(), nil
 	case "management", "delegate_task", "communication":
 		return NewDelegateTool(), nil
 	case "azure_get_sprints":
@@ -79,17 +81,31 @@ func NewExecutor(
 			firstContent := result.Content[0]
 			if textContent, ok := firstContent.(mcp.TextContent); ok {
 				resultString = textContent.Text
-			} else {
-				jsonResult, err := json.Marshal(firstContent)
-				if err != nil {
-					log.Warn("failed to marshal tool result content", "error", err)
-					resultString = "[error marshalling result]"
-				} else {
-					resultString = string(jsonResult)
-				}
 			}
-		} else {
-			resultString = "[empty tool result]"
+		}
+		return resultString, nil
+	}
+
+	if name == "evaluate_output" {
+		log.Info("executing evaluate_output tool locally")
+		evaluateTool := &EvaluateTool{}
+		arguments := map[string]any{}
+		if err := json.Unmarshal([]byte(args), &arguments); err != nil {
+			return "", fmt.Errorf("failed to unmarshal tool arguments for evaluate_output '%s': %w", args, err)
+		}
+		callToolRequest := mcp.CallToolRequest{}
+		callToolRequest.Params.Name = name
+		callToolRequest.Params.Arguments = arguments
+		result, err := evaluateTool.Handle(ctx, callToolRequest)
+		if err != nil {
+			return "", err
+		}
+		var resultString string
+		if len(result.Content) > 0 {
+			firstContent := result.Content[0]
+			if textContent, ok := firstContent.(mcp.TextContent); ok {
+				resultString = textContent.Text
+			}
 		}
 		return resultString, nil
 	}
