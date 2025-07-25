@@ -49,7 +49,7 @@ func (srv *A2AServer) Start() error {
 		Next: func(c fiber.Ctx) bool {
 			return c.Path() == "/events"
 		},
-	}), healthcheck.NewHealthChecker())
+	}), healthcheck.New())
 	srv.app.Get("/", srv.handleRoot)
 	srv.app.Get("/.well-known/agent.json", srv.handleAgentCard)
 	srv.app.Get("/events", srv.handleEvents)
@@ -211,7 +211,7 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 				return nil, rpcErr
 			}
 
-			return srv.agent.SendTask(ctx.Context(), params)
+			return srv.agent.SendTask(ctx.RequestCtx(), params)
 		})
 	case "tasks/sendSubscribe":
 		return srv.handleTaskOperation(ctx, request.ID, func() (any, error) {
@@ -230,7 +230,7 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 			task.History = append(task.History, params.Message)
 			task.Metadata = params.Metadata
 
-			stream, rpcErr := srv.agent.StreamTask(ctx.Context(), task)
+			stream, rpcErr := srv.agent.StreamTask(ctx.RequestCtx(), task)
 			if rpcErr != nil {
 				return nil, rpcErr
 			}
@@ -247,8 +247,8 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 				firstResultPayload = nil
 			}
 
-			adaptedResponseStream := forwardResponseChannelToAnyChannel(ctx.Context(), stream)
-			srv.forwardEventsToBroker(ctx.Context(), adaptedResponseStream)
+			adaptedResponseStream := forwardResponseChannelToAnyChannel(ctx.RequestCtx(), stream)
+			srv.forwardEventsToBroker(ctx.RequestCtx(), adaptedResponseStream)
 
 			return firstResultPayload, nil // Return the payload of the first stream message
 		})
@@ -260,7 +260,7 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 				return nil, rpcErr
 			}
 
-			return srv.agent.GetTask(ctx.Context(), params.ID, *params.HistoryLength)
+			return srv.agent.GetTask(ctx.RequestCtx(), params.ID, *params.HistoryLength)
 		})
 	case "tasks/cancel":
 		return srv.handleTaskOperation(ctx, request.ID, func() (any, error) {
@@ -271,7 +271,7 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 			}
 			// CancelTask specifically returns nil result on success, and an error on failure.
 			// The handleTaskOperation will correctly wrap this in a JSON-RPC response.
-			return nil, srv.agent.CancelTask(ctx.Context(), params.ID)
+			return nil, srv.agent.CancelTask(ctx.RequestCtx(), params.ID)
 		})
 	case "tasks/resubscribe":
 		return srv.handleTaskOperation(ctx, request.ID, func() (any, error) {
@@ -285,7 +285,7 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 			if params.HistoryLength != nil {
 				hl = *params.HistoryLength
 			}
-			stream, rpcErr := srv.agent.ResubscribeTask(ctx.Context(), params.ID, hl)
+			stream, rpcErr := srv.agent.ResubscribeTask(ctx.RequestCtx(), params.ID, hl)
 			if rpcErr != nil {
 				return nil, rpcErr
 			}
@@ -297,8 +297,8 @@ func (srv *A2AServer) handleRPC(ctx fiber.Ctx) error {
 				first = nil
 			}
 
-			taskStreamAdapter := forwardTaskStreamAdapter(ctx.Context(), stream)
-			srv.forwardEventsToBroker(ctx.Context(), taskStreamAdapter)
+			taskStreamAdapter := forwardTaskStreamAdapter(ctx.RequestCtx(), stream)
+			srv.forwardEventsToBroker(ctx.RequestCtx(), taskStreamAdapter)
 
 			return first, nil
 		})

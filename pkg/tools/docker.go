@@ -39,7 +39,7 @@ func (dt *DockerTool) Handle(
 	log.Info("docker tool executing")
 
 	var (
-		args   = req.Params.Arguments
+		args   = req.GetArguments()
 		cmdStr string
 		err    error
 		ok     bool
@@ -47,6 +47,7 @@ func (dt *DockerTool) Handle(
 
 	if cmdStr, ok = args["cmd"].(string); !ok {
 		err = errors.New("unable to convert cmd to string")
+		log.Error("docker tool error", "error", err)
 		return mcp.NewToolResultError(err.Error()), err
 	}
 
@@ -57,12 +58,14 @@ func (dt *DockerTool) Handle(
 	env, err := dkr.NewEnvironment()
 
 	if err != nil {
+		log.Error("docker tool error", "error", err)
 		return nil, err
 	}
 
 	res, err := env.Exec(ctx, cmdStr, "a2a-go")
 
 	if err != nil {
+		log.Error("docker tool error", "error", err)
 		return nil, err
 	}
 

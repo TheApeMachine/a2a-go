@@ -163,41 +163,27 @@ func TestNewAzureSprintOverviewTool(t *testing.T) {
 func TestAzureSprintOverviewTool_Handler_Unit(t *testing.T) {
 	Convey("Given request validation", t, func() {
 		Convey("When validating request structure", func() {
-			validRequest := mcp.CallToolRequest{
-				Params: struct {
-					Name      string         `json:"name"`
-					Arguments map[string]any `json:"arguments,omitempty"`
-					Meta      *mcp.Meta      `json:"_meta,omitempty"`
-				}{
-					Name: "azure_sprint_overview",
-					Arguments: map[string]any{
-						"sprint_identifier": "Sprint 1",
-						"format":            "json",
-					},
-				},
+			validRequest := mcp.CallToolRequest{}
+			validRequest.Params.Name = "azure_sprint_overview"
+			validRequest.Params.Arguments = map[string]any{
+				"sprint_identifier": "Sprint 1",
+				"format":            "json",
 			}
 
-			invalidRequest := mcp.CallToolRequest{
-				Params: struct {
-					Name      string         `json:"name"`
-					Arguments map[string]any `json:"arguments,omitempty"`
-					Meta      *mcp.Meta      `json:"_meta,omitempty"`
-				}{
-					Name: "azure_sprint_overview",
-					Arguments: map[string]any{
-						// Missing sprint_identifier is actually valid (uses current sprint)
-						"format": "json",
-					},
-				},
+			invalidRequest := mcp.CallToolRequest{}
+			invalidRequest.Params.Name = "azure_sprint_overview"
+			invalidRequest.Params.Arguments = map[string]any{
+				// Missing sprint_identifier is actually valid (uses current sprint)
+				"format": "json",
 			}
 
 			Convey("Then request structures should be valid", func() {
 				So(validRequest.Params.Name, ShouldEqual, "azure_sprint_overview")
-				So(validRequest.Params.Arguments["sprint_identifier"], ShouldEqual, "Sprint 1")
-				So(validRequest.Params.Arguments["format"], ShouldEqual, "json")
+				So(validRequest.GetArguments()["sprint_identifier"], ShouldEqual, "Sprint 1")
+				So(validRequest.GetArguments()["format"], ShouldEqual, "json")
 
 				So(invalidRequest.Params.Name, ShouldEqual, "azure_sprint_overview")
-				So(invalidRequest.Params.Arguments["format"], ShouldEqual, "json")
+				So(invalidRequest.GetArguments()["format"], ShouldEqual, "json")
 			})
 		})
 

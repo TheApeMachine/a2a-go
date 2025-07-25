@@ -29,7 +29,7 @@ func GetStringArg(req mcp.CallToolRequest, key string) (string, error) {
 		ok  bool
 	)
 
-	if val, ok = req.Params.Arguments[key]; !ok {
+	if val, ok = req.GetArguments()[key]; !ok {
 		return "", fmt.Errorf("missing argument: %s", key)
 	}
 
@@ -50,7 +50,7 @@ func GetFloat64Arg(req mcp.CallToolRequest, key string) (float64, error) {
 		ok  bool
 	)
 
-	if val, ok = req.Params.Arguments[key]; !ok {
+	if val, ok = req.GetArguments()[key]; !ok {
 		return 0, fmt.Errorf("missing argument: %s", key)
 	}
 

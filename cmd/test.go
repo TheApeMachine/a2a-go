@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/log"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -23,6 +24,9 @@ var (
 		Short: "Progressive test suite for the A2A system",
 		Long:  longTest,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			log.SetReportCaller(true)
+			log.SetLevel(log.InfoLevel)
+
 			return runProgressiveTests()
 		},
 	}
@@ -36,8 +40,8 @@ func init() {
 }
 
 func runProgressiveTests() error {
-	fmt.Println("🚀 Starting A2A System Progressive Test Suite")
-	fmt.Println(strings.Repeat("=", 50))
+	log.Info("🚀 Starting A2A System Progressive Test Suite")
+	log.Info(strings.Repeat("=", 50))
 
 	tests := []struct {
 		level       int
@@ -56,12 +60,12 @@ func runProgressiveTests() error {
 			continue
 		}
 
-		fmt.Printf("\n📋 Level %d: %s\n", test.level, test.name)
-		fmt.Printf("   %s\n", test.description)
-		fmt.Println("   " + strings.Repeat("-", 40))
+		log.Info("\n📋 Level %d: %s\n", test.level, test.name)
+		log.Info("   %s\n", test.description)
+		log.Info("   " + strings.Repeat("-", 40))
 
 		if interactive {
-			fmt.Print("   Press Enter to continue...")
+			log.Info("   Press Enter to continue...")
 			fmt.Scanln()
 		}
 
@@ -70,21 +74,21 @@ func runProgressiveTests() error {
 		duration := time.Since(start)
 
 		if err != nil {
-			fmt.Printf("   ❌ FAILED (%v): %v\n", duration, err)
+			log.Error("   ❌ FAILED (%v): %v\n", "duration", duration, "error", err)
 			return fmt.Errorf("test level %d failed: %w", test.level, err)
 		}
 
-		fmt.Printf("   ✅ PASSED (%v)\n", duration)
+		log.Info("   ✅ PASSED (%v)\n", "duration", duration)
 		time.Sleep(2 * time.Second) // Brief pause between tests
 	}
 
-	fmt.Println("\n🎉 All tests completed successfully!")
-	fmt.Println("   The A2A system is fully operational and ready for use.")
+	log.Info("\n🎉 All tests completed successfully!")
+	log.Info("   The A2A system is fully operational and ready for use.")
 	return nil
 }
 
 func testBasicCommunication() error {
-	fmt.Println("   → Sending basic message to UI agent...")
+	log.Info("   → Sending basic message to UI agent...")
 
 	uiAgent, err := getUIAgent()
 	if err != nil {
@@ -96,12 +100,12 @@ func testBasicCommunication() error {
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 
-	fmt.Printf("   → Response: %s\n", getTaskResponse(task))
+	log.Info("   → Response: %s\n", "response", getTaskResponse(task))
 	return nil
 }
 
 func testCatalogDiscovery() error {
-	fmt.Println("   → Asking UI agent to discover available agents...")
+	log.Info("   → Asking UI agent to discover available agents...")
 
 	uiAgent, err := getUIAgent()
 	if err != nil {
@@ -115,14 +119,14 @@ func testCatalogDiscovery() error {
 	}
 
 	response := getTaskResponse(task)
-	fmt.Printf("   → Agent Discovery Result:\n")
-	fmt.Printf("     %s\n", response)
+	log.Info("   → Agent Discovery Result:\n")
+	log.Info("     %s\n", "response", response)
 
 	return nil
 }
 
 func testTaskDelegation() error {
-	fmt.Println("   → Testing delegation to different agent types...")
+	log.Info("   → Testing delegation to different agent types...")
 
 	uiAgent, err := getUIAgent()
 	if err != nil {
@@ -148,7 +152,7 @@ func testTaskDelegation() error {
 	}
 
 	for _, test := range delegationTests {
-		fmt.Printf("   → %s...\n", test.name)
+		log.Info("   → %s...\n", test.name)
 
 		task, err := sendMessageToAgent(uiAgent, test.message, "delegation-test")
 		if err != nil {
@@ -156,14 +160,14 @@ func testTaskDelegation() error {
 		}
 
 		response := getTaskResponse(task)
-		fmt.Printf("     ✓ Delegation successful. Response length: %d chars\n", len(response))
+		log.Info("     ✓ Delegation successful. Response length: %d chars\n", "length", len(response))
 	}
 
 	return nil
 }
 
 func testComplexWorkflows() error {
-	fmt.Println("   → Testing complex multi-agent workflow...")
+	log.Info("   → Testing complex multi-agent workflow...")
 
 	uiAgent, err := getUIAgent()
 	if err != nil {
@@ -176,15 +180,15 @@ func testComplexWorkflows() error {
 3. Finally, ask the manager to organize the team structure and workflows
 Please orchestrate this workflow and provide me with a comprehensive summary of all results.`
 
-	fmt.Println("   → Initiating multi-agent workflow...")
+	log.Info("   → Initiating multi-agent workflow...")
 	task, err := sendMessageToAgent(uiAgent, complexMessage, "complex-workflow-test")
 	if err != nil {
 		return err
 	}
 
 	response := getTaskResponse(task)
-	fmt.Printf("   → Workflow completed. Response summary:\n")
-	fmt.Printf("     Response length: %d characters\n", len(response))
+	log.Info("   → Workflow completed. Response summary:\n")
+	log.Info("     Response length: %d characters\n", "length", len(response))
 
 	// Check if response mentions different agents
 	agentMentions := 0
@@ -195,7 +199,7 @@ Please orchestrate this workflow and provide me with a comprehensive summary of 
 		}
 	}
 
-	fmt.Printf("     Agent interaction indicators: %d/%d\n", agentMentions, len(agents))
+	log.Info("     Agent interaction indicators: %d/%d\n", "agentMentions", agentMentions, "agents", len(agents))
 
 	if agentMentions < 2 {
 		return fmt.Errorf("complex workflow may not have involved multiple agents (only %d indicators found)", agentMentions)

@@ -37,7 +37,7 @@ func (bt *BrowserTool) Handle(
 
 	browser := browser.NewBrowser()
 
-	res, err := browser.Fetch(ctx, req.Params.Arguments["url"].(string), "", false, "")
+	res, err := browser.Fetch(ctx, req.GetArguments()["url"].(string), "", false, "")
 
 	if err != nil {
 		return nil, err

@@ -94,36 +94,46 @@ func (prvdr *AnthropicProvider) Generate(
 						if event.Delta.Text != "" {
 							ch <- a2a.NewArtifactResult(params.Task.ID, a2a.NewTextPart(event.Delta.Text))
 						}
-					case anthropic.ToolUseBlock: // This is a specific event type from Anthropic SDK when a tool is requested
-						// The message accumulator would have added the assistant's request for tool use.
-						// We now need to execute it.
-						prvdr.params.Messages = append(prvdr.params.Messages, message.ToParam()) // Add current assistant msg to history for LLM
-
-						updatedTask, llmToolMsg, toolExecErr := ExecuteAndProcessToolCall(
-							ctx,
-							event.Name,          // ToolUseBlock has Name
-							string(event.Input), // ToolUseBlock has Input (json.RawMessage)
-							event.ID,            // ToolUseBlock has ID
-							params.Task,
-							anthropicToolResponseGenerator,
-						)
-						params.Task = updatedTask // Persist changes to task
-						prvdr.params.Messages = append(prvdr.params.Messages, llmToolMsg.(anthropic.MessageParam))
-
-						if toolExecErr != nil {
-							ch <- jsonrpc.Response{
-								Result: params.Task, // Send updated task with error artifact
-								Error:  &jsonrpc.Error{Code: int(a2a.ErrorCodeInternalError), Message: fmt.Sprintf("Error executing tool %s: %v", event.Name, toolExecErr)},
-							}
-						} else {
-							ch <- jsonrpc.Response{Result: params.Task} // Send updated task with success artifact
+					case anthropic.ContentBlockStartEvent:
+						// Check if this is a tool use block starting
+						if toolUse, ok := event.ContentBlock.AsAny().(anthropic.ToolUseBlock); ok {
+							// Tool use detected, but we need to wait for it to complete
+							log.Info("Tool use started", "name", toolUse.Name, "id", toolUse.ID)
 						}
-						// Stream continues, LLM will get the tool response via updated prvdr.params.Messages
 					case anthropic.MessageStopEvent:
-						isDone = true
-						// Potentially send final task state if not already covered by other events
-						// For now, assume final content/artifacts are handled by ContentBlockDelta or completion.
-						ch <- jsonrpc.Response{Result: a2a.TaskStatusUpdateResult{ID: params.Task.ID, Status: params.Task.Status, Final: true}}
+						// Handle tool use from accumulated message
+						prvdr.params.Messages = append(prvdr.params.Messages, message.ToParam())
+						assistantCalledTool := false
+
+						for _, block := range message.Content {
+							if toolUse, ok := block.AsAny().(anthropic.ToolUseBlock); ok {
+								assistantCalledTool = true
+								updatedTask, llmToolMsg, toolExecErr := ExecuteAndProcessToolCall(
+									ctx,
+									toolUse.Name,
+									string(toolUse.Input),
+									toolUse.ID,
+									params.Task,
+									anthropicToolResponseGenerator,
+								)
+								params.Task = updatedTask
+								prvdr.params.Messages = append(prvdr.params.Messages, llmToolMsg.(anthropic.MessageParam))
+
+								if toolExecErr != nil {
+									ch <- jsonrpc.Response{
+										Result: params.Task,
+										Error:  &jsonrpc.Error{Code: int(a2a.ErrorCodeInternalError), Message: fmt.Sprintf("Error executing tool %s: %v", toolUse.Name, toolExecErr)},
+									}
+								} else {
+									ch <- jsonrpc.Response{Result: params.Task}
+								}
+							}
+						}
+
+						if !assistantCalledTool {
+							isDone = true
+							ch <- jsonrpc.Response{Result: a2a.TaskStatusUpdateResult{ID: params.Task.ID, Status: params.Task.Status, Final: true}}
+						}
 					}
 				}
 				if stream.Err() != nil {

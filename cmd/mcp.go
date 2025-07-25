@@ -16,6 +16,9 @@ var (
 		Short: "Run MCP services",
 		Long:  longMCP,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			log.SetReportCaller(true)
+			log.SetLevel(log.InfoLevel)
+
 			if configFlag == "" {
 				return errors.New("config flag is required for mcp command")
 			}

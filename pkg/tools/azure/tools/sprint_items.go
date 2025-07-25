@@ -183,7 +183,7 @@ func (tool *AzureSprintItemsTool) Handler(ctx context.Context, request mcp.CallT
 
 	// Get optional parameters
 	var workItemTypes string
-	if typesStr, ok := request.Params.Arguments["types"].(string); ok && typesStr != "" {
+	if typesStr, ok := request.GetArguments()["types"].(string); ok && typesStr != "" {
 		workItemTypes = typesStr // User provided: e.g., "Task,Bug"
 	} else {
 		// Default to common work item types, unquoted
@@ -191,7 +191,7 @@ func (tool *AzureSprintItemsTool) Handler(ctx context.Context, request mcp.CallT
 	}
 
 	var states string
-	if statesStr, ok := request.Params.Arguments["states"].(string); ok && statesStr != "" {
+	if statesStr, ok := request.GetArguments()["states"].(string); ok && statesStr != "" {
 		states = statesStr // User provided: e.g., "TODO,DOING"
 	} else {
 		// Default to active states, unquoted
@@ -228,13 +228,13 @@ func (tool *AzureSprintItemsTool) Handler(ctx context.Context, request mcp.CallT
 	pageSize := 50 // Default page size
 	page := 1      // Default page number
 
-	if pageSizeStr, ok := request.Params.Arguments["page_size"].(string); ok && pageSizeStr != "" {
+	if pageSizeStr, ok := request.GetArguments()["page_size"].(string); ok && pageSizeStr != "" {
 		if pageSizeInt, err := strconv.Atoi(pageSizeStr); err == nil {
 			pageSize = pageSizeInt
 		}
 	}
 
-	if pageStr, ok := request.Params.Arguments["page"].(string); ok && pageStr != "" {
+	if pageStr, ok := request.GetArguments()["page"].(string); ok && pageStr != "" {
 		if pageInt, err := strconv.Atoi(pageStr); err == nil {
 			page = pageInt
 		}

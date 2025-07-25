@@ -44,7 +44,7 @@ func (srv *WebhookServer) Start() error {
 		Next: func(c fiber.Ctx) bool {
 			return c.Path() == "/events"
 		},
-	}), healthcheck.NewHealthChecker())
+	}), healthcheck.New())
 
 	srv.app.Get("/", srv.handleRoot)
 	srv.app.Post("/webhook", srv.handleWebhook)

@@ -90,7 +90,7 @@ Example: "states": "DOING,REVIEW"
 	// Get optional types parameter
 	var typesStr string
 	var types []string
-	if val, ok := request.Params.Arguments["types"].(string); ok && val != "" {
+	if val, ok := request.GetArguments()["types"].(string); ok && val != "" {
 		typesStr = val
 		types = strings.Split(typesStr, ",")
 		for i, t := range types {
@@ -101,7 +101,7 @@ Example: "states": "DOING,REVIEW"
 	// Handle paging
 	pageSize := 50 // Default page size
 
-	if pageSizeStr, ok := request.Params.Arguments["page_size"].(string); ok && pageSizeStr != "" {
+	if pageSizeStr, ok := request.GetArguments()["page_size"].(string); ok && pageSizeStr != "" {
 		if pageSizeInt, err := strconv.Atoi(pageSizeStr); err == nil {
 			if pageSizeInt == 0 { // User explicitly wants all results (up to API hard limits)
 				pageSize = -1 // Indicate no SDK-side paging, rely on API's max if any
@@ -134,11 +134,11 @@ Example: "states": "DOING,REVIEW"
 
 	// Check if we need to filter by parent relationship
 	var parentCondition string
-	if hasParentStr, ok := request.Params.Arguments["has_parent"].(string); ok && hasParentStr != "" {
+	if hasParentStr, ok := request.GetArguments()["has_parent"].(string); ok && hasParentStr != "" {
 		hasParent := strings.ToLower(hasParentStr) == "true"
 		parentType := "Epic" // Default parent type
 
-		if parentTypeStr, ok := request.Params.Arguments["parent_type"].(string); ok && parentTypeStr != "" {
+		if parentTypeStr, ok := request.GetArguments()["parent_type"].(string); ok && parentTypeStr != "" {
 			parentType = parentTypeStr
 		}
 

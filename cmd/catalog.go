@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 	"github.com/theapemachine/a2a-go/pkg/service"
 )
@@ -11,6 +12,9 @@ var (
 		Short: "Run the agent catalog",
 		Long:  longCatalog,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			log.SetReportCaller(true)
+			log.SetLevel(log.InfoLevel)
+
 			return service.NewCatalogServer().Run()
 		},
 	}

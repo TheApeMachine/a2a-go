@@ -120,7 +120,6 @@ func (tool *AzureEnrichWorkItemTool) Handler(ctx context.Context, request mcp.Ca
 	}
 
 	// Step 1.1: GitHub Issues/PRs Search
-	// fmt.Println("Searching GitHub Issues/PRs...")
 	if appCfg.GitHub.PersonalAccessToken == "" || ghOrg == "" {
 		return mcp.NewToolResultError("GitHub PAT or Organization not configured/provided, skipping GitHub Issues/PRs search."), nil
 	} else {
@@ -180,7 +179,6 @@ func (tool *AzureEnrichWorkItemTool) Handler(ctx context.Context, request mcp.Ca
 
 	// Step 1.2: GitHub Code Search
 	if searchGHCode {
-		// fmt.Println("Searching GitHub Code...")
 		if appCfg.GitHub.PersonalAccessToken == "" || ghOrg == "" {
 			return mcp.NewToolResultError("GitHub PAT or Organization not configured/provided, skipping GitHub Code search."), nil
 		} else {

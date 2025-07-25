@@ -38,17 +38,17 @@ func (et *EvaluateTool) Handle(
 	log.Info("EvaluateTool: Received evaluation request")
 
 	// Extract parameters - same pattern as delegate tool
-	originalTask, ok := req.Params.Arguments["original_task"].(string)
+	originalTask, ok := req.GetArguments()["original_task"].(string)
 	if !ok {
 		return mcp.NewToolResultError("original_task parameter is required"), nil
 	}
 
-	agentOutput, ok := req.Params.Arguments["agent_output"].(string)
+	agentOutput, ok := req.GetArguments()["agent_output"].(string)
 	if !ok {
 		return mcp.NewToolResultError("agent_output parameter is required"), nil
 	}
 
-	executingAgent, ok := req.Params.Arguments["executing_agent"].(string)
+	executingAgent, ok := req.GetArguments()["executing_agent"].(string)
 	if !ok {
 		return mcp.NewToolResultError("executing_agent parameter is required"), nil
 	}

@@ -42,8 +42,8 @@ func (bt *DelegateTool) Handle(
 	log.Info("DelegateTool: Received call", "arguments", req.Params.Arguments)
 
 	var p delegateParams
-	agentURLInterface, agentURLOk := req.Params.Arguments["agent"]
-	taskMessageInterface, taskMessageOk := req.Params.Arguments["message"]
+	agentURLInterface, agentURLOk := req.GetArguments()["agent"]
+	taskMessageInterface, taskMessageOk := req.GetArguments()["message"]
 
 	if !agentURLOk {
 		log.Warn("DelegateTool: 'agent' argument missing")
