@@ -5,12 +5,14 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
+	"github.com/theapemachine/a2a-go/pkg/vpn"
 )
 
 // Result captures the essential page data returned by Fetch.
@@ -56,6 +58,25 @@ func (browser *Browser) Fetch(
 	}
 
 	launch := launcher.New().Headless(true).Leakless(true)
+
+	if vpnConfig := os.Getenv("PROTONVPN_CONFIG"); vpnConfig != "" {
+		vpnClient, err := vpn.NewClient(vpnConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := vpnClient.Up(); err != nil {
+			return nil, err
+		}
+		defer vpnClient.Down()
+
+		proxyAddr, err := vpnClient.StartProxy()
+		if err != nil {
+			return nil, err
+		}
+
+		launch = launch.Set("proxy-server", "socks5://"+proxyAddr)
+	}
 
 	if deadline, ok := ctx.Deadline(); ok {
 		launch = launch.Context(ctx)

@@ -67,6 +67,8 @@ interface AgentCard {
   // other agents in understanding what the agent can do.
   // (e.g. "Agent that helps users with recipes and cooking.")
   description: string;
+  // An optional URL for an icon for the agent.
+  iconUrl?: string;
   // A URL to the address the agent is hosted at.
   url: string;
   // The service provider of the agent
@@ -76,6 +78,8 @@ interface AgentCard {
   };
   // The version of the agent - format is up to the provider. (e.g. "1.0.0")
   version: string;
+  // The version of the A2A protocol the agent supports
+  protocol: string;
   // A URL to documentation for the agent.
   documentationUrl?: string;
   // Optional capabilities supported by the agent.

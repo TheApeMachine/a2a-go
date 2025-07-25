@@ -59,12 +59,16 @@ type AgentCard struct {
 	Name string `json:"name"`
 	// Description is an optional description of the agent
 	Description *string `json:"description,omitempty"`
+	// IconURL is an optional URL for an icon for the agent
+	IconURL *string `json:"iconUrl,omitempty"`
 	// URL is the base URL endpoint for interacting with the agent
 	URL string `json:"url"`
 	// Provider is information about the provider of the agent
 	Provider *AgentProvider `json:"provider,omitempty"`
 	// Version is the version identifier for the agent or its API
 	Version string `json:"version"`
+	// Protocol is the version of the A2A protocol the agent supports
+	Protocol string `json:"protocol"`
 	// DocumentationURL is an optional URL pointing to the agent's documentation
 	DocumentationURL *string `json:"documentationUrl,omitempty"`
 	// Capabilities are the capabilities supported by the agent
@@ -92,14 +96,16 @@ func NewAgentCardFromConfig(key string) *AgentCard {
 	}
 
 	return &AgentCard{
-		Name:    v.GetString(fmt.Sprintf("agent.%s.name", key)),
-		Version: v.GetString(fmt.Sprintf("agent.%s.version", key)),
-		URL:     v.GetString(fmt.Sprintf("agent.%s.url", key)),
+		Name:     v.GetString(fmt.Sprintf("agent.%s.name", key)),
+		Version:  v.GetString(fmt.Sprintf("agent.%s.version", key)),
+		Protocol: v.GetString(fmt.Sprintf("agent.%s.protocol", key)),
+		URL:      v.GetString(fmt.Sprintf("agent.%s.url", key)),
 		Provider: &AgentProvider{
 			Organization: v.GetString(fmt.Sprintf("agent.%s.provider.organization", key)),
 			URL:          utils.Ptr(v.GetString(fmt.Sprintf("agent.%s.provider.url", key))),
 		},
 		DocumentationURL: utils.Ptr(v.GetString(fmt.Sprintf("agent.%s.documentationUrl", key))),
+		IconURL:          utils.Ptr(v.GetString(fmt.Sprintf("agent.%s.iconUrl", key))),
 		Capabilities: AgentCapabilities{
 			Streaming:              v.GetBool(fmt.Sprintf("agent.%s.capabilities.streaming", key)),
 			PushNotifications:      v.GetBool(fmt.Sprintf("agent.%s.capabilities.pushNotifications", key)),
@@ -156,8 +162,12 @@ func (card *AgentCard) String() string {
 	if card.Description != nil {
 		sb.WriteString(bullet + labelStyle.Render("Description: ") + valueStyle.Render(*card.Description) + "\n")
 	}
+	if card.IconURL != nil {
+		sb.WriteString(bullet + labelStyle.Render("Icon: ") + valueStyle.Render(*card.IconURL) + "\n")
+	}
 	sb.WriteString(bullet + labelStyle.Render("URL: ") + valueStyle.Render(card.URL) + "\n")
 	sb.WriteString(bullet + labelStyle.Render("Version: ") + valueStyle.Render(card.Version) + "\n")
+	sb.WriteString(bullet + labelStyle.Render("Protocol: ") + valueStyle.Render(card.Protocol) + "\n")
 
 	// Provider Section
 	if card.Provider != nil {
