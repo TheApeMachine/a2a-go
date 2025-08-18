@@ -308,20 +308,6 @@ services:
       neo4j:
         condition: service_started
 
-  # TUI service - the user interface for interacting with the agents.
-  tui:
-    image: theapemachine/a2a-go:latest
-    container_name: tui
-    command: ["tui"]
-    env_file:
-      - .env
-    environment:
-      - CATALOG_URL=http://catalog:3210
-    networks:
-      - a2a-network
-    depends_on:
-      - ui
-
   # Manager agent service - specialized in managing tasks and agents.
   manager:
     image: theapemachine/a2a-go:latest  

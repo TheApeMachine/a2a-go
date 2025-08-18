@@ -12,7 +12,6 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/cohesivestack/valgo"
 	"github.com/google/uuid"
-	"github.com/spf13/viper"
 	"github.com/theapemachine/a2a-go/pkg/jsonrpc"
 	"github.com/theapemachine/a2a-go/pkg/transport"
 )
@@ -49,8 +48,11 @@ func NewTask(agentName string) *Task {
 		Metadata:  make(map[string]any),
 	}
 
+	// Persist agent name to help providers make decisions (e.g., skip self-evaluation)
+	task.Metadata["agentName"] = agentName
+
 	task.History = append(task.History, *NewTextMessage("system",
-		viper.GetViper().GetString(fmt.Sprintf("agent.%s.system", agentName)),
+		getSystemPromptForAgentName(agentName),
 	))
 
 	return task

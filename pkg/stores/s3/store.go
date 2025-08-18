@@ -39,7 +39,7 @@ func (store *Store) Get(
 	buf, err := store.conn.Get(ctx, "tasks", prefix)
 
 	if err != nil {
-		log.Error("failed to get task", "error", err)
+		log.Debug("task not found in store (will be created)", "prefix", prefix, "error", err)
 		return nil, errors.ErrTaskNotFound
 	}
 

@@ -16,6 +16,19 @@ import (
 func EvaluateBeforeCompletion(ctx context.Context, task *a2a.Task, agentOutput string, agentName string) (bool, string, error) {
 	log.Info("EvaluateBeforeCompletion: Starting evaluation", "agentName", agentName, "taskID", task.ID)
 
+	// Avoid recursive self-evaluation for evaluator agent or when disabled
+	if task.Metadata != nil {
+		if disable, ok := task.Metadata["disableEvaluation"].(bool); ok && disable {
+			return true, "Evaluation disabled by task metadata", nil
+		}
+		if currentAgent, ok := task.Metadata["agentName"].(string); ok {
+			lower := strings.ToLower(currentAgent)
+			if strings.Contains(lower, "evaluator") {
+				return true, "Evaluation disabled for evaluator agent to avoid recursion", nil
+			}
+		}
+	}
+
 	// Get original task request from history
 	var originalTask string
 	for _, msg := range task.History {
@@ -65,22 +78,17 @@ func EvaluateBeforeCompletion(ctx context.Context, task *a2a.Task, agentOutput s
 
 	// Parse evaluation decision
 	decision := extractDecision(evaluationResponse)
-	reasoning := extractReasoning(evaluationResponse)
+	reason := extractReasoning(evaluationResponse)
 
 	switch decision {
 	case "COMPLETE":
-		log.Info("EvaluateBeforeCompletion: Task approved for completion", "reasoning", reasoning)
-		return true, reasoning, nil
+		return true, reason, nil
 	case "ITERATE":
-		log.Info("EvaluateBeforeCompletion: Task needs iteration", "reasoning", reasoning)
-		return false, reasoning, nil
+		return false, reason, nil
 	case "ESCALATE":
-		log.Info("EvaluateBeforeCompletion: Task needs escalation", "reasoning", reasoning)
-		// For now, treat escalation as completion - could be enhanced later
-		return true, fmt.Sprintf("ESCALATION NEEDED: %s", reasoning), nil
+		// For now treat ESCALATE as complete and let calling code decide next steps
+		return true, reason, nil
 	default:
-		log.Warn("EvaluateBeforeCompletion: Unknown decision", "decision", decision)
-		// Default to completion if decision is unclear
 		return true, fmt.Sprintf("Unknown evaluation decision: %s", evaluationResponse), nil
 	}
 }
@@ -99,9 +107,11 @@ func extractDecision(response string) string {
 }
 
 func extractReasoning(response string) string {
-	parts := strings.SplitN(response, "REASONING:", 2)
+	parts := strings.Split(response, "REASONING:")
 	if len(parts) > 1 {
-		return strings.TrimSpace(parts[1])
+		// Join all parts from index 1 onwards, preserving "REASONING:" separators
+		reasoning := strings.Join(parts[1:], "REASONING:")
+		return strings.TrimSpace(reasoning)
 	}
 	return response
 }

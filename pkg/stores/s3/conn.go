@@ -86,7 +86,7 @@ func (conn *Conn) Get(
 	buf := &bytes.Buffer{}
 
 	if _, err := io.Copy(buf, object); err != nil {
-		log.Error("failed to copy object", "error", err)
+		log.Debug("failed to copy object", "error", err)
 		return nil, err
 	}
 

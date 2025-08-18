@@ -77,10 +77,6 @@ ESCALATE = Different approach or agent is needed`,
 
 	// Send to evaluator agent using standard A2A delegation - same as delegate tool
 	agentURL := "http://evaluator:3210"
-	// Convert Docker internal URLs to localhost when running locally
-	if strings.Contains(agentURL, "evaluator:3210") {
-		agentURL = "http://localhost:3213" // Evaluator will be mapped to port 3213
-	}
 
 	agentClient := a2a.NewClient(agentURL)
 

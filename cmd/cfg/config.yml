@@ -20,7 +20,7 @@ endpoints:
   azure_get_work_itemstool: "http://azure_get_work_items:3210"
   azure_create_work_itemstool: "http://azure_create_work_items:3210"
   azure_update_work_itemstool: "http://azure_update_work_items:3210"
-  azure_execute_wiqlt: "http://azure_execute_wiql:3210"
+  azure_execute_wiqltool: "http://azure_execute_wiql:3210"
   azure_search_work_itemstool: "http://azure_search_work_items:3210"
   azure_enrich_work_itemtool: "http://azure_enrich_work_item:3210"
   azure_get_github_file_contenttool: "http://azure_get_github_file_content:3210"
